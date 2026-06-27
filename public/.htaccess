@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# QR redirect route handled by PHP on Apache/cPanel hosting.
+RewriteRule ^q/([A-Za-z0-9_-]+)/?$ qr-redirect.php?slug=$1 [L,QSA]
+
+# Existing files and directories should be served directly.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# React/Vite SPA fallback for /app/* and other client routes.
+RewriteRule ^ index.html [L]

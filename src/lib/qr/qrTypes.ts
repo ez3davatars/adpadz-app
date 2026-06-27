@@ -1,0 +1,77 @@
+﻿export type QRStylePreset = 'standard' | 'circular-pad' | 'digital-pad';
+
+export type QRStatus = 'active' | 'paused' | 'archived';
+
+export type QRCenterFrameShape = 'rounded-rect' | 'circle';
+export type QRRimDecoration = 'none';
+export type QROrnamentStyle = 'none' | 'wave-premium';
+export type QROuterBackgroundType = 'none' | 'solid' | 'gradient' | 'image' | 'pattern';
+export type QROuterBackgroundFit = 'cover' | 'contain';
+
+export type QRLinkRecord = {
+  id: string;
+  owner_user_id: string | null;
+  business_id: string | null;
+  title: string;
+  slug: string;
+  destination_url: string;
+  status: QRStatus;
+  purpose: string | null;
+  campaign_name: string | null;
+  source: string | null;
+  medium: string | null;
+  tags: string[] | null;
+  style_preset: QRStylePreset;
+  top_ring_text: string | null;
+  bottom_ring_text: string | null;
+  center_label: string | null;
+  foreground_color: string;
+  background_color: string;
+  accent_color: string;
+  show_center_label: boolean;
+  show_short_url: boolean;
+  scan_count: number;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type QRFormState = {
+  title: string;
+  slug: string;
+  destination_url: string;
+  campaign_name: string;
+  purpose: string;
+  source: string;
+  medium: string;
+  tags: string;
+  style_preset: QRStylePreset;
+  top_ring_text: string;
+  bottom_ring_text: string;
+  center_label: string;
+  foreground_color: string;
+  background_color: string;
+  accent_color: string;
+  show_center_label: boolean;
+  show_short_url: boolean;
+  logo_data_url: string;
+  center_frame_shape: QRCenterFrameShape;
+  center_frame_stroke_color: string;
+  center_frame_fill_color: string;
+  rim_decoration: QRRimDecoration;
+  rim_band_color: string;
+  rim_text_color: string;
+  inner_field_color: string;
+  outer_border_color: string;
+  outer_background_type: QROuterBackgroundType;
+  outer_background_color: string;
+  outer_background_image_data_url: string;
+  outer_background_image_opacity: number;
+  outer_background_image_fit: QROuterBackgroundFit;
+  outer_background_overlay_color: string;
+  ornament_style: QROrnamentStyle;
+  ornament_main_color: string;
+  ornament_accent_color: string;
+  ornament_shadow_color: string;
+  ornament_opacity: number;
+};
