@@ -1,4 +1,4 @@
-export { AdpadzActionBar } from './AdpadzActionBar';
+﻿export { AdpadzActionBar } from './AdpadzActionBar';
 export { AdpadzAvatar } from './AdpadzAvatar';
 export { AdpadzBadge } from './AdpadzBadge';
 export { AdpadzButton } from './AdpadzButton';
@@ -8,3 +8,6 @@ export { AdpadzEmptyState } from './AdpadzEmptyState';
 export { AdpadzGradient } from './AdpadzGradient';
 export { AdpadzPill } from './AdpadzPill';
 export { AdpadzSection } from './AdpadzSection';
+
+export { AdpadzMetricCard } from './AdpadzMetricCard';
+

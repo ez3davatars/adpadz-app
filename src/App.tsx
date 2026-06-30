@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -19,6 +19,7 @@ import BizQRStudio from './pages/business/QRStudio';
 import BizSmartCards from './pages/business/SmartCards';
 import BizAnalytics from './pages/business/Analytics';
 import BizAssets from './pages/business/Assets';
+import BizServices from './pages/business/Services';
 import BizLeads from './pages/business/Leads';
 import BizSocial from './pages/business/Social';
 import BizSettings from './pages/business/Settings';
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="smart-cards/:id/edit" element={<BizSmartCards mode="edit" />} />
           <Route path="analytics" element={<BizAnalytics />} />
           <Route path="assets" element={<BizAssets />} />
+          <Route path="services" element={<BizServices />} />
           <Route path="leads" element={<BizLeads />} />
           <Route path="social" element={<BizSocial />} />
           <Route path="settings" element={<BizSettings />} />

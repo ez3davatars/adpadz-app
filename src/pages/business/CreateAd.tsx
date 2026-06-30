@@ -148,8 +148,8 @@ export default function BizCreateAd() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-bold">Create New Ad</h1>
-        <p className="text-sm text-[var(--text-muted)] mt-0.5">Build an interactive ad in minutes</p>
+        <h1 className="text-xl font-bold">Campaign Studio</h1>
+        <p className="text-sm text-[var(--text-muted)] mt-0.5">Create one campaign and publish it wherever you choose.</p>
       </div>
 
       {(message || error) && (
@@ -342,3 +342,4 @@ function PhonePreview({ headline, description, offerText, ctaText }: { headline:
     </div>
   );
 }
+

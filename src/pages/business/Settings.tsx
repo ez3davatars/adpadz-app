@@ -1,90 +1,51 @@
-import { Save, User, Building2, Palette, Bell, CreditCard, Shield } from 'lucide-react';
-import { mockBusiness } from '../../lib/mock-data';
+﻿import { Bell, Building2, CreditCard, Palette, Shield, User } from 'lucide-react';
+import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzSection } from '../../components/adpadz-ui';
+
+const settingsAreas = [
+  { icon: Building2, title: 'Business Profile', description: 'Permanent business information belongs in the Business Hub and feeds Smart Cards, campaigns, QR destinations, and future outputs.', status: 'Foundation' },
+  { icon: Palette, title: 'Brand System', description: 'Reusable colors, logo, cover imagery, gallery assets, and design defaults should be referenced by outputs.', status: 'Planned' },
+  { icon: Bell, title: 'Notifications', description: 'Future alerts for leads, booking requests, offer claims, campaign changes, and QR activity.', status: 'Planned' },
+  { icon: CreditCard, title: 'Billing', description: 'Future plan, subscription, usage limits, and upload entitlements.', status: 'Planned' },
+  { icon: Shield, title: 'Access & Security', description: 'Future team access, roles, authentication, and audit controls.', status: 'Planned' },
+  { icon: User, title: 'Owner Profile', description: 'Account preferences stay separate from permanent business profile data.', status: 'Planned' },
+];
 
 export default function BizSettings() {
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold">Settings</h1>
-        <p className="text-sm text-[var(--text-muted)] mt-0.5">Manage your business profile and preferences</p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Business Hub</p>
+          <h1 className="text-2xl font-black">Business Settings</h1>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Settings are the permanent business layer. Campaigns and outputs reference this information instead of copying it.</p>
+        </div>
+        <AdpadzButton type="button" variant="secondary" size="lg" disabled>Saving coming soon</AdpadzButton>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sidebar nav */}
-        <div className="space-y-1">
-          {[
-            { icon: Building2, label: 'Business Profile', active: true },
-            { icon: User, label: 'Account' },
-            { icon: Palette, label: 'Branding' },
-            { icon: Bell, label: 'Notifications' },
-            { icon: CreditCard, label: 'Billing' },
-            { icon: Shield, label: 'Security' },
-          ].map(item => (
-            <button
-              key={item.label}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                item.active ? 'bg-neon/10 text-neon' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-hover)]'
-              }`}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </button>
+      <AdpadzSection eyebrow="Ownership" title="One business profile, many outputs" description="This page establishes where long-lived business information will live. Existing Smart Card settings remain unchanged until a deliberate migration moves shared fields into the Business Hub.">
+        <div className="grid gap-3 lg:grid-cols-3">
+          {['Business Hub owns permanent information', 'Campaign Engine owns promotions', 'Outputs render references'].map(item => (
+            <AdpadzCard key={item} as="article" variant="flat" className="p-4">
+              <Building2 className="mb-3 h-5 w-5 text-neon" />
+              <p className="text-sm font-black">{item}</p>
+            </AdpadzCard>
           ))}
         </div>
+      </AdpadzSection>
 
-        {/* Form */}
-        <div className="lg:col-span-2">
-          <div className="card-surface p-5">
-            <h2 className="text-base font-semibold mb-5">Business Profile</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Business Name</label>
-                  <input defaultValue={mockBusiness.name} className="input-field" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Industry</label>
-                  <select defaultValue={mockBusiness.industry} className="input-field">
-                    <option value="restaurant">Restaurant / Food</option>
-                    <option value="retail">Retail</option>
-                    <option value="services">Professional Services</option>
-                    <option value="health">Health & Wellness</option>
-                    <option value="beauty">Beauty & Salon</option>
-                    <option value="fitness">Fitness</option>
-                    <option value="auto">Automotive</option>
-                  </select>
-                </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {settingsAreas.map(area => (
+          <AdpadzCard key={area.title} as="article" variant="standard" className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neon/10 text-neon">
+                <area.icon className="h-5 w-5" />
               </div>
-
-              <div>
-                <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Description</label>
-                <textarea defaultValue={mockBusiness.description} rows={3} className="input-field resize-none" />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Phone</label>
-                  <input defaultValue={mockBusiness.phone} className="input-field" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Email</label>
-                  <input defaultValue={mockBusiness.email} className="input-field" />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Address</label>
-                <input defaultValue={`${mockBusiness.address}, ${mockBusiness.city}, ${mockBusiness.state}`} className="input-field" />
-              </div>
-
-              <div className="pt-2">
-                <button className="btn-primary text-sm px-5 py-2.5">
-                  <Save className="w-4 h-4" /> Save Changes
-                </button>
-              </div>
+              <AdpadzBadge variant="status">{area.status}</AdpadzBadge>
             </div>
-          </div>
-        </div>
+            <h2 className="mt-4 text-lg font-black">{area.title}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{area.description}</p>
+          </AdpadzCard>
+        ))}
       </div>
     </div>
   );

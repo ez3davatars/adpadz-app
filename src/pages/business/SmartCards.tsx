@@ -1093,13 +1093,13 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
               </div>
               <span className="badge badge-active">Local profile builder</span>
             </div>
-            <h1 className="text-2xl font-bold">Smart Cards</h1>
+            <h1 className="text-2xl font-bold">Business Profile</h1>
             <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
-              Build mobile-first Adpadz profiles with offers, actions, links, and QR-ready public pages.
+              Manage the public Smart Card experience for your business.
             </p>
           </div>
           <Link to="/app/business/smart-cards/new" className="btn-primary px-5 py-2.5 text-sm">
-            <Plus className="h-4 w-4" /> New Smart Card
+            <Plus className="h-4 w-4" /> New Business Profile
           </Link>
         </div>
 
@@ -1107,13 +1107,13 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
 
         {loading ? (
           <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-muted)]">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading smart cards...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading business profiles...
           </div>
         ) : cards.length === 0 ? (
           <div className="card-surface p-8 text-center">
             <Sparkles className="mx-auto mb-3 h-9 w-9 text-neon" />
-            <h2 className="text-lg font-bold">No smart cards yet.</h2>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">Create a local-business profile, publish it, then connect it to a QR.</p>
+            <h2 className="text-lg font-bold">No business profiles yet.</h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Create your public Smart Card experience, publish it, then connect it to QR Studio.</p>
             <Link to="/app/business/smart-cards/new" className="btn-primary mt-5 px-5 py-2.5 text-sm">
               <Plus className="h-4 w-4" /> Build first card
             </Link>
@@ -1177,10 +1177,10 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <Link to="/app/business/smart-cards" className="mb-2 inline-flex text-xs font-semibold text-neon">
-            Back to Smart Cards
+            Back to Business Profile
           </Link>
-          <h1 className="text-2xl font-bold">{selectedCard ? 'Edit Smart Card' : 'New Smart Card'}</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Shape the public profile, preview the phone experience, and publish when ready.</p>
+          <h1 className="text-2xl font-bold">{selectedCard ? 'Edit Business Profile' : 'New Business Profile'}</h1>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Manage the public Smart Card experience for your business.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={togglePublished} disabled={saving} className="btn-secondary px-4 py-2.5 text-sm">
@@ -1917,7 +1917,7 @@ function CampaignOutputsPanel({ campaigns, saving, onUpdate }: { campaigns: Smar
         <span className="badge badge-draft">Smart Card outputs</span>
       </div>
       {campaigns.length === 0 ? (
-        <p className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] px-4 py-3 text-xs text-[var(--text-muted)]">No campaigns are connected yet. Use Create Ad to create a campaign and enable the Smart Card output.</p>
+        <p className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] px-4 py-3 text-xs text-[var(--text-muted)]">No campaigns are connected yet. Use Campaign Studio to create a campaign and enable the Smart Card output.</p>
       ) : (
         <div className="space-y-3">
           {campaigns.map(output => (
@@ -2229,6 +2229,7 @@ function Notice({ error, children }: { error: string | null; children: ReactNode
     </div>
   );
 }
+
 
 
 
