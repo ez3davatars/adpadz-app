@@ -1,6 +1,6 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+﻿import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Zap, Target, QrCode, BarChart3,
+  LayoutDashboard, Zap, Target, QrCode, Sparkles, BarChart3,
   Image, Users, Share2, Settings, LogOut, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/app/business/create-ad', icon: Zap, label: 'Create Ad' },
   { to: '/app/business/campaigns', icon: Target, label: 'Campaigns' },
   { to: '/app/business/qr-studio', icon: QrCode, label: 'QR Studio' },
+  { to: '/app/business/smart-cards', icon: Sparkles, label: 'Smart Cards' },
   { to: '/app/business/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/app/business/assets', icon: Image, label: 'Assets' },
   { to: '/app/business/leads', icon: Users, label: 'Leads' },
@@ -132,3 +133,5 @@ export default function BusinessLayout({ session }: { session: Session }) {
     </div>
   );
 }
+
+

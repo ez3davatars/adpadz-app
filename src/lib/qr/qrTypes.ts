@@ -1,6 +1,7 @@
 ﻿export type QRStylePreset = 'standard' | 'circular-pad' | 'digital-pad';
 
 export type QRStatus = 'active' | 'paused' | 'archived';
+export type QRDestinationType = 'url' | 'business_card';
 
 export type QRCenterFrameShape = 'rounded-rect' | 'circle';
 export type QRRimDecoration = 'none';
@@ -15,6 +16,8 @@ export type QRLinkRecord = {
   title: string;
   slug: string;
   destination_url: string;
+  destination_type: QRDestinationType;
+  destination_id: string | null;
   status: QRStatus;
   purpose: string | null;
   campaign_name: string | null;
@@ -40,10 +43,12 @@ export type QRFormState = {
   title: string;
   slug: string;
   destination_url: string;
+  destination_type: QRDestinationType;
+  destination_id: string;
   campaign_name: string;
   purpose: string;
-  source: string;
   medium: string;
+  source: string;
   tags: string;
   style_preset: QRStylePreset;
   top_ring_text: string;
@@ -75,3 +80,4 @@ export type QRFormState = {
   ornament_shadow_color: string;
   ornament_opacity: number;
 };
+

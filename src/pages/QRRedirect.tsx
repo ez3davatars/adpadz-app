@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Loader2, QrCode } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -9,6 +9,8 @@ type PublicQRLink = {
   id: string;
   title: string;
   destination_url: string;
+  destination_type: string | null;
+  destination_id: string | null;
   status: string;
   expires_at: string | null;
 };
@@ -28,7 +30,7 @@ export default function QRRedirect() {
 
       const { data, error } = await supabase
         .from('qr_links')
-        .select('id,title,destination_url,status,expires_at')
+        .select('id,title,destination_url,destination_type,destination_id,status,expires_at')
         .eq('slug', slug)
         .maybeSingle();
 
@@ -64,6 +66,32 @@ export default function QRRedirect() {
       });
 
       if (!cancelled) {
+        if (link.destination_type === 'business_card' && link.destination_id) {
+          const { data: cardData } = await supabase
+            .from('business_cards')
+            .select('id,slug,is_published')
+            .eq('id', link.destination_id)
+            .eq('is_published', true)
+            .maybeSingle();
+
+          if (cardData?.slug) {
+            await supabase.from('business_card_events').insert({
+              business_card_id: cardData.id,
+              qr_link_id: link.id,
+              event_type: 'qr_scan',
+              user_agent: navigator.userAgent,
+              referrer: document.referrer || null,
+              metadata: {
+                source: 'qr_redirect',
+                slug,
+              },
+            });
+
+            window.location.replace(`/c/${cardData.slug}?qr=${link.id}`);
+            return;
+          }
+        }
+
         window.location.replace(link.destination_url);
       }
     }
@@ -116,3 +144,6 @@ export default function QRRedirect() {
     </main>
   );
 }
+
+
+

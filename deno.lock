@@ -1,0 +1,35 @@
+{
+  "version": "5",
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.57.4": "05a369085eb4a4c99d85ccece97f0cf1e05357122e0e74373da1f0e91b014902"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@eslint/js@^9.9.1",
+        "npm:@supabase/supabase-js@^2.57.4",
+        "npm:@types/qrcode@^1.5.6",
+        "npm:@types/react-dom@^18.3.0",
+        "npm:@types/react@^18.3.5",
+        "npm:@vitejs/plugin-react@^6.0.3",
+        "npm:autoprefixer@^10.4.18",
+        "npm:baseline-browser-mapping@^2.10.40",
+        "npm:caniuse-lite@^1.0.30001799",
+        "npm:eslint-plugin-react-hooks@^5.1.0-rc.0",
+        "npm:eslint-plugin-react-refresh@~0.4.11",
+        "npm:eslint@^9.9.1",
+        "npm:globals@^15.9.0",
+        "npm:lucide-react@0.344",
+        "npm:postcss@^8.4.35",
+        "npm:qrcode@^1.5.4",
+        "npm:react-dom@^18.3.1",
+        "npm:react-router-dom@^7.18.0",
+        "npm:react@^18.3.1",
+        "npm:tailwindcss@^3.4.1",
+        "npm:typescript-eslint@^8.3.0",
+        "npm:typescript@^5.5.3",
+        "npm:vite@^8.1.0"
+      ]
+    }
+  }
+}

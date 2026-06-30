@@ -29,11 +29,14 @@ import {
   shortUrlUsesLocalhostInProduction,
   validateHttpUrl,
 } from '../../lib/qr/qrUtils';
+import { buildSmartCardUrl, type BusinessCardRecord } from '../../lib/smartCards';
 
 const DEFAULT_FORM: QRFormState = {
   title: 'Jacksonville Advertiser Flyer',
   slug: 'jacksonville-advertisers',
   destination_url: 'https://adpadz.co/advertise',
+  destination_type: 'url',
+  destination_id: '',
   campaign_name: 'Jacksonville Launch',
   purpose: 'Advertiser acquisition',
   source: 'printed flyer',
@@ -92,6 +95,7 @@ export default function QRStudio() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [form, setForm] = useState<QRFormState>(DEFAULT_FORM);
   const [links, setLinks] = useState<QRLinkRecord[]>([]);
+  const [businessCards, setBusinessCards] = useState<BusinessCardRecord[]>([]);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [publicAppUrl] = useState(getPublicAppUrl());
   const [advancedBaseUrlOpen, setAdvancedBaseUrlOpen] = useState(false);
@@ -112,6 +116,15 @@ export default function QRStudio() {
     () => links.find(link => link.id === selectedLinkId) ?? null,
     [links, selectedLinkId],
   );
+  const selectedBusinessCard = useMemo(
+    () => businessCards.find(card => card.id === form.destination_id) ?? null,
+    [businessCards, form.destination_id],
+  );
+  const effectiveDestinationUrl = useMemo(() => {
+    return form.destination_type === 'business_card' && selectedBusinessCard
+      ? buildSmartCardUrl(selectedBusinessCard.slug, baseUrl)
+      : form.destination_url;
+  }, [baseUrl, form.destination_type, form.destination_url, selectedBusinessCard]);
   const productionLocalhostError = useMemo(() => {
     return shortUrlUsesLocalhostInProduction(shortUrl)
       ? 'Production QR links cannot use localhost. Check VITE_PUBLIC_APP_URL.'
@@ -120,17 +133,18 @@ export default function QRStudio() {
 
   const shortLinkHostWarning = useMemo(() => {
     const shortLinkHost = getHostname(baseUrl);
-    const destinationHost = getHostname(form.destination_url);
+    const destinationHost = getHostname(effectiveDestinationUrl);
 
-    if (shortLinkHost && destinationHost && shortLinkHost === destinationHost) {
+    if (form.destination_type === 'url' && shortLinkHost && destinationHost && shortLinkHost === destinationHost) {
       return 'The short link should use the Adpadz domain, not the destination website.';
     }
 
     return null;
-  }, [baseUrl, form.destination_url]);
+  }, [baseUrl, effectiveDestinationUrl, form.destination_type]);
 
   useEffect(() => {
     void loadLinks();
+    void loadBusinessCards();
   }, []);
 
   async function loadLinks() {
@@ -162,6 +176,26 @@ export default function QRStudio() {
     setLoadingLinks(false);
   }
 
+  async function loadBusinessCards() {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !authData.user) {
+      setBusinessCards([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('business_cards')
+      .select('*')
+      .eq('owner_user_id', authData.user.id)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      setBusinessCards([]);
+    } else {
+      setBusinessCards((data ?? []) as BusinessCardRecord[]);
+    }
+  }
   function updateField<K extends keyof QRFormState>(key: K, value: QRFormState[K]) {
     setForm(current => ({ ...current, [key]: value }));
   }
@@ -212,6 +246,8 @@ export default function QRStudio() {
       title: link.title,
       slug: link.slug,
       destination_url: link.destination_url,
+      destination_type: link.destination_type ?? 'url',
+      destination_id: link.destination_id ?? '',
       campaign_name: link.campaign_name ?? '',
       purpose: link.purpose ?? '',
       source: link.source ?? '',
@@ -264,7 +300,13 @@ export default function QRStudio() {
       return;
     }
 
-    if (!validateHttpUrl(form.destination_url)) {
+    if (form.destination_type === 'business_card' && !selectedBusinessCard) {
+      setSaving(false);
+      setError('Choose a smart card destination before saving.');
+      return;
+    }
+
+    if (!validateHttpUrl(effectiveDestinationUrl)) {
       setSaving(false);
       setError('Destination URL must start with http:// or https://.');
       return;
@@ -279,7 +321,9 @@ export default function QRStudio() {
     const payload = {
       title: form.title.trim() || slug,
       slug,
-      destination_url: form.destination_url.trim(),
+      destination_url: effectiveDestinationUrl.trim(),
+      destination_type: form.destination_type,
+      destination_id: form.destination_type === 'business_card' ? form.destination_id : null,
       campaign_name: form.campaign_name.trim() || null,
       purpose: form.purpose.trim() || null,
       source: form.source.trim() || null,
@@ -408,15 +452,45 @@ export default function QRStudio() {
                   placeholder="jacksonville-advertisers"
                 />
               </Field>
-              <Field label="Destination URL" className="md:col-span-2">
-                <input
+              <Field label="Destination type">
+                <select
                   className="input-field"
-                  value={form.destination_url}
-                  onChange={event => updateField('destination_url', event.target.value)}
-                  placeholder="https://aulicinoveteransclaims.com/"
-                />
-                <p className="text-[11px] text-[var(--text-muted)] mt-1">Where visitors go after scanning.</p>
+                  value={form.destination_type}
+                  onChange={event => updateField('destination_type', event.target.value as QRFormState['destination_type'])}
+                >
+                  <option value="url">Website or landing page</option>
+                  <option value="business_card">Smart Card</option>
+                </select>
               </Field>
+              {form.destination_type === 'business_card' ? (
+                <Field label="Smart Card destination">
+                  <select
+                    className="input-field"
+                    value={form.destination_id}
+                    onChange={event => updateField('destination_id', event.target.value)}
+                  >
+                    <option value="">Choose a smart card</option>
+                    {businessCards.map(card => (
+                      <option key={card.id} value={card.id}>
+                        {card.business_name}{card.is_published ? '' : ' (unpublished)'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                    Scans open {selectedBusinessCard ? `/c/${selectedBusinessCard.slug}` : 'the selected public smart card'} and track QR analytics.
+                  </p>
+                </Field>
+              ) : (
+                <Field label="Destination URL">
+                  <input
+                    className="input-field"
+                    value={form.destination_url}
+                    onChange={event => updateField('destination_url', event.target.value)}
+                    placeholder="https://aulicinoveteransclaims.com/"
+                  />
+                  <p className="text-[11px] text-[var(--text-muted)] mt-1">Where visitors go after scanning.</p>
+                </Field>
+              )}
               <Field label="Short link base URL">
                 <input
                   className={`input-field ${advancedBaseUrlOpen ? '' : 'opacity-80 cursor-not-allowed'}`}
@@ -946,6 +1020,11 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
     </button>
   );
 }
+
+
+
+
+
 
 
 

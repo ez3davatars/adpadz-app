@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -10,11 +10,13 @@ import AdView from './pages/consumer/AdView';
 import BusinessProfile from './pages/consumer/BusinessProfile';
 import RedeemOffer from './pages/consumer/RedeemOffer';
 import QRRedirect from './pages/QRRedirect';
+import SmartCardPublic from './pages/SmartCardPublic';
 import BusinessLayout from './components/layout/BusinessLayout';
 import BizDashboard from './pages/business/Dashboard';
 import BizCreateAd from './pages/business/CreateAd';
 import BizCampaigns from './pages/business/Campaigns';
 import BizQRStudio from './pages/business/QRStudio';
+import BizSmartCards from './pages/business/SmartCards';
 import BizAnalytics from './pages/business/Analytics';
 import BizAssets from './pages/business/Assets';
 import BizLeads from './pages/business/Leads';
@@ -63,6 +65,7 @@ export default function App() {
         <Route path="/auth" element={session ? <Navigate to="/app/business/dashboard" /> : <AuthPage />} />
 
         <Route path="/q/:slug" element={<QRRedirect />} />
+        <Route path="/c/:slug" element={<SmartCardPublic />} />
 
         {/* Consumer routes */}
         <Route path="/feed" element={<Feed />} />
@@ -76,12 +79,22 @@ export default function App() {
           <Route path="create-ad" element={<BizCreateAd />} />
           <Route path="campaigns" element={<BizCampaigns />} />
           <Route path="qr-studio" element={<BizQRStudio />} />
+          <Route path="smart-cards" element={<BizSmartCards />} />
+          <Route path="smart-cards/new" element={<BizSmartCards mode="new" />} />
+          <Route path="smart-cards/:id/edit" element={<BizSmartCards mode="edit" />} />
           <Route path="analytics" element={<BizAnalytics />} />
           <Route path="assets" element={<BizAssets />} />
           <Route path="leads" element={<BizLeads />} />
           <Route path="social" element={<BizSocial />} />
           <Route path="settings" element={<BizSettings />} />
           <Route index element={<Navigate to="dashboard" />} />
+        </Route>
+
+        <Route path="/dashboard" element={session ? <BusinessLayout session={session} /> : <Navigate to="/auth" />}>
+          <Route path="smart-cards" element={<BizSmartCards />} />
+          <Route path="smart-cards/new" element={<BizSmartCards mode="new" />} />
+          <Route path="smart-cards/:id/edit" element={<BizSmartCards mode="edit" />} />
+          <Route index element={<Navigate to="smart-cards" />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" />} />
@@ -109,3 +122,4 @@ function MissingSupabaseConfig() {
     </main>
   );
 }
+
