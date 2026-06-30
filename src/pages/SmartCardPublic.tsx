@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   BadgePercent,
   CalendarDays,
+  Clock3,
   ExternalLink,
+  FileText,
   Globe,
   Image as ImageIcon,
   Loader2,
@@ -11,6 +13,7 @@ import {
   MapPin,
   MessageCircle,
   Phone,
+  PlayCircle,
   Share2,
   Sparkles,
 } from 'lucide-react';
@@ -20,6 +23,7 @@ import {
   getCurrentOffer,
   getImageDisplayStyle,
   getTemplateOption,
+  normalizeHexColor,
   type BusinessCardEventType,
   type BusinessCardGalleryRecord,
   type BusinessMarketingAssetRecord,
@@ -30,6 +34,8 @@ import {
   type BusinessCardOfferRecord,
   type BusinessCardRecord,
 } from '../lib/smartCards';
+import { getCampaignFormatLabel, getCampaignOffer, getCampaignSection, getCampaignTitle, normalizeCampaignOutput, type CampaignOutputRecord, type SmartCardCampaign } from '../lib/ads';
+import { AdpadzButton, AdpadzCouponCard, AdpadzPill } from '../components/adpadz-ui';
 type PublicCardState = 'loading' | 'ready' | 'not-found' | 'error';
 
 type ActionLink = {
@@ -54,6 +60,7 @@ export default function SmartCardPublic() {
   const [marketingAssets, setMarketingAssets] = useState<BusinessMarketingAssetRecord[]>([]);
   const [beforeAfterItems, setBeforeAfterItems] = useState<BusinessCardBeforeAfterRecord[]>([]);
   const [testimonials, setTestimonials] = useState<BusinessCardTestimonialRecord[]>([]);
+  const [smartCardCampaigns, setSmartCardCampaigns] = useState<SmartCardCampaign[]>([]);
   const [draftPreview, setDraftPreview] = useState(false);
   const [leadForm, setLeadForm] = useState({ name: '', phone: '', email: '', message: '' });
   const [leadStatus, setLeadStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -68,6 +75,9 @@ export default function SmartCardPublic() {
   const activeAssets = useMemo(() => marketingAssets.filter(item => item.is_active).sort((a, b) => a.sort_order - b.sort_order), [marketingAssets]);
   const activeBeforeAfter = useMemo(() => beforeAfterItems.filter(item => item.is_active).sort((a, b) => a.sort_order - b.sort_order), [beforeAfterItems]);
   const activeTestimonials = useMemo(() => testimonials.filter(item => item.is_active).sort((a, b) => a.sort_order - b.sort_order), [testimonials]);
+  const promotionCampaigns = useMemo(() => smartCardCampaigns.filter(output => getCampaignSection(output) === 'promotions'), [smartCardCampaigns]);
+  const mediaCampaigns = useMemo(() => smartCardCampaigns.filter(output => getCampaignSection(output) === 'media'), [smartCardCampaigns]);
+  const proofCampaigns = useMemo(() => smartCardCampaigns.filter(output => getCampaignSection(output) === 'proof'), [smartCardCampaigns]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,104 +91,154 @@ export default function SmartCardPublic() {
       setStatus('loading');
       setDraftPreview(false);
 
-      const { data, error } = await supabase
-        .from('business_cards')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
+      try {
+        const { data, error } = await supabase
+          .from('business_cards')
+          .select('*')
+          .eq('slug', slug)
+          .limit(1);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (error) {
-        if (import.meta.env.DEV) {
-          console.error('[SmartCardPublic] failed to load card', { slug, error });
+        if (error) {
+          if (import.meta.env.DEV) {
+            console.error('[SmartCardPublic] failed to load card', { slug, error });
+          }
+          setStatus('error');
+          return;
         }
-        setStatus('error');
-        return;
+
+        const loadedCard = ((data ?? [])[0] ?? null) as BusinessCardRecord | null;
+
+        if (!loadedCard) {
+          setStatus('not-found');
+          return;
+        }
+
+        setCard(loadedCard);
+        setDraftPreview(!loadedCard.is_published);
+
+        if (import.meta.env.DEV) {
+          console.log('[SmartCardPublic] booking config', {
+            slug,
+            booking_enabled: loadedCard.booking_enabled,
+            booking_mode: loadedCard.booking_mode,
+            booking_request_enabled: loadedCard.booking_request_enabled,
+            booking_request_title: loadedCard.booking_request_title,
+          });
+        }
+
+        const results = await Promise.allSettled([
+          supabase
+            .from('business_card_links')
+            .select('*')
+            .eq('business_card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('business_card_offers')
+            .select('*')
+            .eq('business_card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('business_card_booking_services')
+            .select('id, card_id, owner_id, name, description, duration_minutes, is_active, sort_order')
+            .eq('card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('business_card_gallery_items')
+            .select('*')
+            .eq('card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('business_marketing_assets')
+            .select('*')
+            .eq('smart_card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('business_card_before_after_items')
+            .select('*')
+            .eq('card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('business_card_testimonials')
+            .select('*')
+            .eq('card_id', loadedCard.id)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+          supabase
+            .from('campaign_outputs')
+            .select('campaign_id,output_type,enabled,sort_order,metadata,created_at,updated_at,campaigns(*)')
+            .eq('output_type', 'smart_card')
+            .eq('enabled', true)
+            .contains('metadata', { smart_card_id: loadedCard.id })
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: false }),
+        ]);
+
+        if (cancelled) return;
+
+        const extractRows = <T,>(result: PromiseSettledResult<{ data: T[] | null; error: unknown }>, label: string): T[] => {
+          if (result.status !== 'fulfilled') {
+            if (import.meta.env.DEV) {
+              console.error(`[SmartCardPublic] ${label} request failed`, result.reason);
+            }
+            return [];
+          }
+
+          if (result.value.error) {
+            if (import.meta.env.DEV) {
+              console.error(`[SmartCardPublic] ${label} query error`, result.value.error);
+            }
+            return [];
+          }
+
+          return (result.value.data ?? []) as T[];
+        };
+
+        const linkData = extractRows<BusinessCardLinkRecord>(results[0], 'links');
+        const offerData = extractRows<BusinessCardOfferRecord>(results[1], 'offers');
+        const bookingServiceData = extractRows<BusinessCardBookingServiceRecord>(results[2], 'booking services');
+        const galleryData = extractRows<BusinessCardGalleryRecord>(results[3], 'gallery');
+        const assetData = extractRows<BusinessMarketingAssetRecord>(results[4], 'marketing assets');
+        const beforeAfterData = extractRows<BusinessCardBeforeAfterRecord>(results[5], 'before-after');
+        const testimonialData = extractRows<BusinessCardTestimonialRecord>(results[6], 'testimonials');
+        const campaignOutputData = extractRows<CampaignOutputRecord>(results[7], 'smart card campaigns')
+          .map(output => normalizeCampaignOutput(output))
+          .filter((output): output is SmartCardCampaign => Boolean(output));
+
+        setLinks(linkData);
+        setOffers(offerData);
+        setBookingServices(bookingServiceData);
+        setGallery(galleryData);
+        setMarketingAssets(assetData);
+        setBeforeAfterItems(beforeAfterData);
+        setTestimonials(testimonialData);
+        setSmartCardCampaigns(campaignOutputData);
+
+        if (import.meta.env.DEV) {
+          console.log('[SmartCardPublic] booking services', {
+            slug,
+            servicesCount: bookingServiceData.length,
+            services: bookingServiceData,
+          });
+        }
+
+        setStatus('ready');
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('[SmartCardPublic] unexpected load failure', { slug, error });
+        }
+
+        if (!cancelled) {
+          setStatus('error');
+        }
       }
-
-      if (!data) {
-        setStatus('not-found');
-        return;
-      }
-
-      const loadedCard = data as BusinessCardRecord;
-      setCard(loadedCard);
-      setDraftPreview(!loadedCard.is_published);
-
-      if (import.meta.env.DEV) {
-        console.log('[SmartCardPublic] booking config', {
-          slug,
-          booking_enabled: loadedCard.booking_enabled,
-          booking_mode: loadedCard.booking_mode,
-          booking_request_enabled: loadedCard.booking_request_enabled,
-          booking_request_title: loadedCard.booking_request_title,
-        });
-      }
-
-      const [{ data: linkData }, { data: offerData }, { data: bookingServiceData }, { data: galleryData }, { data: assetData }, { data: beforeAfterData }, { data: testimonialData }] = await Promise.all([
-        supabase
-          .from('business_card_links')
-          .select('*')
-          .eq('business_card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('business_card_offers')
-          .select('*')
-          .eq('business_card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('business_card_booking_services')
-          .select('id, card_id, name, description, duration_minutes, is_active, sort_order')
-          .eq('card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('business_card_gallery_items')
-          .select('*')
-          .eq('card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('business_marketing_assets')
-          .select('*')
-          .eq('smart_card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('business_card_before_after_items')
-          .select('*')
-          .eq('card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('business_card_testimonials')
-          .select('*')
-          .eq('card_id', loadedCard.id)
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-      ]);
-
-      if (cancelled) return;
-
-      setLinks((linkData ?? []) as BusinessCardLinkRecord[]);
-      setOffers((offerData ?? []) as BusinessCardOfferRecord[]);
-      setBookingServices((bookingServiceData ?? []) as BusinessCardBookingServiceRecord[]);
-      setGallery((galleryData ?? []) as BusinessCardGalleryRecord[]);
-
-      if (import.meta.env.DEV) {
-        console.log('[SmartCardPublic] booking services', {
-          slug,
-          servicesCount: (bookingServiceData ?? []).length,
-          services: bookingServiceData ?? [],
-        });
-      }
-      setMarketingAssets((assetData ?? []) as BusinessMarketingAssetRecord[]);
-      setBeforeAfterItems((beforeAfterData ?? []) as BusinessCardBeforeAfterRecord[]);
-      setTestimonials((testimonialData ?? []) as BusinessCardTestimonialRecord[]);
-      setStatus('ready');
     }
 
     void loadCard();
@@ -203,6 +263,15 @@ export default function SmartCardPublic() {
   function handleAction(eventType: BusinessCardEventType, offerId?: string) {
     if (!card || !card.is_published) return;
     void trackEvent(card.id, eventType, qrLinkId, offerId);
+  }
+
+  function handleCampaignClick(output: SmartCardCampaign) {
+    if (!card || !card.is_published) return;
+    void trackEvent(card.id, 'interactive_ad_click', qrLinkId, undefined, {
+      campaign_id: output.campaign.id,
+      smart_card_id: card.id,
+      section: getCampaignSection(output),
+    });
   }
 
   async function submitLead(event: FormEvent<HTMLFormElement>) {
@@ -320,19 +389,42 @@ export default function SmartCardPublic() {
     { href: telHref, label: 'Call', eventType: 'call_click', icon: Phone },
     { href: smsHref, label: 'Text', eventType: 'text_click', icon: MessageCircle },
     { href: mailHref, label: 'Email', eventType: 'email_click', icon: Mail },
-    { href: card.website ?? undefined, label: 'Web', eventType: 'website_click', icon: Globe },
-    { href: directionsHref, label: 'Map', eventType: 'directions_click', icon: MapPin },
+    { href: card.website ?? undefined, label: 'Website', eventType: 'website_click', icon: Globe },
+    { href: directionsHref, label: 'Directions', eventType: 'directions_click', icon: MapPin },
   ];
   const template = getTemplateOption(card.template);
   const lightMode = template.treatment === 'light';
+  const primaryColor = normalizeHexColor(card.primary_color, template.colors[0]);
+  const accentColor = normalizeHexColor(card.accent_color, template.colors[1]);
+  const displayCard = { ...card, primary_color: primaryColor, accent_color: accentColor };
+  const bookingRequestEnabled = Boolean(card.booking_mode === 'request' && card.booking_request_enabled);
+  const bookingExternalEnabled = Boolean(card.booking_mode !== 'request' && card.booking_enabled && !!card.booking_url);
+  const supplementalAssets = activeAssets.filter(asset => asset.asset_type !== 'video');
+
+  const landingSections = [
+    { key: 'offer', element: currentOffer ? <OfferSection card={displayCard} offer={currentOffer} lightMode={lightMode} onClaim={offerId => handleAction('offer_claim', offerId)} /> : null },
+    { key: 'promotionCampaigns', element: <CampaignOutputSection title="Interactive Promotions" campaigns={promotionCampaigns} card={displayCard} lightMode={lightMode} onOpen={handleCampaignClick} /> },
+    { key: 'booking', element: <BookingSection card={displayCard} lightMode={lightMode} onAction={handleAction} bookingServices={activeBookingServices} bookingRequestForm={bookingRequestForm} bookingRequestStatus={bookingRequestStatus} setBookingRequestForm={setBookingRequestForm} onSubmitBookingRequest={submitBookingRequest} /> },
+    { key: 'services', element: <ServicesSection services={activeBookingServices} card={displayCard} lightMode={lightMode} bookingRequestEnabled={bookingRequestEnabled} onRequestService={serviceId => { setBookingRequestForm({ ...bookingRequestForm, service_id: serviceId }); document.getElementById('booking-request-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} /> },
+    { key: 'about', element: <AboutSection card={displayCard} lightMode={lightMode} /> },
+    { key: 'video', element: <FeaturedVideoSection card={displayCard} assets={activeAssets} lightMode={lightMode} onAction={handleAction} /> },
+    { key: 'mediaCampaigns', element: <CampaignOutputSection title="Interactive Media" campaigns={mediaCampaigns} card={displayCard} lightMode={lightMode} onOpen={handleCampaignClick} /> },
+    { key: 'beforeAfter', element: <BeforeAfterSection items={activeBeforeAfter} lightMode={lightMode} onAction={handleAction} /> },
+    { key: 'proofCampaigns', element: <CampaignOutputSection title="Proof & Results" campaigns={proofCampaigns} card={displayCard} lightMode={lightMode} onOpen={handleCampaignClick} /> },
+    { key: 'gallery', element: <GallerySection gallery={activeGallery} lightMode={lightMode} /> },
+    { key: 'testimonials', element: <TestimonialsSection items={activeTestimonials} card={displayCard} lightMode={lightMode} onAction={handleAction} /> },
+    { key: 'leadForm', element: <LeadFormSection card={displayCard} leadForm={leadForm} leadStatus={leadStatus} setLeadForm={setLeadForm} onSubmit={submitLead} lightMode={lightMode} /> },
+    { key: 'links', element: <LinksSection links={activeLinks} card={displayCard} lightMode={lightMode} /> },
+    { key: 'resources', element: <ResourcesSection assets={supplementalAssets} card={displayCard} lightMode={lightMode} onAction={handleAction} /> },
+  ];
 
   return (
     <main
-      className={`min-h-screen pb-28 ${lightMode ? 'text-neutral-950' : 'text-white'}`}
+      className={`min-h-screen pb-24 ${lightMode ? 'text-neutral-950' : 'text-white'}`}
       style={{
         background: lightMode
-          ? `radial-gradient(circle at 10% 3%, ${card.primary_color}1f, transparent 30%), radial-gradient(circle at 90% 10%, ${card.accent_color}1c, transparent 26%), linear-gradient(180deg, #f8fbff, #eef3f7 58%, #e7edf4)`
-          : `radial-gradient(circle at 10% 3%, ${card.primary_color}33, transparent 28%), radial-gradient(circle at 90% 10%, ${card.accent_color}22, transparent 24%), linear-gradient(180deg, #040404, #0b0b0b 52%, #090909)`,
+          ? `radial-gradient(circle at 12% 0%, ${primaryColor}18, transparent 28%), radial-gradient(circle at 88% 4%, ${accentColor}16, transparent 24%), linear-gradient(180deg, #f8fbff 0%, #eef3f7 56%, #e7edf4 100%)`
+          : `radial-gradient(circle at 10% 2%, ${primaryColor}30, transparent 26%), radial-gradient(circle at 88% 4%, ${accentColor}20, transparent 23%), linear-gradient(180deg, #040404 0%, #0a0a0a 54%, #070707 100%)`,
       }}
     >
       <div className="mx-auto max-w-6xl px-4 pb-10 pt-6 lg:px-6">
@@ -342,26 +434,18 @@ export default function SmartCardPublic() {
           </div>
         )}
 
-        <HeroSection card={card} currentOffer={currentOffer} lightMode={lightMode} />
+        <HeroSection card={displayCard} currentOffer={currentOffer} lightMode={lightMode} />
 
-        <div className="mx-auto mt-6 grid max-w-5xl grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.12fr)_minmax(320px,0.88fr)]">
-          <div className="space-y-5">
-            {currentOffer && <OfferSection card={card} offer={currentOffer} lightMode={lightMode} onClaim={offerId => handleAction('offer_claim', offerId)} />}
-            <BookingSection card={card} lightMode={lightMode} onAction={handleAction} bookingServices={activeBookingServices} bookingRequestForm={bookingRequestForm} bookingRequestStatus={bookingRequestStatus} setBookingRequestForm={setBookingRequestForm} onSubmitBookingRequest={submitBookingRequest} />
-            <LeadFormSection card={card} leadForm={leadForm} leadStatus={leadStatus} setLeadForm={setLeadForm} onSubmit={submitLead} lightMode={lightMode} />
-            <AboutSection card={card} lightMode={lightMode} />
-            <GallerySection gallery={activeGallery} lightMode={lightMode} />
-            <FeaturedVideoSection card={card} assets={activeAssets} lightMode={lightMode} onAction={handleAction} />
-            <BeforeAfterSection items={activeBeforeAfter} lightMode={lightMode} onAction={handleAction} />
-            <TestimonialsSection items={activeTestimonials} card={card} lightMode={lightMode} onAction={handleAction} />
-          </div>
-          <div className="space-y-5">
-            <ActionsSection actions={actions} card={card} onAction={handleAction} onSaveContact={saveContact} lightMode={lightMode} />
-            <DocumentsSection assets={activeAssets} card={card} lightMode={lightMode} onAction={handleAction} />
-            <VirtualTourSection assets={activeAssets} card={card} lightMode={lightMode} onAction={handleAction} />
-            <LinksSection links={activeLinks} card={card} lightMode={lightMode} />
-            <FooterSection lightMode={lightMode} />
-          </div>
+        <div className="mx-auto mt-5 max-w-5xl">
+          <ActionHubSection actions={actions} card={displayCard} onAction={handleAction} onSaveContact={saveContact} lightMode={lightMode} bookingRequestEnabled={bookingRequestEnabled} bookingExternalEnabled={bookingExternalEnabled} onOpenBooking={() => document.getElementById('booking-request-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        </div>
+
+        <div className="mx-auto mt-6 max-w-5xl space-y-6">
+          {landingSections.map(section => <Fragment key={section.key}>{section.element}</Fragment>)}
+        </div>
+
+        <div className="mx-auto mt-8 max-w-5xl">
+          <FooterSection lightMode={lightMode} />
         </div>
       </div>
     </main>
@@ -383,7 +467,7 @@ function HeroSection({ card, currentOffer, lightMode }: { card: BusinessCardReco
         {!lightMode && coverOverlayStyle ? <div className="absolute inset-0" style={coverOverlayStyle} /> : null}
         {!lightMode ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" /> : null}
         <div className="absolute -bottom-12 left-5 z-10 sm:left-8 lg:left-10">
-          <div className={`h-24 w-24 overflow-hidden rounded-[1.7rem] border-4 shadow-2xl sm:h-28 sm:w-28 ${lightMode ? 'border-white bg-white' : 'border-neutral-950 bg-neutral-900'}`}>
+          <div className={`h-24 w-24 overflow-hidden rounded-[1.7rem] border-4 shadow-[0_14px_38px_rgba(0,0,0,0.26),0_0_22px_rgba(255,255,255,0.16)] sm:h-28 sm:w-28 ${lightMode ? 'border-white bg-white' : 'border-neutral-950 bg-neutral-900'}`}>
             {card.logo_url ? (
               <img src={card.logo_url} alt={`${card.business_name} logo`} className="h-full w-full" style={logoImageStyle} />
             ) : (
@@ -418,16 +502,45 @@ function HeroSection({ card, currentOffer, lightMode }: { card: BusinessCardReco
   );
 }
 
-function ActionsSection({ actions, card, onAction, onSaveContact, lightMode }: { actions: ActionLink[]; card: BusinessCardRecord; onAction: (eventType: BusinessCardEventType) => void; onSaveContact: () => void; lightMode: boolean }) {
+function ActionHubSection({ actions, card, onAction, onSaveContact, lightMode, bookingRequestEnabled, bookingExternalEnabled, onOpenBooking }: {
+  actions: ActionLink[];
+  card: BusinessCardRecord;
+  onAction: (eventType: BusinessCardEventType) => void;
+  onSaveContact: () => void;
+  lightMode: boolean;
+  bookingRequestEnabled: boolean;
+  bookingExternalEnabled: boolean;
+  onOpenBooking: () => void;
+}) {
+  const bookingLabel = bookingRequestEnabled ? card.booking_request_button_label || 'Request Service' : card.booking_label || 'Book Appointment';
+
   return (
-    <section className={sectionClass(lightMode)}>
-      <h2 className="mb-3 text-sm font-black uppercase tracking-[0.16em] opacity-70">Quick actions</h2>
-      <div className="grid grid-cols-5 gap-2">
-        {actions.map(action => <ActionButton key={action.label} action={action} color={card.primary_color} lightMode={lightMode} onClick={() => onAction(action.eventType)} />)}
+    <section className={`sticky top-3 z-30 rounded-[1.75rem] border px-4 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.16)] backdrop-blur-xl sm:px-5 ${lightMode ? 'border-black/10 bg-white/[0.92] text-neutral-950' : 'border-white/10 bg-neutral-950/90 text-white'}`}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-black sm:text-lg">Connect</h2>
+          <span className={`hidden rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] sm:inline-flex ${lightMode ? 'bg-black/[0.04] text-neutral-500' : 'bg-white/[0.06] text-neutral-300'}`}>Local profile</span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 sm:justify-start">
+          {actions.map(action => <ActionButton key={action.label} action={action} color={card.primary_color} lightMode={lightMode} onClick={() => onAction(action.eventType)} />)}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={onSaveContact} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
+            <Mail className="h-4 w-4" /> Save contact
+          </button>
+          {bookingRequestEnabled ? (
+            <button type="button" onClick={onOpenBooking} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.accent_color}, ${card.primary_color})` }}>
+              <CalendarDays className="h-4 w-4" /> {bookingLabel || 'Request Service'}
+            </button>
+          ) : bookingExternalEnabled ? (
+            <a href={card.booking_url ?? '#'} target="_blank" rel="noreferrer" onClick={() => onAction('booking_click')} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.accent_color}, ${card.primary_color})` }}>
+              <CalendarDays className="h-4 w-4" /> {bookingLabel || 'Book Appointment'}
+            </a>
+          ) : null}
+        </div>
       </div>
-      <button type="button" onClick={onSaveContact} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-black text-black transition-transform active:scale-95" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
-        <Mail className="h-4 w-4" /> Save contact
-      </button>
     </section>
   );
 }
@@ -436,22 +549,53 @@ function ActionButton({ action, color, lightMode, onClick }: { action: ActionLin
   const Icon = action.icon;
   const href = action.href;
   const disabled = !href;
-  const className = `flex min-h-[68px] flex-col items-center justify-center gap-1 rounded-2xl border text-[9px] font-black transition-transform active:scale-95 ${disabled ? (lightMode ? 'border-black/5 bg-black/[0.02] text-neutral-400' : 'border-white/5 bg-white/[0.02] text-neutral-600') : (lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.06] text-white')}`;
+  const iconShell = `flex h-10 w-10 items-center justify-center rounded-full border transition-transform ${disabled ? (lightMode ? 'border-black/5 bg-black/[0.02]' : 'border-white/5 bg-white/[0.02]') : (lightMode ? 'border-black/10 bg-black/[0.035]' : 'border-white/10 bg-white/[0.07]')}`;
+  const className = `group flex min-w-[54px] flex-col items-center justify-center gap-1.5 text-[10px] font-black transition-opacity active:scale-[0.98] ${disabled ? (lightMode ? 'text-neutral-400' : 'text-neutral-600') : (lightMode ? 'text-neutral-800' : 'text-neutral-100')}`;
 
   if (disabled) {
-    return (
-      <span className={className}>
-        <Icon className="h-5 w-5" />
-        {action.label}
-      </span>
-    );
+    return <span className={className}><span className={iconShell}><Icon className="h-4 w-4" /></span>{action.label}</span>;
   }
 
   return (
-    <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer" onClick={onClick} className={className}>
-      <Icon className="h-5 w-5" style={{ color }} />
+    <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noreferrer" onClick={onClick} className={className}>
+      <span className={`${iconShell} group-hover:scale-105`}><Icon className="h-4 w-4" style={{ color }} /></span>
       {action.label}
     </a>
+  );
+}
+function ServicesSection({ services, card, lightMode, bookingRequestEnabled, onRequestService }: {
+  services: BusinessCardBookingServiceRecord[];
+  card: BusinessCardRecord;
+  lightMode: boolean;
+  bookingRequestEnabled: boolean;
+  onRequestService: (serviceId: string) => void;
+}) {
+  if (services.length === 0) return null;
+
+  return (
+    <section className={sectionClass(lightMode)}>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] opacity-55">Services</p>
+          <h2 className="text-2xl font-black">What this business can help with</h2>
+        </div>
+        <p className={`max-w-2xl text-sm ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>Browse the available services and jump straight into a request.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {services.map(service => (
+          <article key={service.id} className={`rounded-[1.75rem] border p-4 ${lightMode ? 'border-black/10 bg-black/[0.025]' : 'border-white/10 bg-white/[0.04]'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-black">{service.name}</h3>
+                {service.duration_minutes ? <p className={`mt-1 inline-flex items-center gap-2 text-xs font-semibold ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}><Clock3 className="h-3.5 w-3.5" style={{ color: card.primary_color }} />{formatDuration(service.duration_minutes)}</p> : null}
+              </div>
+              {bookingRequestEnabled ? <button type="button" onClick={() => onRequestService(service.id)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Request this service</button> : null}
+            </div>
+            {service.description ? <p className={`mt-3 text-sm leading-relaxed ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{service.description}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 function FeaturedVideoSection({ card, assets, lightMode, onAction }: { card: BusinessCardRecord; assets: BusinessMarketingAssetRecord[]; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
@@ -553,7 +697,7 @@ function BookingSection({
   }
 
   return (
-    <section className={sectionClass(lightMode)}>
+    <section id="booking-request-section" className={sectionClass(lightMode)}>
       <h2 className="mb-2 text-sm font-black uppercase tracking-[0.16em] opacity-70">{card.booking_request_title || 'Booking Request'}</h2>
       <p className={`mb-4 text-sm ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>
         {card.booking_request_description || 'Request a preferred appointment time and this business will follow up manually.'}
@@ -683,61 +827,63 @@ function TestimonialsSection({ items, card, lightMode, onAction }: { items: Busi
   );
 }
 
-function DocumentsSection({ assets, card, lightMode, onAction }: { assets: BusinessMarketingAssetRecord[]; card: BusinessCardRecord; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
-  const documents = assets.filter(asset => ['brochure', 'menu', 'document'].includes(asset.asset_type));
-  if (documents.length === 0) return null;
+function CampaignOutputSection({ title, campaigns, card, lightMode, onOpen }: { title: string; campaigns: SmartCardCampaign[]; card: BusinessCardRecord; lightMode: boolean; onOpen: (output: SmartCardCampaign) => void }) {
+  if (campaigns.length === 0) return null;
 
   return (
     <section className={sectionClass(lightMode)}>
-      <h2 className="mb-3 text-sm font-black uppercase tracking-[0.16em] opacity-70">Menus and guides</h2>
-      <div className="space-y-2">
-        {documents.map(asset => (
-          <a key={asset.id} href={asset.external_url || asset.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('document_click')} className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.05]'}`}>
-            <span>{asset.title}</span>
-            <ExternalLink className="h-4 w-4" style={{ color: card.primary_color }} />
-          </a>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function VirtualTourSection({ assets, card, lightMode, onAction }: { assets: BusinessMarketingAssetRecord[]; card: BusinessCardRecord; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
-  const tour = assets.find(asset => asset.asset_type === 'virtual_tour');
-  if (!tour || (!tour.external_url && !tour.file_url)) return null;
-
-  return (
-    <section className={sectionClass(lightMode)}>
-      <h2 className="mb-3 text-sm font-black uppercase tracking-[0.16em] opacity-70">Virtual tour</h2>
-      <a href={tour.external_url || tour.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('virtual_tour_click')} className="block overflow-hidden rounded-3xl border border-white/10">
-        {tour.thumbnail_url ? <img src={tour.thumbnail_url} alt="" className="aspect-video w-full object-cover" /> : <div className="flex aspect-video items-center justify-center text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Open Tour</div>}
-        <div className={`flex items-center justify-between px-4 py-3 text-sm font-bold ${lightMode ? 'bg-black/[0.03]' : 'bg-white/[0.05]'}`}>
-          <span>{tour.title}</span>
-          <ExternalLink className="h-4 w-4 opacity-60" />
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] opacity-55">Campaign Engine</p>
+          <h2 className="text-2xl font-black">{title}</h2>
         </div>
-      </a>
+        <p className={`max-w-2xl text-sm ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>Campaigns connected to this local business profile.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {campaigns.map(output => {
+          const offer = getCampaignOffer(output);
+          return (
+            <article key={output.campaign_id} className={`rounded-[1.75rem] border p-4 ${lightMode ? 'border-black/10 bg-black/[0.025]' : 'border-white/10 bg-white/[0.04]'}`}>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
+                <Sparkles className="h-3.5 w-3.5" /> {getCampaignFormatLabel(output)}
+              </div>
+              <h3 className="text-xl font-black leading-tight">{getCampaignTitle(output)}</h3>
+              {output.campaign.description ? <p className={`mt-2 text-sm leading-relaxed ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{output.campaign.description}</p> : null}
+              {offer ? <p className="mt-3 rounded-2xl border border-current/10 px-3 py-2 text-sm font-black" style={{ color: card.primary_color }}>{offer}</p> : null}
+              <Link to={`/ad/${output.campaign.id}`} onClick={() => onOpen(output)} className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
+                Open Interactive Ad <ExternalLink className="h-4 w-4" />
+              </Link>
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }
 function OfferSection({ card, offer, lightMode, onClaim }: { card: BusinessCardRecord; offer: BusinessCardOfferRecord | null; lightMode: boolean; onClaim: (offerId: string) => void }) {
   if (!offer) return null;
 
-  return (
-    <section className={sectionClass(lightMode)}>
-      <div className="mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
-        <BadgePercent className="h-3.5 w-3.5" /> Local Special
-      </div>
-      <h2 className="text-3xl font-black leading-tight">{offer.title}</h2>
-      {offer.description && <p className={`mt-2 text-sm leading-relaxed ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{offer.description}</p>}
-      {offer.claim_url && (
-        <a href={offer.claim_url} target="_blank" rel="noreferrer" onClick={() => onClaim(offer.id)} className="mt-5 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
-          Claim offer <ExternalLink className="h-4 w-4" />
-        </a>
-      )}
-    </section>
+  const expiresLabel = offer.ends_at ? formatPublicDate(offer.ends_at) : null;
+  const ctaGradient = `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})`;
+  const glowGradient = `radial-gradient(circle at 12% 12%, ${card.primary_color}, transparent 34%), radial-gradient(circle at 88% 0%, ${card.accent_color}, transparent 32%)`;
+  const details = (
+    <>
+      {expiresLabel ? <AdpadzPill lightMode={lightMode}>Expires {expiresLabel}</AdpadzPill> : null}
+      <AdpadzPill lightMode={lightMode}>Show this Smart Card to redeem</AdpadzPill>
+    </>
   );
-}
-function AboutSection({ card, lightMode }: { card: BusinessCardRecord; lightMode: boolean }) {
+  const action = offer.claim_url ? (
+    <AdpadzButton href={offer.claim_url} target="_blank" rel="noreferrer" onClick={() => onClaim(offer.id)} size="lg" gradient={ctaGradient} className="relative text-black md:min-w-48">
+      Claim Offer <ExternalLink className="h-4 w-4" />
+    </AdpadzButton>
+  ) : (
+    <AdpadzButton type="button" onClick={() => onClaim(offer.id)} size="lg" gradient={ctaGradient} className="relative text-black md:min-w-48">
+      Claim Offer
+    </AdpadzButton>
+  );
+
+  return <AdpadzCouponCard title={offer.title} description={offer.description} lightMode={lightMode} gradient={glowGradient} details={details} action={action} />;
+}function AboutSection({ card, lightMode }: { card: BusinessCardRecord; lightMode: boolean }) {
   if (!card.bio) return null;
 
   return (
@@ -790,23 +936,64 @@ function LinksSection({ links, card, lightMode }: { links: BusinessCardLinkRecor
   );
 }
 
-function FooterSection({ lightMode }: { lightMode: boolean }) {
+function ResourcesSection({ assets, card, lightMode, onAction }: { assets: BusinessMarketingAssetRecord[]; card: BusinessCardRecord; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
+  const documents = assets.filter(asset => ['brochure', 'menu', 'document'].includes(asset.asset_type));
+  const tours = assets.filter(asset => asset.asset_type === 'virtual_tour');
+
+  if (documents.length === 0 && tours.length === 0) return null;
+
   return (
-    <footer className={`rounded-[1.5rem] border px-4 py-5 text-center text-xs leading-relaxed ${lightMode ? 'border-black/10 bg-white/60 text-neutral-600' : 'border-white/10 bg-white/[0.04] text-neutral-400'}`}>
-      <Link to="/" className="inline-flex items-center justify-center gap-2 font-semibold">
-        <CalendarDays className="h-4 w-4" /> Powered by Adpadz
-      </Link>
-      <p className="mt-2">Local offers, smart QR codes, and community advertising.</p>
-    </footer>
+    <section className={sectionClass(lightMode)}>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] opacity-55">More to explore</p>
+          <h2 className="text-2xl font-black">Menus, guides, and immersive views</h2>
+        </div>
+        <p className={`max-w-2xl text-sm ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>Helpful resources for visitors who want more detail before reaching out.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {tours.map(asset => (
+          <a key={asset.id} href={asset.external_url || asset.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('virtual_tour_click')} className={`group overflow-hidden rounded-[1.75rem] border ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'}`}>
+            <div className="relative aspect-[16/10] overflow-hidden">
+              {asset.thumbnail_url ? <img src={asset.thumbnail_url} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Open Tour</div>}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+              <div className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white"><PlayCircle className="h-4 w-4" /> Virtual Tour</div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 text-sm font-bold"><span>{asset.title}</span><ExternalLink className="h-4 w-4 opacity-60" /></div>
+          </a>
+        ))}
+        {documents.map(asset => (
+          <a key={asset.id} href={asset.external_url || asset.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('document_click')} className={`flex items-center justify-between gap-3 rounded-[1.75rem] border px-4 py-4 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.05] text-white'}`}>
+            <span className="inline-flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}><FileText className="h-5 w-5" /></span><span className="min-w-0"><span className="block truncate">{asset.title}</span>{asset.description ? <span className={`mt-0.5 block truncate text-xs font-medium ${lightMode ? 'text-neutral-600' : 'text-neutral-400'}`}>{asset.description}</span> : null}</span></span>
+            <ExternalLink className="h-4 w-4 flex-none opacity-60" />
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }
 
+function FooterSection({ lightMode }: { lightMode: boolean }) {
+  return <footer className={`px-2 py-4 text-center text-xs leading-relaxed ${lightMode ? 'text-neutral-500' : 'text-neutral-400'}`}>Powered by Adpadz - Local offers, smart QR codes, and community advertising.</footer>;
+}
 function publicInputClass(lightMode: boolean): string {
   return `w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-colors ${lightMode ? 'border-black/10 bg-white text-neutral-950 placeholder:text-neutral-400 focus:border-black/30' : 'border-white/10 bg-white/[0.06] text-white placeholder:text-neutral-500 focus:border-white/30'}`;
 }
 
 function sectionClass(lightMode: boolean): string {
-  return `rounded-[2rem] border p-5 shadow-xl ${lightMode ? 'border-black/10 bg-white/80 text-neutral-950 shadow-black/10' : 'border-white/10 bg-neutral-950/74 text-white shadow-black/40'} backdrop-blur-xl`;
+  return `rounded-[2.05rem] border p-5 shadow-[0_25px_80px_rgba(0,0,0,0.12)] backdrop-blur-xl sm:p-6 ${lightMode ? 'border-black/10 bg-white/82 text-neutral-950 shadow-black/10' : 'border-white/10 bg-neutral-950/74 text-white shadow-black/40'}`;
+}
+
+function formatPublicDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
 }
 
 function getYouTubeEmbedUrl(url: string | null | undefined): string | null {
@@ -863,70 +1050,30 @@ function PublicState({ status }: { status: PublicCardState }) {
   );
 }
 
-async function trackEvent(cardId: string, eventType: BusinessCardEventType, qrLinkId?: string | null, offerId?: string) {
-  await supabase.from('business_card_events').insert({
-    business_card_id: cardId,
-    qr_link_id: qrLinkId || null,
-    offer_id: offerId || null,
-    event_type: eventType,
-    user_agent: navigator.userAgent,
-    referrer: document.referrer || null,
-    metadata: {
-      source: 'public_smart_card',
-      path: window.location.pathname,
-      language: navigator.language,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
-  });
+async function trackEvent(cardId: string, eventType: BusinessCardEventType, qrLinkId?: string | null, offerId?: string, extraMetadata: Record<string, unknown> = {}) {
+  try {
+    const { error } = await supabase.from('business_card_events').insert({
+      business_card_id: cardId,
+      qr_link_id: qrLinkId || null,
+      offer_id: offerId || null,
+      event_type: eventType,
+      user_agent: navigator.userAgent,
+      referrer: document.referrer || null,
+      metadata: {
+        source: 'public_smart_card',
+        path: window.location.pathname,
+        language: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...extraMetadata,
+      },
+    });
+
+    if (error && import.meta.env.DEV) {
+      console.error('[SmartCardPublic] event tracking failed', { eventType, error });
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[SmartCardPublic] event tracking failed', { eventType, error });
+    }
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

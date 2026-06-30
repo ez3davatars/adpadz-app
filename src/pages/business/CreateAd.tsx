@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { Zap, MousePointerClick, ArrowUpRight, Check, Eye, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Zap, MousePointerClick, ArrowUpRight, Check, Eye, Sparkles, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
+import { SMART_CARD_CAMPAIGN_SECTIONS, type SmartCardSummary } from '../../lib/ads';
 
 type AdType = 'tap_reveal' | 'scratch' | 'before_after' | 'swipe';
 
@@ -19,6 +21,129 @@ export default function BizCreateAd() {
   const [ctaText, setCtaText] = useState('Claim Offer');
   const [offerText, setOfferText] = useState('');
   const [tone, setTone] = useState('friendly');
+  const [smartCards, setSmartCards] = useState<SmartCardSummary[]>([]);
+  const [showOnSmartCard, setShowOnSmartCard] = useState(false);
+  const [selectedSmartCardId, setSelectedSmartCardId] = useState('');
+  const [smartCardSection, setSmartCardSection] = useState('promotions');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSmartCards() {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) return;
+
+      const { data, error: cardError } = await supabase
+        .from('business_cards')
+        .select('id,business_name,slug,is_published')
+        .eq('owner_user_id', authData.user.id)
+        .order('updated_at', { ascending: false });
+
+      if (cancelled || cardError) return;
+
+      const loadedCards = (data ?? []) as SmartCardSummary[];
+      setSmartCards(loadedCards);
+      if (loadedCards.length === 1) {
+        setSelectedSmartCardId(loadedCards[0].id);
+      }
+    }
+
+    void loadSmartCards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function saveAd() {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error(authError?.message ?? 'Sign in before publishing a campaign.');
+      }
+
+      const campaignTitle = headline.trim();
+      if (!campaignTitle) {
+        throw new Error('Add a headline before publishing.');
+      }
+
+      const attachToSmartCard = showOnSmartCard && Boolean(selectedSmartCardId);
+      const campaignPayload = {
+        owner_id: authData.user.id,
+        title: campaignTitle,
+        headline: campaignTitle,
+        description: description.trim() || null,
+        offer_title: offerText.trim() || null,
+        offer_description: offerText.trim() || null,
+        cta_label: ctaText.trim() || 'Claim Offer',
+        cta_url: null,
+        status: 'active',
+      };
+
+      const { data: campaign, error: campaignError } = await supabase
+        .from('campaigns')
+        .insert(campaignPayload)
+        .select('*')
+        .single();
+
+      if (campaignError || !campaign) {
+        throw new Error(campaignError?.message ?? 'Could not create campaign.');
+      }
+
+      const outputs = [
+        {
+          campaign_id: campaign.id,
+          output_type: 'interactive_ad',
+          enabled: true,
+          sort_order: 0,
+          metadata: { format: adType, tone },
+        },
+        ...(attachToSmartCard
+          ? [{
+              campaign_id: campaign.id,
+              output_type: 'smart_card',
+              enabled: true,
+              sort_order: 0,
+              metadata: { smart_card_id: selectedSmartCardId, section: smartCardSection, format: adType, tone },
+            }]
+          : []),
+      ];
+
+      const { error: outputError } = await supabase.from('campaign_outputs').insert(outputs);
+      if (outputError) {
+        throw new Error(outputError.message);
+      }
+
+      const [{ error: reloadCampaignError }, { error: reloadOutputsError }] = await Promise.all([
+        supabase.from('campaigns').select('*').eq('id', campaign.id).single(),
+        supabase.from('campaign_outputs').select('*').eq('campaign_id', campaign.id),
+      ]);
+
+      if (reloadCampaignError) {
+        throw new Error(reloadCampaignError.message);
+      }
+      if (reloadOutputsError) {
+        throw new Error(reloadOutputsError.message);
+      }
+
+      setMessage(attachToSmartCard ? 'Campaign published and attached to your Smart Card.' : 'Campaign published.');
+      navigate('/app/business/dashboard');
+    } catch (saveError) {
+      if (import.meta.env.DEV) {
+        console.error('[CreateAd] campaign save failed', saveError);
+      }
+      setError(saveError instanceof Error ? saveError.message : 'Could not publish campaign.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div>
@@ -27,7 +152,12 @@ export default function BizCreateAd() {
         <p className="text-sm text-[var(--text-muted)] mt-0.5">Build an interactive ad in minutes</p>
       </div>
 
-      {/* Progress */}
+      {(message || error) && (
+        <div className={`mb-5 rounded-2xl border px-4 py-3 text-sm font-semibold ${error ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-neon/40 bg-neon/10 text-neon'}`}>
+          {error || message}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-8">
         {['Format', 'Content', 'Review'].map((s, i) => (
           <div key={s} className="flex-1">
@@ -101,7 +231,6 @@ export default function BizCreateAd() {
             </div>
           </div>
 
-          {/* Phone preview */}
           <div>
             <p className="text-xs font-medium text-[var(--text-secondary)] mb-3 flex items-center gap-2">
               <Eye className="w-3.5 h-3.5 text-neon" /> Live Preview
@@ -123,13 +252,47 @@ export default function BizCreateAd() {
               <Row label="Tone" value={tone} />
               <Row label="Status" value="Ready to publish" highlight />
             </div>
+
+            <div className="card-surface mt-4 p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Add to Smart Card</h3>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">Optionally show this interactive ad on a public Smart Card.</p>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+                  <input type="checkbox" checked={showOnSmartCard} onChange={event => setShowOnSmartCard(event.target.checked)} disabled={smartCards.length === 0} />
+                  Show this ad on my Smart Card
+                </label>
+              </div>
+              {smartCards.length === 0 ? (
+                <p className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] px-4 py-3 text-xs text-[var(--text-muted)]">
+                  Create a Smart Card first to attach this ad.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Smart Card</label>
+                    <select value={selectedSmartCardId} onChange={event => setSelectedSmartCardId(event.target.value)} disabled={!showOnSmartCard} className="input-field">
+                      <option value="">Do not attach</option>
+                      {smartCards.map(card => (
+                        <option key={card.id} value={card.id}>{card.business_name} / {card.slug} ({card.is_published ? 'published' : 'unpublished'})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Smart Card section</label>
+                    <select value={smartCardSection} onChange={event => setSmartCardSection(event.target.value)} disabled={!showOnSmartCard} className="input-field">
+                      {SMART_CARD_CAMPAIGN_SECTIONS.map(section => <option key={section.value} value={section.value}>{section.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3 mt-6">
               <button onClick={() => setStep(2)} className="btn-secondary text-sm px-5 py-2.5">Back</button>
-              <button
-                onClick={() => navigate('/app/business/dashboard')}
-                className="btn-primary text-sm px-6 py-3"
-              >
-                <Sparkles className="w-4 h-4" /> Publish Ad
+              <button onClick={saveAd} disabled={saving || !headline} className="btn-primary text-sm px-6 py-3 disabled:opacity-50">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Publish Ad
               </button>
             </div>
           </div>

@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getCampaignFormatLabel, getCampaignSection, getCampaignTitle, normalizeCampaignOutput, SMART_CARD_CAMPAIGN_SECTIONS, type CampaignOutputRecord, type SmartCardCampaign } from '../../lib/ads';
 import { SmartCardShell } from '../../components/smart-cards/SmartCardShell';
 import {
   DEFAULT_SMART_CARD_IMAGE_LIMIT,
@@ -45,6 +46,7 @@ import {
   getImageDisplayStyle,
   getTemplateOption,
   IMAGE_FIT_OPTIONS,
+  normalizeHexColor,
   normalizeImageFit,
   normalizeOptionalUrl,
   resetImageDisplayPreferences,
@@ -126,6 +128,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
   const [testimonials, setTestimonials] = useState<TestimonialDraft[]>([]);
   const [bookingServices, setBookingServices] = useState<BookingServiceDraft[]>([]);
   const [recentLeads, setRecentLeads] = useState<BusinessCardLeadRecord[]>([]);
+  const [smartCardCampaigns, setSmartCardCampaigns] = useState<SmartCardCampaign[]>([]);
 
   const isBuilder = mode === 'new' || mode === 'edit';
   const publicUrl = useMemo(() => buildSmartCardUrl(form.slug), [form.slug]);
@@ -181,6 +184,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     if (mode === 'new') {
       setSelectedCard(null);
       setBookingServices([]);
+      setSmartCardCampaigns([]);
       setForm({
         ...DEFAULT_SMART_CARD_FORM,
         slug: createSmartCardSlug(DEFAULT_SMART_CARD_FORM.business_name),
@@ -209,7 +213,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     }
 
     const card = cardData as BusinessCardRecord;
-    const [{ data: linkData }, { data: offerData }, { data: galleryData }, { data: qrData }, { data: eventData }, { data: assetData }, { data: beforeAfterData }, { data: testimonialData }, { data: leadData }, { data: bookingServiceData }] = await Promise.all([
+    const [{ data: linkData }, { data: offerData }, { data: galleryData }, { data: qrData }, { data: eventData }, { data: assetData }, { data: beforeAfterData }, { data: testimonialData }, { data: leadData }, { data: bookingServiceData }, { data: attachedAdData }] = await Promise.all([
       supabase
         .from('business_card_links')
         .select('*')
@@ -261,6 +265,13 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         .select('*')
         .eq('card_id', card.id)
         .order('sort_order', { ascending: true }),
+      supabase
+        .from('campaign_outputs')
+        .select('campaign_id,output_type,enabled,sort_order,metadata,created_at,updated_at,campaigns(*)')
+        .eq('output_type', 'smart_card')
+        .contains('metadata', { smart_card_id: card.id })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false }),
     ]);
 
     const summary = ((eventData ?? []) as Array<{ event_type: string }>).reduce<AnalyticsSummary>((acc, event) => {
@@ -311,6 +322,9 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       sort_order: item.sort_order,
     })));
     setRecentLeads((leadData ?? []) as BusinessCardLeadRecord[]);
+    setSmartCardCampaigns(((attachedAdData ?? []) as CampaignOutputRecord[])
+      .map(output => normalizeCampaignOutput(output))
+      .filter((output): output is SmartCardCampaign => Boolean(output))); 
     setBookingServices(((bookingServiceData ?? []) as BusinessCardBookingServiceRecord[]).map(service => ({
       id: service.id,
       name: service.name,
@@ -330,6 +344,40 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
 
   function updateField<K extends keyof BusinessCardFormState>(key: K, value: BusinessCardFormState[K]) {
     setForm(current => ({ ...current, [key]: value }));
+  }
+
+
+  async function togglePublished() {
+    const nextPublished = !form.is_published;
+    setError(null);
+    setMessage(null);
+
+    if (!selectedCard) {
+      setForm(current => ({ ...current, is_published: nextPublished }));
+      setMessage(nextPublished ? 'Publish selected. Click Save to create and publish this Smart Card.' : 'Publish removed. Click Save to keep it unpublished.');
+      return;
+    }
+
+    setSaving(true);
+    const { data, error } = await supabase
+      .from('business_cards')
+      .update({ is_published: nextPublished })
+      .eq('id', selectedCard.id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      setError(error?.message ?? 'Could not update publish status.');
+      setSaving(false);
+      return;
+    }
+
+    const updatedCard = data as BusinessCardRecord;
+    setSelectedCard(updatedCard);
+    setCards(current => current.map(card => (card.id === updatedCard.id ? updatedCard : card)));
+    setForm(current => ({ ...current, is_published: updatedCard.is_published }));
+    setMessage(updatedCard.is_published ? 'Smart Card published.' : 'Smart Card unpublished.');
+    setSaving(false);
   }
 
   function updateName(name: string) {
@@ -433,8 +481,8 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       bio: form.bio.trim() || null,
       theme: form.theme,
       template: form.template,
-      primary_color: form.primary_color,
-      accent_color: form.accent_color,
+      primary_color: normalizeHexColor(form.primary_color, DEFAULT_SMART_CARD_FORM.primary_color),
+      accent_color: normalizeHexColor(form.accent_color, DEFAULT_SMART_CARD_FORM.accent_color),
       is_published: options.forceDraft ? false : form.is_published,
       featured_video_enabled: form.featured_video_enabled,
       featured_video_url: normalizeOptionalUrl(form.featured_video_url),
@@ -571,268 +619,398 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     setError(null);
     setMessage(null);
 
-    const slug = normalizeSlug(form.slug);
-    if (!slug) {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error(authError?.message ?? 'Sign in before saving this Smart Card.');
+      }
+
+      const slug = normalizeSlug(form.slug);
+      if (!slug) {
+        throw new Error('Add a public slug before saving.');
+      }
+
+      const urlFields = [
+        ['Website', form.website],
+        ['Google Maps URL', form.google_maps_url],
+        ['Logo URL', form.logo_url],
+        ['Cover image URL', form.cover_image_url],
+        ['Featured video URL', form.featured_video_url],
+        ['Booking URL', form.booking_url],
+        ...form.gallery.map((item, index) => [`Gallery image ${index + 1}`, item.image_url] as [string, string]),
+        ...marketingAssets.flatMap((asset, index) => [
+          [`Media asset ${index + 1} file URL`, asset.file_url] as [string, string],
+          [`Media asset ${index + 1} external URL`, asset.external_url] as [string, string],
+          [`Media asset ${index + 1} thumbnail URL`, asset.thumbnail_url] as [string, string],
+        ]),
+        ...beforeAfterItems.flatMap((item, index) => [
+          [`Before image ${index + 1}`, item.before_image_url] as [string, string],
+          [`After image ${index + 1}`, item.after_image_url] as [string, string],
+        ]),
+        ...testimonials.flatMap((item, index) => [
+          [`Testimonial image ${index + 1}`, item.image_url] as [string, string],
+          [`Testimonial video ${index + 1}`, item.video_url] as [string, string],
+        ]),
+      ];
+
+      const invalidUrl = urlFields.find(([, value]) => typeof value === 'string' && value.trim() && !validateHttpUrl(value));
+      if (invalidUrl) {
+        throw new Error(`${invalidUrl[0]} must start with http:// or https://.`);
+      }
+
+      const invalidLink = form.links.find(link => link.label.trim() && link.url.trim() && !validateHttpUrl(link.url));
+      if (invalidLink) {
+        throw new Error(`The "${invalidLink.label}" link must start with http:// or https://.`);
+      }
+
+      const invalidOfferUrl = form.offers.find(offer => offer.claim_url.trim() && !validateHttpUrl(offer.claim_url));
+      if (invalidOfferUrl) {
+        throw new Error(`The "${invalidOfferUrl.title || 'offer'}" claim URL must start with http:// or https://.`);
+      }
+
+      const payload = buildCardPayload();
+      if (!payload) {
+        throw new Error('Add a public slug before saving.');
+      }
+
+      const cardPayload = { ...payload, owner_user_id: authData.user.id };
+      const cardResult = selectedCard
+        ? await supabase.from('business_cards').update(cardPayload).eq('id', selectedCard.id).select().single()
+        : await supabase.from('business_cards').insert(cardPayload).select().single();
+
+      if (cardResult.error || !cardResult.data) {
+        throw new Error(cardResult.error?.message ?? 'Could not save smart card.');
+      }
+
+      const savedCard = cardResult.data as BusinessCardRecord;
+      const activeLinks = form.links
+        .map((link, index) => ({ ...link, sort_order: index }))
+        .filter(link => link.label.trim() && link.url.trim());
+      const activeOffers = form.offers.filter(offer => offer.title.trim());
+      const activeGallery = form.gallery
+        .map((item, index) => ({ ...item, sort_order: index }))
+        .filter(item => item.image_url.trim());
+      const activeBookingServices = bookingServices
+        .map((service, index) => ({ ...service, sort_order: index }))
+        .filter(service => service.name.trim());
+      const activeAssets = marketingAssets
+        .map((asset, index) => ({ ...asset, sort_order: index }))
+        .filter(asset => asset.title.trim() && (asset.file_url.trim() || asset.external_url.trim()));
+      const activeBeforeAfter = beforeAfterItems
+        .map((item, index) => ({ ...item, sort_order: index }))
+        .filter(item => item.title.trim() && item.before_image_url.trim() && item.after_image_url.trim());
+      const activeTestimonials = testimonials
+        .map((item, index) => ({ ...item, sort_order: index }))
+        .filter(item => item.customer_name.trim() && item.quote.trim());
+
+      const failOnError = (error: { message: string } | null | undefined, label: string) => {
+        if (error) throw new Error(`${label}: ${error.message}`);
+      };
+
+      const { error: linksDeleteError } = await supabase.from('business_card_links').delete().eq('business_card_id', savedCard.id);
+      failOnError(linksDeleteError, 'Could not replace smart card links');
+      if (activeLinks.length > 0) {
+        const { error: linkError } = await supabase.from('business_card_links').insert(
+          activeLinks.map(link => ({
+            business_card_id: savedCard.id,
+            label: link.label.trim(),
+            url: link.url.trim(),
+            sort_order: link.sort_order,
+            is_active: link.is_active,
+          })),
+        );
+        failOnError(linkError, 'Could not save smart card links');
+      }
+
+      const { error: offersDeleteError } = await supabase.from('business_card_offers').delete().eq('business_card_id', savedCard.id);
+      failOnError(offersDeleteError, 'Could not replace smart card offers');
+      if (activeOffers.length > 0) {
+        const { error: offerError } = await supabase.from('business_card_offers').insert(
+          activeOffers.map(offer => ({
+            business_card_id: savedCard.id,
+            title: offer.title.trim(),
+            description: offer.description.trim() || null,
+            claim_url: normalizeOptionalUrl(offer.claim_url),
+            starts_at: offer.starts_at || null,
+            ends_at: offer.ends_at || null,
+            is_active: offer.is_active,
+          })),
+        );
+        failOnError(offerError, 'Could not save smart card offers');
+      }
+
+      const { error: galleryDeleteError } = await supabase.from('business_card_gallery_items').delete().eq('card_id', savedCard.id);
+      failOnError(galleryDeleteError, 'Could not replace smart card gallery');
+      if (activeGallery.length > 0) {
+        const { error: galleryError } = await supabase.from('business_card_gallery_items').insert(
+          activeGallery.map(item => ({
+            card_id: savedCard.id,
+            image_url: item.image_url.trim(),
+            cloudflare_image_id: item.cloudflare_image_id || null,
+            fit: normalizeImageFit(item.fit),
+            position_x: clampImagePosition(item.position_x),
+            position_y: clampImagePosition(item.position_y),
+            zoom: clampImageZoom(item.zoom),
+            caption: item.caption.trim() || null,
+            sort_order: item.sort_order,
+            is_active: item.is_active,
+          })),
+        );
+        failOnError(galleryError, 'Could not save smart card gallery');
+      }
+
+      const { error: bookingServicesDeleteError } = await supabase.from('business_card_booking_services').delete().eq('card_id', savedCard.id);
+      failOnError(bookingServicesDeleteError, 'Could not replace booking services');
+      if (activeBookingServices.length > 0) {
+        const { error: bookingServiceError } = await supabase.from('business_card_booking_services').insert(
+          activeBookingServices.map(service => ({
+            card_id: savedCard.id,
+            owner_id: authData.user.id,
+            name: service.name.trim(),
+            description: service.description.trim() || null,
+            duration_minutes: service.duration_minutes.trim() ? Number(service.duration_minutes) : null,
+            sort_order: service.sort_order,
+            is_active: service.is_active,
+          })),
+        );
+        failOnError(bookingServiceError, 'Could not save booking services');
+      }
+
+      const { error: assetsDeleteError } = await supabase.from('business_marketing_assets').delete().eq('smart_card_id', savedCard.id);
+      failOnError(assetsDeleteError, 'Could not replace marketing assets');
+      if (activeAssets.length > 0) {
+        const { error: assetError } = await supabase.from('business_marketing_assets').insert(
+          activeAssets.map(asset => ({
+            smart_card_id: savedCard.id,
+            owner_id: authData.user.id,
+            asset_type: asset.asset_type,
+            title: asset.title.trim(),
+            description: asset.description.trim() || null,
+            file_url: normalizeOptionalUrl(asset.file_url),
+            external_url: normalizeOptionalUrl(asset.external_url),
+            thumbnail_url: normalizeOptionalUrl(asset.thumbnail_url),
+            provider: asset.provider.trim() || null,
+            sort_order: asset.sort_order,
+            is_active: asset.is_active,
+          })),
+        );
+        failOnError(assetError, 'Could not save marketing assets');
+      }
+
+      const { error: beforeAfterDeleteError } = await supabase.from('business_card_before_after_items').delete().eq('card_id', savedCard.id);
+      failOnError(beforeAfterDeleteError, 'Could not replace before/after items');
+      if (activeBeforeAfter.length > 0) {
+        const { error: beforeAfterError } = await supabase.from('business_card_before_after_items').insert(
+          activeBeforeAfter.map(item => ({
+            card_id: savedCard.id,
+            owner_id: authData.user.id,
+            title: item.title.trim(),
+            description: item.description.trim() || null,
+            before_image_url: item.before_image_url.trim(),
+            after_image_url: item.after_image_url.trim(),
+            before_image_id: item.before_image_id.trim() || null,
+            after_image_id: item.after_image_id.trim() || null,
+            sort_order: item.sort_order,
+            is_active: item.is_active,
+          })),
+        );
+        failOnError(beforeAfterError, 'Could not save before/after items');
+      }
+
+      const { error: testimonialsDeleteError } = await supabase.from('business_card_testimonials').delete().eq('card_id', savedCard.id);
+      failOnError(testimonialsDeleteError, 'Could not replace testimonials');
+      if (activeTestimonials.length > 0) {
+        const { error: testimonialError } = await supabase.from('business_card_testimonials').insert(
+          activeTestimonials.map(item => ({
+            card_id: savedCard.id,
+            owner_id: authData.user.id,
+            customer_name: item.customer_name.trim(),
+            rating: item.rating ? Number(item.rating) : null,
+            quote: item.quote.trim(),
+            image_url: normalizeOptionalUrl(item.image_url),
+            video_url: normalizeOptionalUrl(item.video_url),
+            source: item.source.trim() || null,
+            sort_order: item.sort_order,
+            is_active: item.is_active,
+          })),
+        );
+        failOnError(testimonialError, 'Could not save testimonials');
+      }
+
+      const [
+        freshCardResult,
+        freshLinksResult,
+        freshOffersResult,
+        freshGalleryResult,
+        freshQrResult,
+        freshEventsResult,
+        freshAssetsResult,
+        freshBeforeAfterResult,
+        freshTestimonialsResult,
+        freshLeadsResult,
+        freshBookingServicesResult,
+      ] = await Promise.all([
+        supabase.from('business_cards').select('*').eq('id', savedCard.id).single(),
+        supabase.from('business_card_links').select('*').eq('business_card_id', savedCard.id).order('sort_order', { ascending: true }),
+        supabase.from('business_card_offers').select('*').eq('business_card_id', savedCard.id).order('created_at', { ascending: false }),
+        supabase.from('business_card_gallery_items').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
+        supabase.from('qr_links').select('id,slug,scan_count,updated_at').eq('destination_type', 'business_card').eq('destination_id', savedCard.id).maybeSingle(),
+        supabase.from('business_card_events').select('event_type').eq('business_card_id', savedCard.id),
+        supabase.from('business_marketing_assets').select('*').eq('smart_card_id', savedCard.id).order('sort_order', { ascending: true }),
+        supabase.from('business_card_before_after_items').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
+        supabase.from('business_card_testimonials').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
+        supabase.from('business_card_leads').select('*').eq('card_id', savedCard.id).order('created_at', { ascending: false }).limit(5),
+        supabase.from('business_card_booking_services').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
+      ]);
+
+      failOnError(freshCardResult.error, 'Could not reload saved smart card');
+      failOnError(freshLinksResult.error, 'Could not reload saved links');
+      failOnError(freshOffersResult.error, 'Could not reload saved offers');
+      failOnError(freshGalleryResult.error, 'Could not reload saved gallery');
+      failOnError(freshQrResult.error, 'Could not reload connected QR');
+      failOnError(freshEventsResult.error, 'Could not reload analytics');
+      failOnError(freshAssetsResult.error, 'Could not reload marketing assets');
+      failOnError(freshBeforeAfterResult.error, 'Could not reload before/after items');
+      failOnError(freshTestimonialsResult.error, 'Could not reload testimonials');
+      failOnError(freshLeadsResult.error, 'Could not reload recent leads');
+      failOnError(freshBookingServicesResult.error, 'Could not reload booking services');
+
+      const freshCard = freshCardResult.data as BusinessCardRecord;
+      const freshEventData = (freshEventsResult.data ?? []) as Array<{ event_type: string }>;
+      const summary = freshEventData.reduce<AnalyticsSummary>((acc, event) => {
+        if (event.event_type === 'card_view') acc.views += 1;
+        if (event.event_type === 'qr_scan') acc.qrScans += 1;
+        if (event.event_type === 'call_click') acc.callClicks += 1;
+        if (event.event_type === 'website_click') acc.websiteClicks += 1;
+        if (event.event_type === 'offer_claim') acc.offerClaims += 1;
+        if (event.event_type === 'save_contact') acc.saveContacts += 1;
+        return acc;
+      }, { ...EMPTY_ANALYTICS });
+
+      const freshAssets = (freshAssetsResult.data ?? []) as BusinessMarketingAssetRecord[];
+      const freshBeforeAfter = (freshBeforeAfterResult.data ?? []) as BusinessCardBeforeAfterRecord[];
+      const freshTestimonials = (freshTestimonialsResult.data ?? []) as BusinessCardTestimonialRecord[];
+      const freshBookingServices = (freshBookingServicesResult.data ?? []) as BusinessCardBookingServiceRecord[];
+
+      setSelectedCard(freshCard);
+      setConnectedQr((freshQrResult.data as ConnectedQr | null) ?? null);
+      setAnalytics(summary);
+      setMarketingAssets(freshAssets.map(asset => ({
+        id: asset.id,
+        asset_type: asset.asset_type as MarketingAssetDraft['asset_type'],
+        title: asset.title,
+        description: asset.description ?? '',
+        file_url: asset.file_url ?? '',
+        external_url: asset.external_url ?? '',
+        thumbnail_url: asset.thumbnail_url ?? '',
+        provider: asset.provider ?? '',
+        sort_order: asset.sort_order,
+        is_active: asset.is_active,
+      })).filter(asset => ['video', 'brochure', 'menu', 'document', 'virtual_tour'].includes(asset.asset_type)));
+      setBeforeAfterItems(freshBeforeAfter.map(item => ({
+        id: item.id,
+        title: item.title,
+        description: item.description ?? '',
+        before_image_url: item.before_image_url,
+        after_image_url: item.after_image_url,
+        before_image_id: item.before_image_id ?? '',
+        after_image_id: item.after_image_id ?? '',
+        is_active: item.is_active,
+        sort_order: item.sort_order,
+      })));
+      setTestimonials(freshTestimonials.map(item => ({
+        id: item.id,
+        customer_name: item.customer_name,
+        rating: item.rating ? String(item.rating) : '',
+        quote: item.quote,
+        image_url: item.image_url ?? '',
+        video_url: item.video_url ?? '',
+        source: item.source ?? '',
+        is_active: item.is_active,
+        sort_order: item.sort_order,
+      })));
+      setRecentLeads((freshLeadsResult.data ?? []) as BusinessCardLeadRecord[]);
+      setBookingServices(freshBookingServices.map(service => ({
+        id: service.id,
+        name: service.name,
+        description: service.description ?? '',
+        duration_minutes: service.duration_minutes ? String(service.duration_minutes) : '',
+        sort_order: service.sort_order,
+        is_active: service.is_active,
+      })));
+      setForm(toBusinessCardForm(
+        freshCard,
+        (freshLinksResult.data ?? []) as BusinessCardLinkRecord[],
+        (freshOffersResult.data ?? []) as BusinessCardOfferRecord[],
+        (freshGalleryResult.data ?? []) as BusinessCardGalleryRecord[],
+      ));
+      setMessage(freshCard.is_published ? 'Smart card saved and published.' : 'Smart card saved as unpublished.');
+
+      if (mode === 'new') {
+        navigate(`/app/business/smart-cards/${freshCard.id}/edit`, { replace: true });
+      }
+    } catch (saveError) {
+      if (import.meta.env.DEV) {
+        console.error('[SmartCards] save failed', saveError);
+      }
+      setError(saveError instanceof Error ? saveError.message : 'Could not save Smart Card.');
+    } finally {
       setSaving(false);
-      setError('Add a public slug before saving.');
-      return;
-    }
-
-    const urlFields = [
-      ['Website', form.website],
-      ['Google Maps URL', form.google_maps_url],
-      ['Logo URL', form.logo_url],
-      ['Cover image URL', form.cover_image_url],
-      ['Featured video URL', form.featured_video_url],
-      ['Booking URL', form.booking_url],
-      ...form.gallery.map((item, index) => [`Gallery image ${index + 1}`, item.image_url] as [string, string]),
-      ...marketingAssets.flatMap((asset, index) => [
-        [`Media asset ${index + 1} file URL`, asset.file_url] as [string, string],
-        [`Media asset ${index + 1} external URL`, asset.external_url] as [string, string],
-        [`Media asset ${index + 1} thumbnail URL`, asset.thumbnail_url] as [string, string],
-      ]),
-      ...beforeAfterItems.flatMap((item, index) => [
-        [`Before image ${index + 1}`, item.before_image_url] as [string, string],
-        [`After image ${index + 1}`, item.after_image_url] as [string, string],
-      ]),
-      ...testimonials.flatMap((item, index) => [
-        [`Testimonial image ${index + 1}`, item.image_url] as [string, string],
-        [`Testimonial video ${index + 1}`, item.video_url] as [string, string],
-      ]),
-    ];
-    const invalidUrl = urlFields.find(([, value]) => typeof value === 'string' && value.trim() && !validateHttpUrl(value));
-    if (invalidUrl) {
-      setSaving(false);
-      setError(`${invalidUrl[0]} must start with http:// or https://.`);
-      return;
-    }
-
-    const invalidLink = form.links.find(link => link.label.trim() && link.url.trim() && !validateHttpUrl(link.url));
-    if (invalidLink) {
-      setSaving(false);
-      setError(`The "${invalidLink.label}" link must start with http:// or https://.`);
-      return;
-    }
-
-    const invalidOfferUrl = form.offers.find(offer => offer.claim_url.trim() && !validateHttpUrl(offer.claim_url));
-    if (invalidOfferUrl) {
-      setSaving(false);
-      setError(`The "${invalidOfferUrl.title || 'offer'}" claim URL must start with http:// or https://.`);
-      return;
-    }
-
-    const payload = {
-      business_name: form.business_name.trim() || 'Untitled business',
-      slug,
-      tagline: form.tagline.trim() || null,
-      logo_url: normalizeOptionalUrl(form.logo_url),
-      logo_image_id: form.logo_image_id.trim() || null,
-      logo_fit: normalizeImageFit(form.logo_fit),
-      logo_position_x: clampImagePosition(form.logo_position_x),
-      logo_position_y: clampImagePosition(form.logo_position_y),
-      logo_zoom: clampImageZoom(form.logo_zoom),
-      cover_image_url: normalizeOptionalUrl(form.cover_image_url),
-      cover_fit: normalizeImageFit(form.cover_fit),
-      cover_position_x: clampImagePosition(form.cover_position_x),
-      cover_position_y: clampImagePosition(form.cover_position_y),
-      cover_zoom: clampImageZoom(form.cover_zoom),
-      cover_overlay_opacity: clampOverlayOpacity(form.cover_overlay_opacity),
-      cover_image_id: form.cover_image_id.trim() || null,
-      phone: form.phone.trim() || null,
-      email: form.email.trim() || null,
-      website: normalizeOptionalUrl(form.website),
-      address: form.address.trim() || null,
-      google_maps_url: normalizeOptionalUrl(form.google_maps_url),
-      bio: form.bio.trim() || null,
-      theme: form.theme,
-      template: form.template,
-      primary_color: form.primary_color,
-      accent_color: form.accent_color,
-      is_published: form.is_published,
-      featured_video_enabled: form.featured_video_enabled,
-      featured_video_url: normalizeOptionalUrl(form.featured_video_url),
-      featured_video_title: form.featured_video_title.trim() || 'Local Spotlight',
-      booking_enabled: form.booking_enabled,
-      booking_mode: form.booking_mode,
-      booking_url: normalizeOptionalUrl(form.booking_url),
-      booking_label: form.booking_label.trim() || 'Book Now',
-      booking_provider: form.booking_provider.trim() || null,
-      booking_request_enabled: form.booking_request_enabled,
-      booking_request_title: form.booking_request_title.trim() || 'Request an Appointment',
-      booking_request_description: form.booking_request_description.trim() || null,
-      booking_request_button_label: form.booking_request_button_label.trim() || 'Request Booking',
-      lead_form_enabled: form.lead_form_enabled,
-      lead_form_title: form.lead_form_title.trim() || 'Request Information',
-      lead_form_description: form.lead_form_description.trim() || null,
-      lead_form_button_label: form.lead_form_button_label.trim() || 'Send Request',
-    };
-
-    const query = selectedCard
-      ? supabase.from('business_cards').update(payload).eq('id', selectedCard.id).select().single()
-      : supabase.from('business_cards').insert(payload).select().single();
-
-    const { data, error } = await query;
-    if (error || !data) {
-      setError(error?.message ?? 'Could not save smart card.');
-      setSaving(false);
-      return;
-    }
-
-    const savedCard = data as BusinessCardRecord;
-    const activeLinks = form.links
-      .map((link, index) => ({ ...link, sort_order: index }))
-      .filter(link => link.label.trim() && link.url.trim());
-    const activeOffers = form.offers.filter(offer => offer.title.trim());
-    const activeGallery = form.gallery
-      .map((item, index) => ({ ...item, sort_order: index }))
-      .filter(item => item.image_url.trim());
-    const activeBookingServices = bookingServices
-      .map((service, index) => ({ ...service, sort_order: index }))
-      .filter(service => service.name.trim());
-    const activeAssets = marketingAssets
-      .map((asset, index) => ({ ...asset, sort_order: index }))
-      .filter(asset => asset.title.trim() && (asset.file_url.trim() || asset.external_url.trim()));
-    const activeBeforeAfter = beforeAfterItems
-      .map((item, index) => ({ ...item, sort_order: index }))
-      .filter(item => item.title.trim() && item.before_image_url.trim() && item.after_image_url.trim());
-    const activeTestimonials = testimonials
-      .map((item, index) => ({ ...item, sort_order: index }))
-      .filter(item => item.customer_name.trim() && item.quote.trim());
-
-    await supabase.from('business_card_links').delete().eq('business_card_id', savedCard.id);
-    if (activeLinks.length > 0) {
-      const { error: linkError } = await supabase.from('business_card_links').insert(
-        activeLinks.map(link => ({
-          business_card_id: savedCard.id,
-          label: link.label.trim(),
-          url: link.url.trim(),
-          sort_order: link.sort_order,
-          is_active: link.is_active,
-        })),
-      );
-      if (linkError) setError(linkError.message);
-    }
-
-    await supabase.from('business_card_offers').delete().eq('business_card_id', savedCard.id);
-    if (activeOffers.length > 0) {
-      const { error: offerError } = await supabase.from('business_card_offers').insert(
-        activeOffers.map(offer => ({
-          business_card_id: savedCard.id,
-          title: offer.title.trim(),
-          description: offer.description.trim() || null,
-          claim_url: normalizeOptionalUrl(offer.claim_url),
-          starts_at: offer.starts_at || null,
-          ends_at: offer.ends_at || null,
-          is_active: offer.is_active,
-        })),
-      );
-      if (offerError) setError(offerError.message);
-    }
-
-    await supabase.from('business_card_gallery_items').delete().eq('card_id', savedCard.id);
-    if (activeGallery.length > 0) {
-      const { error: galleryError } = await supabase.from('business_card_gallery_items').insert(
-        activeGallery.map(item => ({
-          card_id: savedCard.id,
-          image_url: item.image_url.trim(),
-          cloudflare_image_id: item.cloudflare_image_id || null,
-          fit: normalizeImageFit(item.fit),
-          position_x: clampImagePosition(item.position_x),
-          position_y: clampImagePosition(item.position_y),
-          zoom: clampImageZoom(item.zoom),
-          caption: item.caption.trim() || null,
-          sort_order: item.sort_order,
-          is_active: item.is_active,
-        })),
-      );
-      if (galleryError) setError(galleryError.message);
-    }
-
-    await supabase.from('business_card_booking_services').delete().eq('card_id', savedCard.id);
-    if (activeBookingServices.length > 0) {
-      const { error: bookingServiceError } = await supabase.from('business_card_booking_services').insert(
-        activeBookingServices.map(service => ({
-          card_id: savedCard.id,
-          owner_id: savedCard.owner_user_id,
-          name: service.name.trim(),
-          description: service.description.trim() || null,
-          duration_minutes: service.duration_minutes.trim() ? Number(service.duration_minutes) : null,
-          sort_order: service.sort_order,
-          is_active: service.is_active,
-        })),
-      );
-      if (bookingServiceError) setError(bookingServiceError.message);
-    }
-
-    await supabase.from('business_marketing_assets').delete().eq('smart_card_id', savedCard.id);
-    if (activeAssets.length > 0) {
-      const { error: assetError } = await supabase.from('business_marketing_assets').insert(
-        activeAssets.map(asset => ({
-          smart_card_id: savedCard.id,
-          owner_id: savedCard.owner_user_id,
-          asset_type: asset.asset_type,
-          title: asset.title.trim(),
-          description: asset.description.trim() || null,
-          file_url: normalizeOptionalUrl(asset.file_url),
-          external_url: normalizeOptionalUrl(asset.external_url),
-          thumbnail_url: normalizeOptionalUrl(asset.thumbnail_url),
-          provider: asset.provider.trim() || null,
-          sort_order: asset.sort_order,
-          is_active: asset.is_active,
-        })),
-      );
-      if (assetError) setError(assetError.message);
-    }
-
-    await supabase.from('business_card_before_after_items').delete().eq('card_id', savedCard.id);
-    if (activeBeforeAfter.length > 0) {
-      const { error: beforeAfterError } = await supabase.from('business_card_before_after_items').insert(
-        activeBeforeAfter.map(item => ({
-          card_id: savedCard.id,
-          owner_id: savedCard.owner_user_id,
-          title: item.title.trim(),
-          description: item.description.trim() || null,
-          before_image_url: item.before_image_url.trim(),
-          after_image_url: item.after_image_url.trim(),
-          before_image_id: item.before_image_id.trim() || null,
-          after_image_id: item.after_image_id.trim() || null,
-          sort_order: item.sort_order,
-          is_active: item.is_active,
-        })),
-      );
-      if (beforeAfterError) setError(beforeAfterError.message);
-    }
-
-    await supabase.from('business_card_testimonials').delete().eq('card_id', savedCard.id);
-    if (activeTestimonials.length > 0) {
-      const { error: testimonialError } = await supabase.from('business_card_testimonials').insert(
-        activeTestimonials.map(item => ({
-          card_id: savedCard.id,
-          owner_id: savedCard.owner_user_id,
-          customer_name: item.customer_name.trim(),
-          rating: item.rating ? Number(item.rating) : null,
-          quote: item.quote.trim(),
-          image_url: normalizeOptionalUrl(item.image_url),
-          video_url: normalizeOptionalUrl(item.video_url),
-          source: item.source.trim() || null,
-          sort_order: item.sort_order,
-          is_active: item.is_active,
-        })),
-      );
-      if (testimonialError) setError(testimonialError.message);
-    }
-    setSelectedCard(savedCard);
-    setForm(current => ({ ...current, slug: savedCard.slug }));
-    setMessage(savedCard.is_published ? 'Smart card saved and published.' : 'Smart card saved as unpublished.');
-    setSaving(false);
-
-    if (mode === 'new') {
-      navigate(`/app/business/smart-cards/${savedCard.id}/edit`, { replace: true });
-    } else {
-      await loadBuilder();
     }
   }
 
+  async function updateCampaignOutput(output: SmartCardCampaign, updates: { enabled?: boolean; section?: string; sort_order?: number }) {
+    if (!selectedCard) {
+      setError('Save the smart card before managing campaigns.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const nextMetadata = {
+        ...output.metadata,
+        smart_card_id: selectedCard.id,
+        section: updates.section ?? getCampaignSection(output),
+      };
+      const payload = {
+        enabled: updates.enabled ?? output.enabled,
+        sort_order: updates.sort_order ?? output.sort_order,
+        metadata: nextMetadata,
+      };
+
+      const { data, error: updateError } = await supabase
+        .from('campaign_outputs')
+        .update(payload)
+        .eq('campaign_id', output.campaign_id)
+        .eq('output_type', 'smart_card')
+        .select('campaign_id,output_type,enabled,sort_order,metadata,created_at,updated_at,campaigns(*)')
+        .single();
+
+      if (updateError || !data) {
+        throw new Error(updateError?.message ?? 'Could not update campaign output.');
+      }
+
+      const savedOutput = normalizeCampaignOutput(data as CampaignOutputRecord);
+      if (!savedOutput) {
+        throw new Error('Campaign output saved, but the campaign could not be reloaded.');
+      }
+
+      setSmartCardCampaigns(current => current
+        .map(item => (item.campaign_id === savedOutput.campaign_id ? savedOutput : item))
+        .sort((a, b) => a.sort_order - b.sort_order));
+      setMessage('Campaign output updated.');
+    } catch (updateError) {
+      if (import.meta.env.DEV) {
+        console.error('[SmartCards] campaign output update failed', updateError);
+      }
+      setError(updateError instanceof Error ? updateError.message : 'Could not update campaign output.');
+    } finally {
+      setSaving(false);
+    }
+  }
   async function copyPublicLink() {
     if (!form.is_published) {
       setError('Publish the Smart Card before copying its public link.');
@@ -883,7 +1061,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       bottom_ring_text: 'Scan for offers - contact - directions',
       foreground_color: '#111111',
       background_color: '#f4f4f1',
-      accent_color: selectedCard.primary_color,
+      accent_color: normalizeHexColor(selectedCard.accent_color, DEFAULT_SMART_CARD_FORM.accent_color),
       show_center_label: true,
       show_short_url: true,
       status: 'active',
@@ -1005,7 +1183,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
           <p className="mt-1 text-sm text-[var(--text-muted)]">Shape the public profile, preview the phone experience, and publish when ready.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => updateField('is_published', !form.is_published)} className="btn-secondary px-4 py-2.5 text-sm">
+          <button type="button" onClick={togglePublished} disabled={saving} className="btn-secondary px-4 py-2.5 text-sm">
             {form.is_published ? 'Unpublish' : 'Publish'}
           </button>
           <button type="button" onClick={copyPublicLink} className="btn-secondary px-4 py-2.5 text-sm">
@@ -1036,6 +1214,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             saving={saving}
           />
           <AnalyticsPreview analytics={analytics} />
+          <CampaignOutputsPanel campaigns={smartCardCampaigns} saving={saving} onUpdate={updateCampaignOutput} />
 
           <section className="card-surface p-5">
             <h2 className="mb-4 text-sm font-semibold">Business profile</h2>
@@ -1639,7 +1818,8 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => updateField('is_published', !form.is_published)}
+                onClick={togglePublished}
+                disabled={saving}
                 className="btn-secondary w-full justify-center px-4 py-3 text-sm"
               >
                 {form.is_published ? 'Unpublish' : 'Publish'}
@@ -1726,6 +1906,69 @@ function QrConnectionPanel({ selectedCard, connectedQr, publicUrl, onCopyPublic,
   );
 }
 
+function CampaignOutputsPanel({ campaigns, saving, onUpdate }: { campaigns: SmartCardCampaign[]; saving: boolean; onUpdate: (output: SmartCardCampaign, updates: { enabled?: boolean; section?: string; sort_order?: number }) => void }) {
+  return (
+    <section className="card-surface p-5">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Campaigns</h2>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">Choose which Campaign Engine promotions appear on this Smart Card and where they render.</p>
+        </div>
+        <span className="badge badge-draft">Smart Card outputs</span>
+      </div>
+      {campaigns.length === 0 ? (
+        <p className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] px-4 py-3 text-xs text-[var(--text-muted)]">No campaigns are connected yet. Use Create Ad to create a campaign and enable the Smart Card output.</p>
+      ) : (
+        <div className="space-y-3">
+          {campaigns.map(output => (
+            <div key={output.campaign_id} className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">{getCampaignTitle(output)}</p>
+                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-[var(--text-muted)]">
+                    <span>{getCampaignFormatLabel(output)}</span>
+                    <span>{output.campaign.status === 'active' ? 'Active' : output.campaign.status}</span>
+                    <span>{output.enabled ? 'Enabled on Smart Card' : 'Disabled on Smart Card'}</span>
+                    <span>Order {output.sort_order}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    value={getCampaignSection(output)}
+                    onChange={event => onUpdate(output, { section: event.target.value })}
+                    disabled={saving}
+                    className="input-field min-w-44 text-xs"
+                  >
+                    {SMART_CARD_CAMPAIGN_SECTIONS.map(section => <option key={section.value} value={section.value}>{section.label}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    value={output.sort_order}
+                    onChange={event => onUpdate(output, { sort_order: Number(event.target.value) || 0 })}
+                    disabled={saving}
+                    className="input-field w-24 text-xs"
+                    aria-label="Smart Card order"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onUpdate(output, { enabled: !output.enabled })}
+                    disabled={saving}
+                    className="btn-secondary px-4 py-2 text-xs"
+                  >
+                    {output.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                  <Link to={`/ad/${output.campaign.id}`} className="btn-ghost px-0 text-xs">
+                    <ExternalLink className="h-4 w-4" /> Open
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 function AnalyticsPreview({ analytics }: { analytics: AnalyticsSummary }) {
   const stats = [
     ['Views', analytics.views, Eye],

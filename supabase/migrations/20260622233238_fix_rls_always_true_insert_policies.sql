@@ -11,17 +11,33 @@ CREATE POLICY "analytics_insert_anon" ON analytics_events
     )
   );
 
--- Fix interactions: only allow inserts referencing a published ad
-DROP POLICY IF EXISTS "interactions_insert_anon" ON interactions;
-CREATE POLICY "interactions_insert_anon" ON interactions
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM ads
-      WHERE ads.id = interactions.ad_id
-        AND ads.published = true
-    )
-  );
+-- Legacy interactions policy: the original target table was never present in this project.
+-- If an interactions table exists in an older environment, point it at interactive_ads safely.
+DO $$
+BEGIN
+  IF to_regclass('public.interactions') IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'interactions'
+         AND column_name = 'ad_id'
+     )
+     AND to_regclass('public.interactive_ads') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "interactions_insert_anon" ON public.interactions';
+    EXECUTE $policy$
+      CREATE POLICY "interactions_insert_anon" ON public.interactions
+        FOR INSERT TO anon, authenticated
+        WITH CHECK (
+          EXISTS (
+            SELECT 1 FROM public.interactive_ads
+            WHERE interactive_ads.id = interactions.ad_id
+              AND interactive_ads.published = true
+          )
+        )
+    $policy$;
+  END IF;
+END $$;
 
 -- Fix leads: only allow inserts referencing an active business
 DROP POLICY IF EXISTS "leads_insert_anon" ON leads;

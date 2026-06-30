@@ -42,6 +42,7 @@ export type BusinessCardEventType =
   | 'lead_submit'
   | 'booking_click'
   | 'booking_request_submit'
+  | 'interactive_ad_click'
   | 'media_click';
 
 export type BusinessCardRecord = {
@@ -451,8 +452,8 @@ export function toBusinessCardForm(
     bio: card.bio ?? '',
     theme: card.theme,
     template: card.template ?? 'modern_glass',
-    primary_color: card.primary_color,
-    accent_color: card.accent_color,
+    primary_color: normalizeHexColor(card.primary_color, DEFAULT_SMART_CARD_FORM.primary_color),
+    accent_color: normalizeHexColor(card.accent_color, DEFAULT_SMART_CARD_FORM.accent_color),
     is_published: card.is_published,
     featured_video_enabled: card.featured_video_enabled ?? false,
     featured_video_url: card.featured_video_url ?? '',
@@ -504,6 +505,13 @@ export function toBusinessCardForm(
 export function normalizeOptionalUrl(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+export function normalizeHexColor(value: string | null | undefined, fallback: string): string {
+  const trimmed = (value ?? '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return '#' + trimmed.toUpperCase();
+  return fallback;
 }
 
 export function getCurrentOffer<T extends { starts_at: string | null; ends_at: string | null; is_active: boolean }>(offers: T[]): T | null {
@@ -687,6 +695,7 @@ export const SMART_CARD_PLAN_LIMITS = {
 } as const;
 
 export const DEFAULT_SMART_CARD_PLAN: keyof typeof SMART_CARD_PLAN_LIMITS = 'campaign';
+
 
 
 
