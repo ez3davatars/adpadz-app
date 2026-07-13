@@ -1,15 +1,20 @@
 {
-  "name": "AdPadz - Interactive Ads for Local Business",
-  "short_name": "AdPadz",
-  "description": "AI-powered interactive ads that help local businesses grow",
+  "name": "Adpadz - Local Marketing, Connected",
+  "short_name": "Adpadz",
+  "description": "Create one local-business campaign and publish it across interactive experiences, Business Profiles, QR, social, email, print, and lead capture.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#B6FF00",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
-    { "src": "/icons/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "/icons/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ],
-  "categories": ["business", "productivity"],
-  "screenshots": []
+  "categories": ["business", "marketing", "productivity"]
 }

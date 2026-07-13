@@ -1,4 +1,4 @@
-﻿-- Adpadz Smart Cards v3: Business Marketing Hub
+-- Adpadz Smart Cards v3: Business Marketing Hub
 -- Safe additive schema for marketing assets, documents, tours, before/after,
 -- testimonials, lead capture, booking links, and expanded analytics events.
 

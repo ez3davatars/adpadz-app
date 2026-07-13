@@ -19,7 +19,8 @@ function render_page(int $statusCode, string $title, string $message): void
 $configPath = __DIR__ . '/qr-config.php';
 
 if (!is_file($configPath)) {
-    render_page(500, 'QR redirect is not configured', 'The production server is missing qr-config.php. Create it from qr-config.example.php with the Supabase URL and anon key.');
+    error_log('Adpadz QR redirect is missing qr-config.php.');
+    render_page(500, 'QR service unavailable', 'This QR service has not been configured yet.');
 }
 
 $config = require $configPath;
@@ -27,7 +28,8 @@ $supabaseUrl = rtrim((string)($config['supabase_url'] ?? ''), '/');
 $supabaseAnonKey = (string)($config['supabase_anon_key'] ?? '');
 
 if ($supabaseUrl === '' || $supabaseAnonKey === '') {
-    render_page(500, 'QR redirect is not configured', 'The Supabase URL or anon key is missing from qr-config.php.');
+    error_log('Adpadz QR redirect configuration is incomplete.');
+    render_page(500, 'QR service unavailable', 'This QR service has not been configured yet.');
 }
 
 $slug = (string)($_GET['slug'] ?? '');
@@ -44,6 +46,11 @@ $payload = json_encode([
 
 if ($payload === false) {
     render_page(500, 'Could not open QR link', 'The redirect request could not be prepared.');
+}
+
+if (!function_exists('curl_init')) {
+    error_log('Adpadz QR redirect requires the PHP cURL extension.');
+    render_page(500, 'QR service unavailable', 'This server is missing a required QR redirect component.');
 }
 
 $ch = curl_init($supabaseUrl . '/rest/v1/rpc/resolve_qr_redirect');
@@ -66,7 +73,8 @@ $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
 if ($response === false || $httpCode < 200 || $httpCode >= 300) {
-    render_page(502, 'Could not open QR link', $curlError !== '' ? $curlError : 'The QR redirect service is temporarily unavailable.');
+    error_log('Adpadz QR resolver failed with HTTP ' . $httpCode . ($curlError !== '' ? ': ' . $curlError : ''));
+    render_page(502, 'Could not open QR link', 'The QR redirect service is temporarily unavailable.');
 }
 
 $result = json_decode($response, true);
@@ -78,8 +86,20 @@ if (!is_array($result)) {
 $status = (string)($result['status'] ?? 'error');
 
 if (($result['ok'] ?? false) === true && isset($result['destination_url']) && is_string($result['destination_url'])) {
+    $destinationUrl = trim($result['destination_url']);
+    $destinationScheme = strtolower((string)parse_url($destinationUrl, PHP_URL_SCHEME));
+
+    if (
+        preg_match('/[\r\n]/', $destinationUrl) === 1
+        || filter_var($destinationUrl, FILTER_VALIDATE_URL) === false
+        || !in_array($destinationScheme, ['http', 'https'], true)
+    ) {
+        error_log('Adpadz QR resolver returned an invalid destination URL.');
+        render_page(502, 'Could not open QR link', 'The saved QR destination is invalid.');
+    }
+
     header('Cache-Control: no-store, max-age=0');
-    header('Location: ' . $result['destination_url'], true, 302);
+    header('Location: ' . $destinationUrl, true, 302);
     exit;
 }
 

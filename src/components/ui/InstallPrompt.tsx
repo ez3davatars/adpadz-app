@@ -1,14 +1,27 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Download, X } from 'lucide-react';
 
+type BeforeInstallPromptChoice = {
+  outcome: 'accepted' | 'dismissed';
+  platform: string;
+};
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<BeforeInstallPromptChoice>;
+}
+
 export default function InstallPrompt() {
+  const location = useLocation();
   const [show, setShow] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
+    const handler = (event: Event) => {
+      const installPromptEvent = event as BeforeInstallPromptEvent;
+      installPromptEvent.preventDefault();
+      setDeferredPrompt(installPromptEvent);
       const dismissed = localStorage.getItem('pwa-prompt-dismissed');
       if (!dismissed) setShow(true);
     };
@@ -23,13 +36,13 @@ export default function InstallPrompt() {
 
   async function install() {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
+    await deferredPrompt.prompt();
     await deferredPrompt.userChoice;
     setDeferredPrompt(null);
     setShow(false);
   }
 
-  if (!show) return null;
+  if (!show || location.pathname.startsWith('/demo/workspace')) return null;
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 z-50 card-glass p-4 safe-bottom">

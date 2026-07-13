@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title">
+  <title id="title">Fictional patio before renovation</title>
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#879596"/><stop offset="1" stop-color="#d3c6a6"/></linearGradient><linearGradient id="lawn"><stop stop-color="#647151"/><stop offset="1" stop-color="#3e4938"/></linearGradient></defs>
+  <rect width="1200" height="800" fill="url(#sky)"/><path d="M0 400c230-55 390-10 560 9 230 26 388-44 640-71v462H0Z" fill="url(#lawn)"/>
+  <path d="m110 590 665-36 285 246H0Z" fill="#938b7b"/><g stroke="#696458" stroke-width="5" opacity=".65"><path d="m100 680 790-63M210 800l-5-224M480 800l-8-235M750 800l-18-215"/></g>
+  <rect x="760" y="280" width="300" height="250" fill="#a39b88"/><path d="m720 300 195-150 195 150Z" fill="#594f48"/><rect x="850" y="390" width="95" height="140" fill="#423d38"/>
+  <g fill="#46533d"><circle cx="120" cy="445" r="72"/><circle cx="220" cy="470" r="54"/><circle cx="1090" cy="470" r="65"/></g>
+  <g fill="none" stroke="#6f6a5f" stroke-width="17" stroke-linecap="round"><path d="M350 670v-80m0 36h170m0-36v80"/></g>
+  <rect width="1200" height="800" fill="#111" opacity=".13"/>
+</svg>

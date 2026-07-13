@@ -1,85 +1,146 @@
-# Self-Hosting Adpadz on Apache/cPanel
+# Self-hosting Adpadz on Apache or cPanel
 
-This guide deploys the Vite-built Adpadz app to standard Apache/cPanel-style hosting with PHP support. The QR redirect model is:
+This guide deploys the Vite frontend and PHP QR redirect fallback to standard Apache/cPanel hosting.
 
-`QR code -> https://adpadz.co/q/{slug} -> saved destination URL`
+The hosted QR path is:
 
-No Supabase service-role key is required on the frontend or in the PHP redirect endpoint.
+    QR code -> https://adpadz.co/q/{slug} -> Supabase redirect RPC -> saved destination
 
-## A. Supabase Setup
+The frontend and PHP redirect use only the Supabase anon/publishable key. Never expose a service-role key.
 
-Run these migrations in order:
+## 1. Apply the database
 
-1. `supabase/migrations/20260626000100_create_qr_studio_tables.sql`
-2. `supabase/migrations/20260626000200_create_qr_redirect_rpc.sql`
+Link the correct Supabase project, then apply every file in supabase/migrations in filename order:
 
-Confirm these database objects exist:
+    npx supabase db push --include-all
 
-- `qr_links`
-- `qr_scan_events`
-- `qr_link_attachments`
-- `resolve_qr_redirect` RPC
+Do not cherry-pick only the QR migrations. The completed app also depends on the Business Hub, Smart Cards, campaigns, campaign events, services, transactional save RPCs, leads, and security-hardening migrations. The include-all flag also applies the replay-safe foundation migration when an existing remote history has already advanced beyond its timestamp.
 
-The RPC resolves one slug at a time, logs a scan event, and returns only the redirect result. It does not expose all QR links or private QR metadata.
+At minimum, verify these core objects:
 
-## B. Local Production Build
+- businesses
+- business_cards and their child tables
+- business_marketing_assets
+- business_services
+- campaigns
+- campaign_outputs
+- campaign_events
+- qr_links
+- qr_scan_events
+- save_business_hub
+- save_campaign_bundle
+- save_smart_card_bundle
+- resolve_qr_redirect
+- demo_accounts
+- is_demo_account
+- reset_demo_workspace
 
-Create `.env.production` locally:
+Database deployment requires a Supabase role with migration privileges.
 
-```env
-VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
-VITE_PUBLIC_APP_URL=https://adpadz.co
-```
+## 2. Provision the optional private demo account
 
-Notes:
+The public `/examples` showcase and `/demo/workspace` sandbox require no account setup. For owner-led presentations inside the real authenticated workspace, provision a dedicated private demo account after the migrations are applied.
 
-- `VITE_PUBLIC_APP_URL` must be the deployed Adpadz domain, such as `https://adpadz.co`.
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are frontend-safe Supabase values.
-- Do not put a Supabase service-role key in any `VITE_` variable.
-- Do not commit real `.env` files.
+Set these environment variables only in the shell or secure CI job running the provisioner:
 
-Build locally:
+    SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+    SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_SERVICE_ROLE_KEY
+    SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
+    DEMO_ACCOUNT_EMAIL=YOUR_PRIVATE_DEMO_EMAIL
+    DEMO_ACCOUNT_PASSWORD=YOUR_STRONG_PRIVATE_DEMO_PASSWORD
 
-```bash
-npm install
-npm run typecheck
-npm run build
-```
+Then run:
 
-## C. Upload to Hosting
+    npm run demo:provision
 
-Upload the contents of `dist/` to the Adpadz domain document root.
+If Auth CAPTCHA enforcement applies to password sign-in, also provide a fresh `DEMO_ACCOUNT_CAPTCHA_TOKEN`. The provisioner never prints the password or service key, refuses a `VITE_SUPABASE_SERVICE_ROLE_KEY`, and will not convert an existing non-demo Auth user. Always use a fresh email reserved for demonstrations.
 
-Confirm these files exist in the uploaded document root:
+Keep the demo credentials private. The account can edit its own normal workspace, so publishing shared credentials would allow visitors to overwrite each other's presentation. The private account uses a compact database-backed River City fixture, so its record counts intentionally differ from the broader illustrative totals in the public showcase. The in-app **Reset demo** action calls the protected reset RPC and restores only this registered account's fictional River City data.
 
-- `.htaccess`
-- `index.html`
-- `qr-redirect.php`
-- `qr-config.example.php`
+## 3. Deploy the upload function
 
-On the production server, create `qr-config.php` from `qr-config.example.php`:
+If hosted image uploads are enabled, configure and deploy:
 
-```php
-<?php
-return [
-  'supabase_url' => 'https://YOUR_PROJECT_REF.supabase.co',
-  'supabase_anon_key' => 'YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY',
-];
-```
+    supabase functions deploy upload-smart-card-image
 
-Do not commit or upload private local `.env` files. Do not expose a service-role key.
+Follow supabase/functions/upload-smart-card-image/README.md for the required Cloudflare secrets.
 
-## D. Test
+## 4. Build the frontend
 
-1. Visit `https://adpadz.co/app/business/qr-studio`.
-2. Create a QR link.
-3. Confirm the generated short link looks like `https://adpadz.co/q/{slug}`.
-4. Open the short link directly in a browser.
-5. Scan the QR from a phone.
-6. Confirm it redirects to the destination URL.
-7. Confirm a scan event appears in Supabase.
+Create .env.production locally:
 
-## Local Development
+    VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+    VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
+    VITE_PUBLIC_APP_URL=https://adpadz.co
 
-Local development can still use `http://localhost:5173/q/{slug}` through the React app. Production and printed QR codes should use `VITE_PUBLIC_APP_URL=https://adpadz.co` so generated QR codes encode the hosted Adpadz short link.
+Then run:
+
+    npm install
+    npm run typecheck
+    npm run lint
+    npm test
+    npm run build
+
+## 5. Configure authentication redirects
+
+Set the Supabase Auth site URL to the deployed HTTPS origin:
+
+    https://adpadz.co
+
+Add the deployed dashboard URL to the Auth redirect allow list so signup confirmations and password-recovery emails can return to the app:
+
+    https://adpadz.co/app/business/dashboard
+
+For local development, also allow the local origin you actually use, such as http://localhost:5173/**. Configure a production SMTP provider before launch; Supabase's development mail service is not intended for production delivery volume.
+
+## 6. Upload the site
+
+Upload the contents of dist/ to the domain document root.
+
+Confirm these files are present:
+
+- .htaccess
+- index.html
+- manifest.json
+- sw.js
+- qr-redirect.php
+- qr-config.example.php
+- assets/
+
+The included .htaccess must remain in place so React routes fall back to index.html while the hosted /q/{slug} path reaches qr-redirect.php.
+
+## 7. Configure PHP QR redirects
+
+On the production server, create qr-config.php beside qr-redirect.php:
+
+    <?php
+    return [
+      'supabase_url' => 'https://YOUR_PROJECT_REF.supabase.co',
+      'supabase_anon_key' => 'YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY',
+    ];
+
+Do not commit qr-config.php if it contains environment-specific configuration.
+
+## 8. Production smoke test
+
+1. Open the landing page and the public campaign feed.
+2. Create or sign into a business account.
+3. Save Business Settings.
+4. Create and publish a Business Profile.
+5. Add a Business Hub asset and service.
+6. Create an active campaign with Interactive Campaign and Business Profile outputs.
+7. Open the public interactive campaign and trigger a reveal and CTA.
+8. Submit a lead or booking request from the public profile.
+9. Create and scan a QR link.
+10. Confirm the Lead Manager and Analytics pages show the new activity.
+11. Reload an installed PWA page and confirm the static app shell remains available.
+12. Open `/examples` and complete the no-sign-in guided demo on desktop and mobile.
+13. If provisioned, sign in to the private demo account, reset it, and confirm its returned Business Profile, campaign, and QR paths resolve to the River City fixture.
+
+## Local development
+
+Use:
+
+    VITE_PUBLIC_APP_URL=http://localhost:5173
+
+The React /q/{slug} route supports local testing. Production and printed QR codes should always use the deployed HTTPS domain.

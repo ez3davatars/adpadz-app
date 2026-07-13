@@ -1,240 +1,258 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Zap, BarChart3, Target, Smartphone,
-  ArrowRight, Sparkles, TrendingUp, Users,
-  Menu, X, Play
+  ArrowRight, BarChart3, Building2, Check, HeartHandshake, Megaphone,
+  MousePointerClick, QrCode, Smartphone, Sparkles, Target, Users,
 } from 'lucide-react';
+import { AdpadzBadge, AdpadzButton, AdpadzCard } from '../components/adpadz-ui';
+import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
+import './LandingPage.css';
+
+const landingDemo = createInitialDemoWorkspaceState();
+const landingDemoCampaign = landingDemo.campaigns[0];
+const landingDemoViews = landingDemo.metrics.profileViews + landingDemo.metrics.campaignViews;
+
+const productPillars = [
+  { icon: Building2, title: 'Business Hub', description: 'Keep permanent business details, brand assets, services, contact paths, and customer-facing content in one place.' },
+  { icon: Target, title: 'Campaign Engine', description: 'Create a promotion once. Campaigns remain the single source of truth for the offer, dates, message, and call to action.' },
+  { icon: Megaphone, title: 'Publish Everywhere', description: 'Turn the same campaign into a Business Profile feature, interactive experience, QR path, mailer, social post, email, or flyer.' },
+  { icon: BarChart3, title: 'Leads & Analytics', description: 'Measure discovery, reveals, calls, bookings, claims, QR scans, and lead forms in one customer journey.' },
+];
+
+const outputs = [
+  { icon: Smartphone, label: 'Business Profile' },
+  { icon: MousePointerClick, label: 'Interactive Campaign' },
+  { icon: QrCode, label: 'QR Experience' },
+  { icon: Megaphone, label: 'Community Mailer' },
+  { icon: Sparkles, label: 'Social & Email' },
+  { icon: Users, label: 'Lead Capture' },
+];
+
+const lifecycle = [
+  { value: 'Discovery', detail: 'QR, mailers, campaigns' },
+  { value: 'Engagement', detail: 'Interactive and profile experiences' },
+  { value: 'Conversion', detail: 'Calls, offers, booking, leads' },
+  { value: 'Retention', detail: 'Customer follow-up and insight' },
+];
+
+const journeySteps = [
+  { number: '01', title: 'Build the foundation', description: 'Add permanent business information, services, brand assets, contact actions, and the public Business Profile.' },
+  { number: '02', title: 'Create one campaign', description: 'Set the promotion, offer, media, dates, call to action, interactive format, and the outputs it should power.' },
+  { number: '03', title: 'Learn from customer action', description: 'Track views, reveals, clicks, QR scans, bookings, claims, and leads without stitching together unrelated reports.' },
+];
 
 export default function LandingPage() {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
   return (
-    <div className="min-h-screen overflow-x-hidden" style={{ background: 'var(--bg-base)' }}>
-      {/* Navbar */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'backdrop-blur-xl border-b' : ''}`}
-        style={scrolled ? { background: 'rgba(5,5,5,0.9)', borderColor: 'var(--border-subtle)' } : {}}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-neon flex items-center justify-center">
-                <span className="text-black font-black text-sm">A</span>
+    <div className="landing-page min-h-screen overflow-hidden">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.07] bg-[color-mix(in_srgb,var(--bg-base)_88%,transparent)] backdrop-blur-xl safe-top">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" aria-label="Adpadz home">
+            <img src="/brand/adpadz-logo.png" alt="Adpadz" className="landing-nav-logo" />
+          </Link>
+          <nav className="hidden items-center gap-8 text-sm font-bold text-[var(--text-secondary)] md:flex" aria-label="Main navigation">
+            <a href="#platform" className="transition hover:text-white">Platform</a>
+            <a href="#journey" className="transition hover:text-white">How it works</a>
+            <Link to="/examples" className="transition hover:text-white">Examples</Link>
+            <Link to="/feed" className="transition hover:text-white">Explore local</Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link to="/auth" className="hidden px-3 py-2 text-sm font-bold text-[var(--text-secondary)] hover:text-white sm:inline-flex">Sign in</Link>
+            <AdpadzButton href="/auth" size="md" className="text-sm">Start a campaign <ArrowRight className="h-4 w-4" /></AdpadzButton>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section className="landing-hero-section">
+          <div className="landing-hero-grid">
+            <div className="landing-hero-copy">
+              <AdpadzBadge variant="local" className="text-xs"><HeartHandshake className="h-4 w-4" /> Built for local business</AdpadzBadge>
+              <h1 className="landing-hero-title">Create once.<span>Grow everywhere.</span></h1>
+              <p className="landing-hero-description">
+                Adpadz turns one clear campaign into every customer experience your business needs—then shows which actions are actually creating growth.
+              </p>
+              <div className="landing-hero-actions">
+                <AdpadzButton href="/auth" size="lg">Build your first campaign <ArrowRight className="h-4 w-4" /></AdpadzButton>
+                <AdpadzButton href="/demo/workspace" variant="secondary" size="lg">Explore the live demo</AdpadzButton>
               </div>
-              <span className="font-bold text-lg">adpadz<span className="text-neon">.co</span></span>
-            </Link>
-
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm text-[var(--text-secondary)] hover:text-neon transition-colors">Features</a>
-              <a href="#how-it-works" className="text-sm text-[var(--text-secondary)] hover:text-neon transition-colors">How It Works</a>
-              <Link to="/feed" className="text-sm text-[var(--text-secondary)] hover:text-neon transition-colors">Explore</Link>
+              <div className="landing-proof">
+                {['One source of truth', 'Reusable business assets', 'Real customer actions'].map(item => (
+                  <span key={item}><Check className="h-4 w-4 text-neon" />{item}</span>
+                ))}
+              </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-3">
-              <Link to="/auth" className="text-sm text-[var(--text-secondary)] hover:text-white px-4 py-2 transition-colors">Log In</Link>
-              <Link to="/auth" className="btn-primary text-sm px-5 py-2">Get Started</Link>
-            </div>
+            <div className="landing-control" aria-label="Example Adpadz campaign workflow">
+              <div className="landing-control-head">
+                <p className="landing-control-kicker">Campaign control</p>
+                <span className="landing-control-status">Ready to publish</span>
+              </div>
 
-            <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)}>
-              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
-        </div>
-        {mobileOpen && (
-          <div className="md:hidden border-b px-4 py-4 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}>
-            <a href="#features" className="block text-sm text-[var(--text-secondary)]">Features</a>
-            <a href="#how-it-works" className="block text-sm text-[var(--text-secondary)]">How It Works</a>
-            <Link to="/feed" className="block text-sm text-[var(--text-secondary)]">Explore</Link>
-            <hr className="border-[var(--border-subtle)]" />
-            <Link to="/auth" className="btn-primary w-full text-sm py-2.5">Get Started</Link>
-          </div>
-        )}
-      </nav>
+              <ControlRow icon={Building2} label="Foundation" title="River City Outdoor Living" meta="Business Hub" />
+              <ControlRow icon={Target} label="Active campaign" title={landingDemoCampaign.title} meta="One source" active />
 
-      {/* Hero */}
-      <section className="relative pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-neon/[0.03] rounded-full blur-[100px]" />
-          <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-neon/[0.02] rounded-full blur-[80px]" />
-        </div>
-        <div className="max-w-7xl mx-auto relative text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-neon/[0.08] border border-neon/20 mb-8">
-            <Sparkles className="w-4 h-4 text-neon" />
-            <span className="text-xs text-neon font-medium">AI-Powered Interactive Ads</span>
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-black leading-[1.05] mb-6">
-            <span className="text-white">Create. Publish. </span>
-            <span className="gradient-text">Grow.</span>
-            <br />
-            <span className="text-white">Local ads that </span>
-            <span className="gradient-text">work.</span>
-          </h1>
-
-          <p className="text-base sm:text-lg text-[var(--text-secondary)] max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI-powered interactive ads for local businesses. Scratch-offs, tap-to-reveal deals,
-            and dynamic promotions that captivate your audience.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/auth" className="btn-primary text-base px-8 py-4">
-              Start Creating Free <ArrowRight className="w-5 h-5" />
-            </Link>
-            <Link to="/feed" className="btn-secondary text-base px-8 py-4">
-              <Play className="w-5 h-5" /> Explore Ads
-            </Link>
-          </div>
-
-          {/* Hero Visual */}
-          <div className="mt-16 relative max-w-5xl mx-auto">
-            <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--bg-base)] to-transparent z-10 pointer-events-none" />
-            <div className="rounded-2xl border p-1.5" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-default)' }}>
-              <div className="rounded-xl p-6 sm:p-8" style={{ background: 'var(--bg-card)' }}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { icon: Sparkles, label: 'Scratch & Win', sub: '20% OFF', featured: false },
-                    { icon: Zap, label: 'Tap to Reveal', sub: "Today's Special!", featured: true },
-                    { icon: Target, label: 'Before & After', sub: 'See Results', featured: false },
-                  ].map(card => (
-                    <div
-                      key={card.label}
-                      className={`rounded-2xl p-5 text-center border transition-all ${
-                        card.featured
-                          ? 'bg-neon/[0.06] border-neon/30 shadow-[var(--glow-sm)]'
-                          : 'bg-[var(--bg-input)] border-[var(--border-subtle)]'
-                      }`}
-                    >
-                      <div className={`w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center ${card.featured ? 'bg-neon/15 border border-neon/30' : 'bg-[var(--bg-hover)]'}`}>
-                        <card.icon className={`w-7 h-7 ${card.featured ? 'text-neon' : 'text-[var(--text-muted)]'}`} />
-                      </div>
-                      <h4 className={`font-bold text-sm mb-0.5 ${card.featured ? 'text-neon' : ''}`}>{card.label}</h4>
-                      <p className="text-xs text-[var(--text-muted)]">{card.sub}</p>
+              <div className="landing-control-outputs">
+                <p className="landing-control-label">Connected outputs</p>
+                <div className="landing-control-output-grid">
+                  {outputs.slice(0, 4).map(output => (
+                    <div key={output.label} className="landing-output-chip">
+                      <output.icon className="h-4 w-4 shrink-0 text-neon" />
+                      <span>{output.label}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Stats */}
-      <section className="py-14 px-4 sm:px-6 lg:px-8 border-y" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
-          {[
-            { value: '10x', label: 'Higher Engagement' },
-            { value: '87%', label: 'Interaction Rate' },
-            { value: '12K+', label: 'Businesses Served' },
-            { value: '3.2M', label: 'Ads Delivered' },
-          ].map(stat => (
-            <div key={stat.label} className="text-center">
-              <div className="text-2xl sm:text-3xl font-black gradient-text mb-1">{stat.value}</div>
-              <div className="text-xs text-[var(--text-muted)]">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Features */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">
-              Everything to <span className="gradient-text">dominate</span> local advertising
-            </h2>
-            <p className="text-[var(--text-secondary)] text-sm max-w-xl mx-auto">
-              From AI-powered creation to real-time analytics.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {features.map(f => (
-              <div key={f.title} className="card-surface p-5 group hover:border-[var(--border-neon)] transition-all">
-                <div className="w-10 h-10 rounded-xl bg-neon/10 flex items-center justify-center mb-3 group-hover:bg-neon/20 transition-colors">
-                  <f.icon className="w-5 h-5 text-neon" />
-                </div>
-                <h3 className="text-sm font-semibold mb-1.5">{f.title}</h3>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">{f.description}</p>
+              <div className="landing-control-metrics">
+                <Metric value={landingDemoViews.toLocaleString()} label="Views" />
+                <Metric value={landingDemo.metrics.qrScans.toLocaleString()} label="QR scans" />
+                <Metric value={landingDemo.metrics.leads.toLocaleString()} label="Leads" />
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-y border-white/[0.07] bg-white/[0.018] px-4 py-11 sm:px-6 lg:px-8">
+          <div className="landing-lifecycle">
+            {lifecycle.map((stage, index) => (
+              <article key={stage.value} className="landing-stage">
+                <span className="landing-stage-number">0{index + 1}</span>
+                <h3>{stage.value}</h3>
+                <p>{stage.detail}</p>
+              </article>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20 px-4 sm:px-6 lg:px-8" style={{ background: 'var(--bg-surface)' }}>
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">
-              Three steps to <span className="gradient-text">explosive growth</span>
-            </h2>
-            <p className="text-sm text-[var(--text-secondary)]">Launch your first campaign in under 5 minutes.</p>
+        <section id="platform" className="scroll-mt-20 px-4 py-28 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="max-w-3xl">
+              <p className="landing-section-eyebrow">The local marketing system</p>
+              <h2 className="landing-section-title">Fewer disconnected tools.<br />One clear next step.</h2>
+              <p className="landing-section-description">Adpadz keeps permanent business information separate from temporary campaigns, then connects both to every customer-facing output.</p>
+            </div>
+            <div className="landing-pillar-grid">
+              {productPillars.map((pillar, index) => (
+                <AdpadzCard key={pillar.title} as="article" variant="glass" className="landing-pillar">
+                  <span className="landing-pillar-number">0{index + 1}</span>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neon/10 text-neon"><pillar.icon className="h-5 w-5" /></span>
+                  <h3>{pillar.title}</h3>
+                  <p>{pillar.description}</p>
+                </AdpadzCard>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {steps.map((s, i) => (
-              <div key={s.title} className="relative">
-                <div className="text-5xl font-black text-neon/[0.08] absolute -top-3 -left-1">{String(i + 1).padStart(2, '0')}</div>
-                <div className="relative pt-7 pl-3">
-                  <h3 className="text-base font-bold mb-2">{s.title}</h3>
-                  <p className="text-sm text-[var(--text-muted)] leading-relaxed">{s.description}</p>
+        </section>
+
+        <section id="journey" className="scroll-mt-20 border-y border-white/[0.07] bg-[var(--bg-surface)] px-4 py-28 sm:px-6 lg:px-8">
+          <div className="landing-journey mx-auto max-w-6xl">
+            <div>
+              <p className="landing-section-eyebrow">How it works</p>
+              <h2 className="landing-section-title">One campaign becomes a measurable journey.</h2>
+              <p className="landing-section-description">The business owner stays in control. Adpadz reduces repeated work and keeps every output connected.</p>
+            </div>
+            <div className="landing-step-list">
+              {journeySteps.map(step => (
+                <article key={step.number} className="landing-step">
+                  <span className="landing-step-number">{step.number}</span>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.description}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="examples" className="scroll-mt-20 px-4 py-28 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="grid gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+              <div className="landing-example-copy">
+                <AdpadzBadge variant="local" className="mb-5 text-xs"><Sparkles className="h-4 w-4" /> Working example · sample data</AdpadzBadge>
+                <h2 className="landing-section-title">See the whole customer journey before you subscribe.</h2>
+                <p className="mt-5">
+                  River City Outdoor Living is a fictional business built to show the complete Adpadz experience. Create a promotion as the owner, experience it as a customer, then watch every action appear in analytics.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                  <AdpadzButton href="/demo/workspace" size="lg">Open the guided demo <ArrowRight className="h-4 w-4" /></AdpadzButton>
+                  <AdpadzButton href="/examples" variant="secondary" size="lg">View the showcase</AdpadzButton>
+                </div>
+                <div className="landing-proof mt-6">
+                  {['No sign-in', 'Safe sandbox', 'Reset anytime'].map(item => <span key={item}><Check className="h-4 w-4 text-neon" />{item}</span>)}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="card-glass glow-border p-10 sm:p-12">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Ready to grow your business?</h2>
-            <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-md mx-auto">
-              Join AdPadz and start reaching customers with interactive ads that convert.
-            </p>
-            <Link to="/auth" className="btn-primary text-base px-10 py-4">
-              Get Started Free
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t py-10 px-4 sm:px-6 lg:px-8" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-neon flex items-center justify-center">
-              <span className="text-black font-black text-xs">A</span>
+              <AdpadzCard variant="glass" className="landing-example-card p-5 sm:p-7">
+                <div className="grid gap-3 md:grid-cols-3 md:items-stretch">
+                  {[
+                    { icon: Target, number: '01', title: 'Create', detail: landingDemoCampaign.title, meta: `One offer · ${landingDemoCampaign.outputs.length} outputs` },
+                    { icon: MousePointerClick, number: '02', title: 'Experience', detail: 'Reveal, scan, request', meta: 'Customer journey' },
+                    { icon: BarChart3, number: '03', title: 'Measure', detail: 'Actions become insight', meta: 'Connected analytics' },
+                  ].map((item, index) => (
+                    <div key={item.number} className={`relative rounded-3xl border p-5 ${index === 1 ? 'border-neon/40 bg-neon/[0.075]' : 'border-white/[0.08] bg-white/[0.035]'}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${index === 1 ? 'bg-neon text-black' : 'bg-neon/10 text-neon'}`}><item.icon className="h-4 w-4" /></span>
+                        <span className="text-2xl font-black text-white/10">{item.number}</span>
+                      </div>
+                      <p className="mt-7 text-xs font-black uppercase tracking-[0.16em] text-neon">{item.title}</p>
+                      <p className="landing-example-detail mt-2 font-black">{item.detail}</p>
+                      <p className="mt-1 text-[var(--text-muted)]">{item.meta}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.07] text-center">
+                  <ExampleMetric value={landingDemoViews.toLocaleString()} label="Sample views" />
+                  <ExampleMetric value={landingDemo.metrics.qrScans.toLocaleString()} label="Sample scans" />
+                  <ExampleMetric value={landingDemo.metrics.leads.toLocaleString()} label="Sample leads" />
+                </div>
+              </AdpadzCard>
             </div>
-            <span className="font-bold text-sm">adpadz<span className="text-neon">.co</span></span>
           </div>
-          <p className="text-xs text-[var(--text-muted)]">&copy; 2026 AdPadz. Helping local businesses grow.</p>
-          <div className="flex gap-4 text-xs text-[var(--text-muted)]">
-            <a href="#" className="hover:text-neon transition-colors">Privacy</a>
-            <a href="#" className="hover:text-neon transition-colors">Terms</a>
+        </section>
+
+        <section className="px-4 pb-28 pt-8 sm:px-6 lg:px-8">
+          <div className="landing-final-cta">
+            <div className="relative z-10">
+              <p className="landing-section-eyebrow">Ready when you are</p>
+              <h2>Make local marketing feel manageable again.</h2>
+              <p>Build the Business Hub, launch one campaign, and let every output stay connected to the same source of truth.</p>
+            </div>
+            <div className="landing-final-actions">
+              <AdpadzButton href="/auth" size="lg">Start building <ArrowRight className="h-4 w-4" /></AdpadzButton>
+              <AdpadzButton href="/examples" variant="secondary" size="lg">See the example</AdpadzButton>
+            </div>
           </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-white/[0.07] px-4 py-9 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 sm:flex-row">
+          <img src="/brand/adpadz-logo.png" alt="Adpadz" className="landing-footer-logo" />
+          <p className="text-center text-sm text-[var(--text-muted)]">&copy; 2026 Adpadz. The local advertising cooperative.</p>
+          <div className="flex gap-5 text-sm font-bold text-[var(--text-muted)]"><Link to="/examples" className="hover:text-white">Examples</Link><Link to="/privacy" className="hover:text-white">Privacy</Link><Link to="/terms" className="hover:text-white">Terms</Link></div>
         </div>
       </footer>
     </div>
   );
 }
 
-const features = [
-  { icon: Sparkles, title: 'AI Ad Creator', description: 'Describe your promotion and our AI generates stunning interactive ads in seconds.' },
-  { icon: Smartphone, title: 'Interactive Formats', description: 'Scratch-offs, tap-to-reveal, before/after — ads people want to engage with.' },
-  { icon: BarChart3, title: 'Real-Time Analytics', description: 'Track impressions, engagement, conversions, and ROI on a live dashboard.' },
-  { icon: Target, title: 'Local Targeting', description: 'Reach customers in your service area with geo-targeted campaigns.' },
-  { icon: TrendingUp, title: 'AI Optimization', description: 'Campaigns auto-optimize for maximum engagement and conversions.' },
-  { icon: Users, title: 'Audience Insights', description: 'Understand who interacts with your ads and build profiles over time.' },
-];
+function ControlRow({ icon: Icon, label, title, meta, active = false }: { icon: typeof Building2; label: string; title: string; meta: string; active?: boolean }) {
+  return (
+    <div className={`landing-control-row ${active ? 'landing-control-row--active' : ''}`}>
+      <span className="landing-control-icon"><Icon className="h-5 w-5" /></span>
+      <div>
+        <p className="landing-control-label">{label}</p>
+        <p className="landing-control-title">{title}</p>
+      </div>
+      <span className="landing-control-meta">{meta}</span>
+    </div>
+  );
+}
 
-const steps = [
-  { title: 'Create Your Ad', description: 'Use our AI builder or choose templates. Add offers, images, and branding in minutes.' },
-  { title: 'Publish & Target', description: 'Set audience, budget, and location. Launch with one click.' },
-  { title: 'Watch It Grow', description: 'Monitor real-time engagement and let AI optimize automatically.' },
-];
+function Metric({ value, label }: { value: string; label: string }) {
+  return <div className="landing-control-metric"><strong>{value}</strong><span>{label}</span></div>;
+}
+
+function ExampleMetric({ value, label }: { value: string; label: string }) {
+  return <div className="bg-black/30 px-2 py-4"><p className="text-xl font-black text-neon">{value}</p><p className="mt-1 text-[11px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">{label}</p></div>;
+}

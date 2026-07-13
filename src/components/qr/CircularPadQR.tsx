@@ -5,6 +5,8 @@ import type {
   QROuterBackgroundFit,
   QROrnamentStyle,
   QROuterBackgroundType,
+  QRRimBandBackgroundType,
+  QRRimBandImageFit,
   QRRimDecoration,
   QRStylePreset,
 } from '../../lib/qr/qrTypes';
@@ -44,6 +46,12 @@ type CircularPadQRProps = {
   outerBackgroundImageOpacity?: number;
   outerBackgroundImageFit?: QROuterBackgroundFit;
   outerBackgroundOverlayColor?: string;
+  rimBandBackgroundType?: QRRimBandBackgroundType;
+  rimBandImageDataUrl?: string;
+  rimBandImageOpacity?: number;
+  rimBandImageFit?: QRRimBandImageFit;
+  rimBandOverlayColor?: string;
+  rimBandOverlayOpacity?: number;
   ornamentStyle?: QROrnamentStyle;
   ornamentMainColor?: string;
   ornamentAccentColor?: string;
@@ -234,6 +242,12 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
     outerBackgroundImageOpacity = 0.65,
     outerBackgroundImageFit = 'cover',
     outerBackgroundOverlayColor = 'transparent',
+    rimBandBackgroundType = 'solid',
+    rimBandImageDataUrl = '',
+    rimBandImageOpacity = 1,
+    rimBandImageFit = 'cover',
+    rimBandOverlayColor = '#ffffff',
+    rimBandOverlayOpacity = 0.15,
     ornamentStyle = 'wave-premium',
     ornamentMainColor = '#111111',
     ornamentAccentColor = '#8EDB39',
@@ -272,6 +286,7 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
   const isDigital = preset === 'digital-pad';
   const frameShape = centerFrameShape === 'circle' ? 'circle' : 'rounded-rect';
   const backgroundImageAspect = outerBackgroundImageFit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice';
+  const rimBandImageAspect = rimBandImageFit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice';
 
   function moduleCenter(row: number, column: number) {
     return {
@@ -338,6 +353,35 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
         )}
         {outerBackgroundOverlayColor !== 'transparent' && (
           <rect x="60" y="60" width="1880" height="1880" fill={outerBackgroundOverlayColor} opacity="0.35" />
+        )}
+      </g>
+    );
+  }
+
+  function renderRimBandBackground() {
+    if (rimBandBackgroundType === 'solid') return null;
+
+    return (
+      <g mask={`url(#${uniqueId}-rimBandMask)`}>
+        {rimBandBackgroundType === 'image' && rimBandImageDataUrl && (
+          <image
+            href={rimBandImageDataUrl}
+            x="100"
+            y="100"
+            width="1800"
+            height="1800"
+            opacity={rimBandImageOpacity}
+            preserveAspectRatio={rimBandImageAspect}
+          />
+        )}
+        {rimBandBackgroundType === 'gradient' && (
+          <rect x="100" y="100" width="1800" height="1800" fill={`url(#${uniqueId}-rimBandGradient)`} />
+        )}
+        {rimBandBackgroundType === 'pattern' && (
+          <rect x="100" y="100" width="1800" height="1800" fill={`url(#${uniqueId}-rimBandPattern)`} />
+        )}
+        {rimBandOverlayColor !== 'transparent' && rimBandOverlayOpacity > 0 && (
+          <rect x="100" y="100" width="1800" height="1800" fill={rimBandOverlayColor} opacity={rimBandOverlayOpacity} />
         )}
       </g>
     );
@@ -450,6 +494,21 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
           <circle cx="22" cy="22" r="6" fill={accentColor} opacity="0.3" />
           <circle cx="82" cy="78" r="5" fill={outerBorderColor} opacity="0.16" />
         </pattern>
+        <linearGradient id={`${uniqueId}-rimBandGradient`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={rimBandColor} />
+          <stop offset="100%" stopColor={accentColor} />
+        </linearGradient>
+        <pattern id={`${uniqueId}-rimBandPattern`} width="120" height="120" patternUnits="userSpaceOnUse">
+          <rect width="120" height="120" fill={rimBandColor} />
+          <path d="M 0 60 C 30 20 90 100 120 60" fill="none" stroke={accentColor} strokeWidth="3" opacity="0.28" />
+          <circle cx="30" cy="30" r="4" fill={outerBorderColor} opacity="0.16" />
+          <circle cx="90" cy="90" r="4" fill={outerBorderColor} opacity="0.16" />
+        </pattern>
+        <mask id={`${uniqueId}-rimBandMask`} maskUnits="userSpaceOnUse">
+          <rect x="0" y="0" width="2000" height="2000" fill="black" />
+          <circle cx="1000" cy="1000" r="900" fill="white" />
+          <circle cx="1000" cy="1000" r="700" fill="black" />
+        </mask>
         <clipPath id={`${uniqueId}-backgroundClip`}>
           <rect x="60" y="60" width="1880" height="1880" rx="170" />
         </clipPath>
@@ -464,12 +523,14 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
 
       {!isStandard && (
         <g>
-          <circle cx="1000" cy="1000" r="900" fill={rimBandColor} stroke={outerBorderColor} strokeWidth="14" />
+          <circle cx="1000" cy="1000" r="900" fill={rimBandColor} />
+          {renderRimBandBackground()}
+          <circle cx="1000" cy="1000" r="900" fill="none" stroke={outerBorderColor} strokeWidth="14" />
           <circle
             cx="1000"
             cy="1000"
             r="862"
-            fill={rimBandColor}
+            fill="none"
             stroke={isDigital ? accentColor : outerBorderColor}
             strokeWidth={isDigital ? 7 : 4}
             opacity="0.98"

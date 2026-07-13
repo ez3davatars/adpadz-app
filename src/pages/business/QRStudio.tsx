@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   BarChart3,
   Copy,
@@ -31,20 +31,29 @@ import {
 } from '../../lib/qr/qrUtils';
 import { buildSmartCardUrl, type BusinessCardRecord } from '../../lib/smartCards';
 
+type CampaignChoice = {
+  id: string;
+  business_id: string | null;
+  title: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+};
+
 const DEFAULT_FORM: QRFormState = {
-  title: 'Jacksonville Advertiser Flyer',
-  slug: 'jacksonville-advertisers',
-  destination_url: 'https://adpadz.co/advertise',
+  title: '',
+  slug: '',
+  destination_url: '',
   destination_type: 'url',
   destination_id: '',
-  campaign_name: 'Jacksonville Launch',
-  purpose: 'Advertiser acquisition',
-  source: 'printed flyer',
+  campaign_name: '',
+  purpose: '',
+  source: '',
   medium: 'qr',
-  tags: 'jacksonville, sales, advertiser',
+  tags: '',
   style_preset: 'circular-pad',
-  top_ring_text: 'Adpadz Local Advertising Cooperative',
-  bottom_ring_text: 'Support Local • Save Local • Discover More',
+  top_ring_text: 'Adpadz Local Business',
+  bottom_ring_text: 'Scan to connect • Support local',
   center_label: 'Adpadz',
   foreground_color: '#111111',
   background_color: '#f1f1ef',
@@ -66,6 +75,12 @@ const DEFAULT_FORM: QRFormState = {
   outer_background_image_opacity: 0.65,
   outer_background_image_fit: 'cover',
   outer_background_overlay_color: 'transparent',
+  rim_band_background_type: 'solid',
+  rim_band_image_data_url: '',
+  rim_band_image_opacity: 1,
+  rim_band_image_fit: 'cover',
+  rim_band_overlay_color: '#ffffff',
+  rim_band_overlay_opacity: 0.15,
   ornament_style: 'wave-premium',
   ornament_main_color: '#111111',
   ornament_accent_color: '#8EDB39',
@@ -96,6 +111,7 @@ export default function QRStudio() {
   const [form, setForm] = useState<QRFormState>(DEFAULT_FORM);
   const [links, setLinks] = useState<QRLinkRecord[]>([]);
   const [businessCards, setBusinessCards] = useState<BusinessCardRecord[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignChoice[]>([]);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [publicAppUrl] = useState(getPublicAppUrl());
   const [advancedBaseUrlOpen, setAdvancedBaseUrlOpen] = useState(false);
@@ -120,11 +136,34 @@ export default function QRStudio() {
     () => businessCards.find(card => card.id === form.destination_id) ?? null,
     [businessCards, form.destination_id],
   );
+  const selectedCampaign = useMemo(
+    () => campaigns.find(campaign => campaign.id === form.destination_id) ?? null,
+    [campaigns, form.destination_id],
+  );
+  const smartCardPublicationError = useMemo(() => {
+    if (form.destination_type !== 'business_card' || !selectedBusinessCard || selectedBusinessCard.is_published) {
+      return null;
+    }
+
+    return `Publish ${selectedBusinessCard.business_name} before saving a QR link to this Smart Card.`;
+  }, [form.destination_type, selectedBusinessCard]);
+  const campaignPublicationError = useMemo(() => {
+    if (form.destination_type !== 'campaign') return null;
+    if (!selectedCampaign) return 'Choose an active or scheduled campaign with QR Landing enabled.';
+    if (selectedCampaign.end_date && new Date(selectedCampaign.end_date) < new Date()) {
+      return 'This campaign has ended. Update its dates before saving a QR destination.';
+    }
+    return null;
+  }, [form.destination_type, selectedCampaign]);
   const effectiveDestinationUrl = useMemo(() => {
-    return form.destination_type === 'business_card' && selectedBusinessCard
-      ? buildSmartCardUrl(selectedBusinessCard.slug, baseUrl)
-      : form.destination_url;
-  }, [baseUrl, form.destination_type, form.destination_url, selectedBusinessCard]);
+    if (form.destination_type === 'business_card' && selectedBusinessCard) {
+      return buildSmartCardUrl(selectedBusinessCard.slug, baseUrl);
+    }
+    if (form.destination_type === 'campaign' && selectedCampaign) {
+      return `${baseUrl.replace(/\/+$/g, '')}/ad/${selectedCampaign.id}`;
+    }
+    return form.destination_url;
+  }, [baseUrl, form.destination_type, form.destination_url, selectedBusinessCard, selectedCampaign]);
   const productionLocalhostError = useMemo(() => {
     return shortUrlUsesLocalhostInProduction(shortUrl)
       ? 'Production QR links cannot use localhost. Check VITE_PUBLIC_APP_URL.'
@@ -145,6 +184,7 @@ export default function QRStudio() {
   useEffect(() => {
     void loadLinks();
     void loadBusinessCards();
+    void loadCampaigns();
   }, []);
 
   async function loadLinks() {
@@ -196,6 +236,48 @@ export default function QRStudio() {
       setBusinessCards((data ?? []) as BusinessCardRecord[]);
     }
   }
+
+  async function loadCampaigns() {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      setCampaigns([]);
+      return;
+    }
+
+    const { data: campaignData, error: campaignError } = await supabase
+      .from('campaigns')
+      .select('id,business_id,title,status,start_date,end_date')
+      .eq('owner_id', authData.user.id)
+      .in('status', ['active', 'scheduled'])
+      .order('updated_at', { ascending: false });
+
+    if (campaignError) {
+      setCampaigns([]);
+      return;
+    }
+
+    const rows = (campaignData ?? []) as CampaignChoice[];
+    const ids = rows.map(campaign => campaign.id);
+    if (ids.length === 0) {
+      setCampaigns([]);
+      return;
+    }
+
+    const { data: outputData, error: outputError } = await supabase
+      .from('campaign_outputs')
+      .select('campaign_id')
+      .in('campaign_id', ids)
+      .eq('output_type', 'qr_landing')
+      .eq('enabled', true);
+
+    if (outputError) {
+      setCampaigns([]);
+      return;
+    }
+
+    const enabledIds = new Set((outputData ?? []).map(output => output.campaign_id));
+    setCampaigns(rows.filter(campaign => enabledIds.has(campaign.id)));
+  }
   function updateField<K extends keyof QRFormState>(key: K, value: QRFormState[K]) {
     setForm(current => ({ ...current, [key]: value }));
   }
@@ -229,13 +311,20 @@ export default function QRStudio() {
     reader.readAsDataURL(file);
   }
 
+  function handleRimBandImageUpload(file: File | null) {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateField('rim_band_image_data_url', typeof reader.result === 'string' ? reader.result : '');
+      updateField('rim_band_background_type', 'image');
+    };
+    reader.readAsDataURL(file);
+  }
+
   function startNewLink() {
     setSelectedLinkId(null);
-    setForm({
-      ...DEFAULT_FORM,
-      title: 'New Adpadz QR Link',
-      slug: `adpadz-${Date.now().toString(36)}`,
-    });
+    setForm({ ...DEFAULT_FORM });
     setMessage(null);
     setError(null);
   }
@@ -262,26 +351,32 @@ export default function QRStudio() {
       accent_color: link.accent_color,
       show_center_label: link.show_center_label,
       show_short_url: link.show_short_url,
-      logo_data_url: '',
-      center_frame_shape: DEFAULT_FORM.center_frame_shape,
-      center_frame_stroke_color: DEFAULT_FORM.center_frame_stroke_color,
-      center_frame_fill_color: DEFAULT_FORM.center_frame_fill_color,
-      rim_decoration: DEFAULT_FORM.rim_decoration,
-      rim_band_color: link.background_color || DEFAULT_FORM.rim_band_color,
-      rim_text_color: DEFAULT_FORM.rim_text_color,
-      inner_field_color: DEFAULT_FORM.inner_field_color,
-      outer_border_color: DEFAULT_FORM.outer_border_color,
-      outer_background_type: DEFAULT_FORM.outer_background_type,
-      outer_background_color: DEFAULT_FORM.outer_background_color,
-      outer_background_image_data_url: '',
-      outer_background_image_opacity: DEFAULT_FORM.outer_background_image_opacity,
-      outer_background_image_fit: DEFAULT_FORM.outer_background_image_fit,
-      outer_background_overlay_color: DEFAULT_FORM.outer_background_overlay_color,
-      ornament_style: DEFAULT_FORM.ornament_style,
-      ornament_main_color: DEFAULT_FORM.ornament_main_color,
-      ornament_accent_color: DEFAULT_FORM.ornament_accent_color,
-      ornament_shadow_color: DEFAULT_FORM.ornament_shadow_color,
-      ornament_opacity: DEFAULT_FORM.ornament_opacity,
+      logo_data_url: link.logo_data_url ?? DEFAULT_FORM.logo_data_url,
+      center_frame_shape: link.center_frame_shape ?? DEFAULT_FORM.center_frame_shape,
+      center_frame_stroke_color: link.center_frame_stroke_color ?? DEFAULT_FORM.center_frame_stroke_color,
+      center_frame_fill_color: link.center_frame_fill_color ?? DEFAULT_FORM.center_frame_fill_color,
+      rim_decoration: link.rim_decoration ?? DEFAULT_FORM.rim_decoration,
+      rim_band_color: link.rim_band_color ?? link.background_color ?? DEFAULT_FORM.rim_band_color,
+      rim_text_color: link.rim_text_color ?? DEFAULT_FORM.rim_text_color,
+      inner_field_color: link.inner_field_color ?? DEFAULT_FORM.inner_field_color,
+      outer_border_color: link.outer_border_color ?? DEFAULT_FORM.outer_border_color,
+      outer_background_type: link.outer_background_type ?? DEFAULT_FORM.outer_background_type,
+      outer_background_color: link.outer_background_color ?? DEFAULT_FORM.outer_background_color,
+      outer_background_image_data_url: link.outer_background_image_data_url ?? DEFAULT_FORM.outer_background_image_data_url,
+      outer_background_image_opacity: link.outer_background_image_opacity ?? DEFAULT_FORM.outer_background_image_opacity,
+      outer_background_image_fit: link.outer_background_image_fit ?? DEFAULT_FORM.outer_background_image_fit,
+      outer_background_overlay_color: link.outer_background_overlay_color ?? DEFAULT_FORM.outer_background_overlay_color,
+      rim_band_background_type: link.rim_band_background_type ?? DEFAULT_FORM.rim_band_background_type,
+      rim_band_image_data_url: link.rim_band_image_data_url ?? DEFAULT_FORM.rim_band_image_data_url,
+      rim_band_image_opacity: link.rim_band_image_opacity ?? DEFAULT_FORM.rim_band_image_opacity,
+      rim_band_image_fit: link.rim_band_image_fit ?? DEFAULT_FORM.rim_band_image_fit,
+      rim_band_overlay_color: link.rim_band_overlay_color ?? DEFAULT_FORM.rim_band_overlay_color,
+      rim_band_overlay_opacity: link.rim_band_overlay_opacity ?? DEFAULT_FORM.rim_band_overlay_opacity,
+      ornament_style: link.ornament_style ?? DEFAULT_FORM.ornament_style,
+      ornament_main_color: link.ornament_main_color ?? DEFAULT_FORM.ornament_main_color,
+      ornament_accent_color: link.ornament_accent_color ?? DEFAULT_FORM.ornament_accent_color,
+      ornament_shadow_color: link.ornament_shadow_color ?? DEFAULT_FORM.ornament_shadow_color,
+      ornament_opacity: link.ornament_opacity ?? DEFAULT_FORM.ornament_opacity,
     });
     setMessage(null);
     setError(null);
@@ -306,6 +401,24 @@ export default function QRStudio() {
       return;
     }
 
+    if (form.destination_type === 'campaign' && !selectedCampaign) {
+      setSaving(false);
+      setError('Choose a campaign with an enabled QR Landing output before saving.');
+      return;
+    }
+
+    if (smartCardPublicationError) {
+      setSaving(false);
+      setError(smartCardPublicationError);
+      return;
+    }
+
+    if (campaignPublicationError) {
+      setSaving(false);
+      setError(campaignPublicationError);
+      return;
+    }
+
     if (!validateHttpUrl(effectiveDestinationUrl)) {
       setSaving(false);
       setError('Destination URL must start with http:// or https://.');
@@ -323,8 +436,13 @@ export default function QRStudio() {
       slug,
       destination_url: effectiveDestinationUrl.trim(),
       destination_type: form.destination_type,
-      destination_id: form.destination_type === 'business_card' ? form.destination_id : null,
-      campaign_name: form.campaign_name.trim() || null,
+      destination_id: form.destination_type === 'url' ? null : form.destination_id,
+      business_id: form.destination_type === 'business_card'
+        ? selectedBusinessCard?.business_id ?? null
+        : form.destination_type === 'campaign'
+          ? selectedCampaign?.business_id ?? null
+          : selectedLink?.business_id ?? null,
+      campaign_name: form.destination_type === 'campaign' ? selectedCampaign?.title ?? null : form.campaign_name.trim() || null,
       purpose: form.purpose.trim() || null,
       source: form.source.trim() || null,
       medium: form.medium.trim() || 'qr',
@@ -338,6 +456,32 @@ export default function QRStudio() {
       accent_color: form.accent_color,
       show_center_label: form.show_center_label,
       show_short_url: form.show_short_url,
+      logo_data_url: form.logo_data_url,
+      center_frame_shape: form.center_frame_shape,
+      center_frame_stroke_color: form.center_frame_stroke_color,
+      center_frame_fill_color: form.center_frame_fill_color,
+      rim_decoration: form.rim_decoration,
+      rim_band_color: form.rim_band_color,
+      rim_text_color: form.rim_text_color,
+      inner_field_color: form.inner_field_color,
+      outer_border_color: form.outer_border_color,
+      outer_background_type: form.outer_background_type,
+      outer_background_color: form.outer_background_color,
+      outer_background_image_data_url: form.outer_background_image_data_url,
+      outer_background_image_opacity: form.outer_background_image_opacity,
+      outer_background_image_fit: form.outer_background_image_fit,
+      outer_background_overlay_color: form.outer_background_overlay_color,
+      rim_band_background_type: form.rim_band_background_type,
+      rim_band_image_data_url: form.rim_band_image_data_url,
+      rim_band_image_opacity: form.rim_band_image_opacity,
+      rim_band_image_fit: form.rim_band_image_fit,
+      rim_band_overlay_color: form.rim_band_overlay_color,
+      rim_band_overlay_opacity: form.rim_band_overlay_opacity,
+      ornament_style: form.ornament_style,
+      ornament_main_color: form.ornament_main_color,
+      ornament_accent_color: form.ornament_accent_color,
+      ornament_shadow_color: form.ornament_shadow_color,
+      ornament_opacity: form.ornament_opacity,
       status: 'active',
     };
 
@@ -400,11 +544,11 @@ export default function QRStudio() {
             <div className="w-9 h-9 rounded-xl bg-neon/10 flex items-center justify-center">
               <QrCode className="w-5 h-5 text-neon" />
             </div>
-            <span className="badge badge-active">First working feature</span>
+            <span className="badge badge-active">Dynamic, trackable links</span>
           </div>
           <h1 className="text-2xl font-bold">Adpadz QR Studio</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1 max-w-2xl">
-            Create circular Pad QRs for Adpadz marketing, advertiser acquisition, community mailers, offers, and future campaign tracking.
+            Create branded QR links for campaigns, Business Profiles, mailers, offers, and any HTTPS destination. Change the destination without reprinting the QR.
           </p>
         </div>
         <button onClick={startNewLink} className="btn-primary text-sm px-5 py-2.5">
@@ -460,6 +604,7 @@ export default function QRStudio() {
                 >
                   <option value="url">Website or landing page</option>
                   <option value="business_card">Smart Card</option>
+                  <option value="campaign">Campaign</option>
                 </select>
               </Field>
               {form.destination_type === 'business_card' ? (
@@ -479,6 +624,35 @@ export default function QRStudio() {
                   <p className="text-[11px] text-[var(--text-muted)] mt-1">
                     Scans open {selectedBusinessCard ? `/c/${selectedBusinessCard.slug}` : 'the selected public smart card'} and track QR analytics.
                   </p>
+                  {smartCardPublicationError && (
+                    <p className='text-[11px] text-red-300 mt-1'>{smartCardPublicationError}</p>
+                  )}
+                </Field>
+              ) : form.destination_type === 'campaign' ? (
+                <Field label="Campaign destination">
+                  <select
+                    className="input-field"
+                    value={form.destination_id}
+                    onChange={event => updateField('destination_id', event.target.value)}
+                  >
+                    <option value="">Choose a campaign</option>
+                    {campaigns.map(campaign => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.title}{campaign.status === 'scheduled' ? ' (scheduled)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                    Only campaigns with an enabled QR Landing output appear here. Scans are attributed to the Campaign Engine.
+                  </p>
+                  {selectedCampaign?.status === 'scheduled' && selectedCampaign.start_date && (
+                    <p className="text-[11px] text-amber-300 mt-1">
+                      This QR becomes available when the campaign starts on {formatDateTime(selectedCampaign.start_date)}.
+                    </p>
+                  )}
+                  {campaignPublicationError && (
+                    <p className="text-[11px] text-red-300 mt-1">{campaignPublicationError}</p>
+                  )}
                 </Field>
               ) : (
                 <Field label="Destination URL">
@@ -702,7 +876,8 @@ export default function QRStudio() {
             </div>
 
             <div className="mt-5 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4">
-              <h3 className="text-sm font-semibold mb-3">Outer background</h3>
+              <h3 className="text-sm font-semibold">Outer background</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1 mb-3">Controls the area outside the circular QR badge.</p>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
                 {(['none', 'solid', 'gradient', 'image', 'pattern'] as const).map(type => (
                   <button
@@ -812,6 +987,120 @@ export default function QRStudio() {
               </div>
             </div>
 
+            <div className="mt-5 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4">
+              <h3 className="text-sm font-semibold">Rim Band Background</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1 mb-3">Controls the circular text ring around the QR.</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                {(['solid', 'gradient', 'image', 'pattern'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => updateField('rim_band_background_type', type)}
+                    className={`px-3 py-2 rounded-xl border text-xs font-medium capitalize transition-colors ${
+                      form.rim_band_background_type === type
+                        ? 'border-neon bg-neon/10 text-neon'
+                        : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <ColorField
+                  label="Rim overlay color"
+                  value={form.rim_band_overlay_color === 'transparent' ? '#ffffff' : form.rim_band_overlay_color}
+                  onChange={value => updateField('rim_band_overlay_color', value)}
+                />
+                <Field label="Rim image fit">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateField('rim_band_image_fit', 'cover')}
+                      className={`px-3 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                        form.rim_band_image_fit === 'cover'
+                          ? 'border-neon bg-neon/10 text-neon'
+                          : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white'
+                      }`}
+                    >
+                      Cover
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateField('rim_band_image_fit', 'contain')}
+                      className={`px-3 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                        form.rim_band_image_fit === 'contain'
+                          ? 'border-neon bg-neon/10 text-neon'
+                          : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-white'
+                      }`}
+                    >
+                      Contain
+                    </button>
+                  </div>
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <Field label="Upload rim image">
+                  <div className="flex gap-2">
+                    <label className="btn-secondary px-4 py-3 text-sm cursor-pointer flex-1 justify-center">
+                      <Upload className="w-4 h-4" /> Upload rim image
+                      <input
+                        type="file"
+                        accept="image/*,.svg"
+                        className="hidden"
+                        onChange={event => handleRimBandImageUpload(event.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    {form.rim_band_image_data_url && (
+                      <button
+                        type="button"
+                        onClick={() => updateField('rim_band_image_data_url', '')}
+                        className="btn-secondary px-4"
+                        aria-label="Remove rim image"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </Field>
+                <Field label={`Rim overlay opacity ${Math.round(form.rim_band_overlay_opacity * 100)}%`}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={form.rim_band_overlay_opacity}
+                    onChange={event => updateField('rim_band_overlay_opacity', Number(event.target.value))}
+                    className="w-full accent-lime-400"
+                  />
+                </Field>
+              </div>
+
+              <Field label={`Rim image opacity ${Math.round(form.rim_band_image_opacity * 100)}%`} className="mt-4">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={form.rim_band_image_opacity}
+                  onChange={event => updateField('rim_band_image_opacity', Number(event.target.value))}
+                  className="w-full accent-lime-400"
+                />
+              </Field>
+
+              <Toggle
+                label="No rim overlay"
+                checked={form.rim_band_overlay_color === 'transparent' || form.rim_band_overlay_opacity <= 0}
+                onChange={checked => {
+                  updateField('rim_band_overlay_color', checked ? 'transparent' : '#ffffff');
+                  updateField('rim_band_overlay_opacity', checked ? 0 : 0.15);
+                }}
+              />
+            </div>
+
             <div className="flex flex-wrap gap-3 mt-5">
               <Toggle
                 label="Show center logo"
@@ -881,6 +1170,12 @@ export default function QRStudio() {
                 outerBackgroundImageOpacity={form.outer_background_image_opacity}
                 outerBackgroundImageFit={form.outer_background_image_fit}
                 outerBackgroundOverlayColor={form.outer_background_overlay_color}
+                rimBandBackgroundType={form.rim_band_background_type}
+                rimBandImageDataUrl={form.rim_band_image_data_url}
+                rimBandImageOpacity={form.rim_band_image_opacity}
+                rimBandImageFit={form.rim_band_image_fit}
+                rimBandOverlayColor={form.rim_band_overlay_color}
+                rimBandOverlayOpacity={form.rim_band_overlay_opacity}
                 ornamentStyle={form.ornament_style}
                 ornamentMainColor={form.ornament_main_color}
                 ornamentAccentColor={form.ornament_accent_color}

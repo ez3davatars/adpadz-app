@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">Fictional modern outdoor living project</title>
+  <desc id="description">A stylized premium patio, pergola, garden, and evening lights created for the Adpadz product demonstration.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#24372f"/><stop offset=".55" stop-color="#586b58"/><stop offset="1" stop-color="#d7b47a"/></linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#223124"/><stop offset="1" stop-color="#111914"/></linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c7c1af"/><stop offset="1" stop-color="#77776d"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#fff3b0" stop-opacity=".95"/><stop offset="1" stop-color="#ffd46a" stop-opacity="0"/></radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="shadow"><feDropShadow dx="0" dy="16" stdDeviation="18" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1260" cy="210" r="170" fill="url(#glow)" filter="url(#blur)"/>
+  <path d="M0 490C180 430 310 470 470 438c205-41 352-11 510 35 187 54 371-23 620-72v499H0Z" fill="url(#ground)"/>
+  <g opacity=".42" fill="#142019"><path d="M40 510 90 300l55 210Zm92 0 94-283 51 283Zm1170-30 62-278 68 278Zm95 0 72-220 61 220Z"/></g>
+  <path d="m215 610 975-62 305 352H58Z" fill="url(#stone)" filter="url(#shadow)"/>
+  <g opacity=".22" stroke="#252825" stroke-width="5"><path d="m140 730 1130-83M310 900l-26-310M620 900l-18-330M950 900l-6-345M1280 900l22-330"/></g>
+  <g filter="url(#shadow)">
+    <path d="M370 565V205h38v358Zm704-56V205h38v302Z" fill="#171916"/>
+    <path d="M330 180h825v47H330Z" fill="#20221f"/>
+    <path d="m365 224 74 290h24l-56-290Zm165 0 35 278h23l-16-278Zm168 0-6 274h24l25-274Zm170 0-45 274h24l65-274Zm162 0-81 286h24l101-286Z" fill="#2d302c" opacity=".9"/>
+    <path d="M340 190h807" stroke="#b6ff00" stroke-opacity=".35" stroke-width="4"/>
+  </g>
+  <g fill="#ffe7a1">
+    <circle cx="410" cy="244" r="8"/><circle cx="515" cy="235" r="8"/><circle cx="620" cy="230" r="8"/><circle cx="725" cy="226" r="8"/><circle cx="830" cy="224" r="8"/><circle cx="935" cy="226" r="8"/><circle cx="1040" cy="235" r="8"/>
+  </g>
+  <g filter="url(#shadow)">
+    <path d="M490 645h500l78 155H412Z" fill="#202521"/>
+    <path d="M515 661h451l39 74H477Z" fill="#4e6757"/>
+    <rect x="534" y="575" width="184" height="105" rx="34" fill="#f0eadb"/><rect x="762" y="575" width="184" height="105" rx="34" fill="#f0eadb"/>
+    <rect x="558" y="596" width="136" height="58" rx="22" fill="#6e8975"/><rect x="786" y="596" width="136" height="58" rx="22" fill="#6e8975"/>
+    <ellipse cx="740" cy="714" rx="116" ry="39" fill="#2d332e"/><rect x="724" y="700" width="32" height="83" rx="14" fill="#232723"/>
+  </g>
+  <g fill="#769b5d"><circle cx="190" cy="590" r="76"/><circle cx="1320" cy="555" r="96"/><circle cx="1440" cy="595" r="64"/></g>
+  <g fill="#9fc26e"><circle cx="152" cy="552" r="28"/><circle cx="230" cy="548" r="36"/><circle cx="1278" cy="510" r="38"/><circle cx="1370" cy="500" r="42"/><circle cx="1455" cy="555" r="30"/></g>
+  <g><circle cx="1160" cy="664" r="80" fill="#121815"/><circle cx="1160" cy="664" r="55" fill="#d67638"/><circle cx="1160" cy="664" r="28" fill="#ffcc6d"/></g>
+  <rect width="1600" height="900" fill="none" stroke="#b6ff00" stroke-opacity=".18" stroke-width="12"/>
+</svg>

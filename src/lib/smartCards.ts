@@ -143,9 +143,14 @@ export type BusinessCardBookingServiceRecord = {
   id: string;
   card_id: string;
   owner_id: string;
+  service_id?: string | null;
   name: string;
   description: string | null;
   duration_minutes: number | null;
+  price: number | string | null;
+  currency: string | null;
+  booking_url: string | null;
+  service_is_active: boolean;
   is_active: boolean;
   sort_order: number;
   created_at?: string;
@@ -185,11 +190,32 @@ export type BusinessCardFormGalleryItem = {
 
 export type BusinessCardFormBookingService = {
   id: string;
+  service_id?: string | null;
   name: string;
   description: string;
   duration_minutes: string;
+  price: string;
+  currency: string;
+  booking_url: string;
+  service_is_active: boolean;
   sort_order: number;
   is_active: boolean;
+};
+
+export type BusinessServiceRecord = {
+  id: string;
+  business_id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  duration_minutes: number | null;
+  price: number | string | null;
+  currency: string | null;
+  booking_url: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type BusinessCardFormState = {

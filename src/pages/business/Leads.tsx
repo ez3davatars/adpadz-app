@@ -397,10 +397,10 @@ export default function BizLeads() {
             return (
               <div
                 key={lead.id}
-                onClick={() => setActiveLeadId(lead.id)}
-                className={`card-surface cursor-pointer p-4 transition-all hover:border-[var(--border-neon)] ${selected ? 'border-[var(--border-neon)]' : ''}`}
+                className={`card-surface group relative p-4 transition-all hover:border-[var(--border-neon)] ${selected ? 'border-[var(--border-neon)]' : ''}`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <button type="button" onClick={() => setActiveLeadId(lead.id)} aria-label={`Open details for ${lead.name}`} className="absolute inset-0 z-0 cursor-pointer rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/50" />
+                <div className="pointer-events-none relative z-10 flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <button
                       type="button"
@@ -408,7 +408,7 @@ export default function BizLeads() {
                         event.stopPropagation();
                         toggleSelected(lead.id);
                       }}
-                      className="mt-0.5 text-[var(--text-muted)] transition hover:text-neon"
+                      className="pointer-events-auto relative z-20 mt-0.5 text-[var(--text-muted)] transition hover:text-neon"
                       aria-label={selected ? `Deselect ${lead.name}` : `Select ${lead.name}`}
                     >
                       {selected ? <CheckSquare className="h-4.5 w-4.5 text-neon" /> : <Square className="h-4.5 w-4.5" />}
@@ -451,7 +451,7 @@ export default function BizLeads() {
                   </div>
                   <LeadBadge status={lead.status} />
                 </div>
-                <div className="mt-2 pl-16 text-[10px] text-[var(--text-muted)]">
+                <div className="pointer-events-none relative z-10 mt-2 pl-16 text-[10px] text-[var(--text-muted)]">
                   {new Date(lead.created_at).toLocaleDateString()} at {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -499,6 +499,47 @@ function LeadDetailDrawer({
   const [noteState, setNoteState] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
   const [markingContacted, setMarkingContacted] = useState(false);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
+    function handleDialogKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [lead.id]);
 
   useEffect(() => {
     setNotesDraft(getLeadNotes(lead.metadata));
@@ -549,16 +590,16 @@ function LeadDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/55 backdrop-blur-sm">
-      <button type="button" onClick={onClose} className="flex-1" aria-label="Close lead details" />
-      <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-[var(--border-default)] bg-[var(--bg-base)] p-6 shadow-2xl">
-        <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-xl border border-[var(--border-subtle)] p-2 text-[var(--text-muted)] transition hover:border-[var(--border-neon)] hover:text-[var(--text-primary)]">
-          <X className="h-4 w-4" />
+      <div onClick={onClose} className="flex-1" aria-hidden="true" />
+      <aside ref={drawerRef} role="dialog" aria-modal="true" aria-labelledby="lead-detail-title" aria-describedby="lead-detail-source" className="relative h-full w-full max-w-xl overflow-y-auto border-l border-[var(--border-default)] bg-[var(--bg-base)] p-6 shadow-2xl">
+        <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close lead details" className="absolute right-4 top-4 rounded-xl border border-[var(--border-subtle)] p-2 text-[var(--text-muted)] transition hover:border-[var(--border-neon)] hover:text-[var(--text-primary)]">
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
 
         <div className="pr-12">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neon">Lead detail</p>
-          <h2 className="mt-2 text-2xl font-black">{lead.name}</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">{leadSource}</p>
+          <h2 id="lead-detail-title" className="mt-2 text-2xl font-black">{lead.name}</h2>
+          <p id="lead-detail-source" className="mt-1 text-sm text-[var(--text-muted)]">{leadSource}</p>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
@@ -616,7 +657,7 @@ function LeadDetailDrawer({
         <section className="card-surface mt-5 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold">Notes</h3>
+              <h3 id="lead-notes-label" className="text-sm font-semibold">Notes</h3>
               <p className="mt-1 text-xs text-[var(--text-muted)]">Keep CRM handoff notes, next steps, and context here.</p>
             </div>
             <button
@@ -630,6 +671,7 @@ function LeadDetailDrawer({
             </button>
           </div>
           <textarea
+            aria-labelledby="lead-notes-label"
             value={notesDraft}
             onChange={event => setNotesDraft(event.target.value)}
             rows={6}
@@ -637,7 +679,7 @@ function LeadDetailDrawer({
             className="mt-3 w-full rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-neon)]"
           />
           {noteState && (
-            <div className={`mt-3 rounded-2xl border px-3 py-2 text-xs ${noteState.type === 'success' ? 'border-neon/30 bg-neon/10 text-neon' : 'border-red-400/30 bg-red-400/10 text-red-300'}`}>
+            <div role={noteState.type === 'error' ? 'alert' : 'status'} className={`mt-3 rounded-2xl border px-3 py-2 text-xs ${noteState.type === 'success' ? 'border-neon/30 bg-neon/10 text-neon' : 'border-red-400/30 bg-red-400/10 text-red-300'}`}>
               {noteState.message}
             </div>
           )}
@@ -645,7 +687,7 @@ function LeadDetailDrawer({
 
         <section className="card-surface mt-5 p-4">
           <h3 className="text-sm font-semibold">Status</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div role="group" aria-label="Lead status" className="mt-3 flex flex-wrap gap-2">
             {LEAD_STATUS_OPTIONS.map(option => (
               <button key={option.value} type="button" onClick={() => onStatusChange(option.value)} disabled={updating} className={`rounded-full px-3 py-2 text-xs font-semibold transition ${lead.status === option.value ? 'bg-neon text-black' : 'border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-neon)] hover:text-[var(--text-primary)]'}`}>
                 {option.label}

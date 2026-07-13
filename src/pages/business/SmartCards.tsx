@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity,
@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { isUuid } from '../../lib/ids';
 import { getCampaignFormatLabel, getCampaignSection, getCampaignTitle, normalizeCampaignOutput, SMART_CARD_CAMPAIGN_SECTIONS, type CampaignOutputRecord, type SmartCardCampaign } from '../../lib/ads';
 import { SmartCardShell } from '../../components/smart-cards/SmartCardShell';
 import {
@@ -32,7 +33,7 @@ import {
   type SmartCardImageType,
   type UploadProgress,
 } from '../../lib/cloudflareImages';
-import { buildShortUrl, createSlugFromTitle, formatDateTime, normalizeSlug, validateHttpUrl } from '../../lib/qr/qrUtils';
+import { buildShortUrl, formatDateTime, normalizeSlug, validateHttpUrl } from '../../lib/qr/qrUtils';
 import {
   buildSmartCardUrl,
   calculateProfileCompletion,
@@ -64,6 +65,7 @@ import {
   type BusinessCardLinkRecord,
   type BusinessCardOfferRecord,
   type BusinessCardRecord,
+  type BusinessServiceRecord,
   type ImageDisplayPreferences,
 } from '../../lib/smartCards';
 type ConnectedQr = { id: string; slug: string; scan_count: number; updated_at: string | null };
@@ -83,6 +85,7 @@ type MarketingAssetDraft = {
   sort_order: number;
   is_active: boolean;
 };
+const EDITABLE_MARKETING_ASSET_TYPES: MarketingAssetDraft['asset_type'][] = ['video', 'brochure', 'menu', 'document', 'virtual_tour'];
 type BeforeAfterDraft = {
   id: string;
   title: string;
@@ -108,6 +111,25 @@ type TestimonialDraft = {
 
 type BookingServiceDraft = BusinessCardFormBookingService;
 
+function isEditableMarketingAssetType(value: BusinessMarketingAssetRecord['asset_type']): value is MarketingAssetDraft['asset_type'] {
+  return EDITABLE_MARKETING_ASSET_TYPES.includes(value as MarketingAssetDraft['asset_type']);
+}
+
+function toMarketingAssetDraft(asset: BusinessMarketingAssetRecord): MarketingAssetDraft {
+  return {
+    id: asset.id,
+    asset_type: asset.asset_type as MarketingAssetDraft['asset_type'],
+    title: asset.title,
+    description: asset.description ?? '',
+    file_url: asset.file_url ?? '',
+    external_url: asset.external_url ?? '',
+    thumbnail_url: asset.thumbnail_url ?? '',
+    provider: asset.provider ?? '',
+    sort_order: asset.sort_order,
+    is_active: asset.is_active,
+  };
+}
+
 export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 'edit' }) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -117,6 +139,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
   const [connectedQr, setConnectedQr] = useState<ConnectedQr | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsSummary>(EMPTY_ANALYTICS);
   const [loading, setLoading] = useState(true);
+  const [builderLoadFailed, setBuilderLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +147,13 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
   const [uploadErrors, setUploadErrors] = useState<Record<string, string | null>>({});
   const [activeMediaTab, setActiveMediaTab] = useState<MediaTab>('images');
   const [marketingAssets, setMarketingAssets] = useState<MarketingAssetDraft[]>([]);
+  const [preservedMarketingAssetIds, setPreservedMarketingAssetIds] = useState<string[]>([]);
   const [beforeAfterItems, setBeforeAfterItems] = useState<BeforeAfterDraft[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialDraft[]>([]);
   const [bookingServices, setBookingServices] = useState<BookingServiceDraft[]>([]);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [serviceLibrary, setServiceLibrary] = useState<BusinessServiceRecord[]>([]);
+  const [selectedLibraryServiceId, setSelectedLibraryServiceId] = useState('');
   const [recentLeads, setRecentLeads] = useState<BusinessCardLeadRecord[]>([]);
   const [smartCardCampaigns, setSmartCardCampaigns] = useState<SmartCardCampaign[]>([]);
 
@@ -138,16 +165,15 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     hasBeforeAfter: beforeAfterItems.some(item => item.is_active && item.before_image_url.trim() && item.after_image_url.trim()),
     hasVirtualTour: marketingAssets.some(asset => asset.is_active && asset.asset_type === 'virtual_tour' && (asset.file_url.trim() || asset.external_url.trim())),
   }), [beforeAfterItems, form, marketingAssets, testimonials]);
+  const availableLibraryServices = useMemo(
+    () => serviceLibrary.filter(service => (
+      service.is_active
+      && !bookingServices.some(placement => placement.service_id === service.id)
+    )),
+    [bookingServices, serviceLibrary],
+  );
 
-  useEffect(() => {
-    if (isBuilder) {
-      void loadBuilder();
-    } else {
-      void loadCards();
-    }
-  }, [id, isBuilder]);
-
-  async function loadCards() {
+  const loadCards = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -172,23 +198,94 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     }
 
     setLoading(false);
-  }
+  }, []);
 
-  async function loadBuilder() {
+  const loadBuilder = useCallback(async () => {
     setLoading(true);
+    setBuilderLoadFailed(false);
     setError(null);
     setMessage(null);
+    setSelectedCard(null);
     setConnectedQr(null);
     setAnalytics(EMPTY_ANALYTICS);
+    setMarketingAssets([]);
+    setPreservedMarketingAssetIds([]);
+    setBeforeAfterItems([]);
+    setTestimonials([]);
+    setBookingServices([]);
+    setRecentLeads([]);
+    setSmartCardCampaigns([]);
 
     if (mode === 'new') {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        setError(authError?.message ?? 'Sign in before building a Smart Card.');
+        setBuilderLoadFailed(true);
+        setLoading(false);
+        return;
+      }
+
+      const { data: businessData, error: businessError } = await supabase
+        .from('businesses')
+        .select('id,name,slug,description,phone,email,website,address,active')
+        .eq('owner_user_id', authData.user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (businessError) {
+        setError(businessError.message);
+        setBuilderLoadFailed(true);
+        setLoading(false);
+        return;
+      }
+
+      if (!businessData) {
+        setError('Save Business Settings before creating a Business Profile.');
+        setBuilderLoadFailed(true);
+        setLoading(false);
+        return;
+      }
+
+      if (!businessData.active) {
+        setError('Reactivate the Business Hub before creating a Business Profile.');
+        setBuilderLoadFailed(true);
+        setLoading(false);
+        return;
+      }
+
+      const nextBusinessId = businessData.id;
+      let library: BusinessServiceRecord[] = [];
+      if (nextBusinessId) {
+        try {
+          library = await fetchActiveBusinessServices(nextBusinessId);
+        } catch (libraryError) {
+          setError(libraryError instanceof Error ? libraryError.message : 'Could not load the Business Hub Service Library.');
+          setBuilderLoadFailed(true);
+          setLoading(false);
+          return;
+        }
+      }
       setSelectedCard(null);
       setBookingServices([]);
+      setBusinessId(nextBusinessId);
+      setServiceLibrary(library);
+      setSelectedLibraryServiceId('');
       setSmartCardCampaigns([]);
       setForm({
         ...DEFAULT_SMART_CARD_FORM,
-        slug: createSmartCardSlug(DEFAULT_SMART_CARD_FORM.business_name),
+        business_name: businessData.name,
+        slug: createSmartCardSlug(businessData.name),
+        tagline: '',
+        phone: businessData.phone ?? '',
+        email: businessData.email ?? '',
+        website: businessData.website ?? '',
+        address: businessData.address ?? '',
+        google_maps_url: businessData.address ? `https://maps.google.com/?q=${encodeURIComponent(businessData.address)}` : '',
+        bio: businessData.description ?? '',
         is_published: false,
+        links: [],
+        offers: [],
+        gallery: [],
       });
       setLoading(false);
       return;
@@ -196,6 +293,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
 
     if (!id) {
       setError('Missing smart card ID.');
+      setBuilderLoadFailed(true);
       setLoading(false);
       return;
     }
@@ -208,12 +306,28 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
 
     if (cardError || !cardData) {
       setError(cardError?.message ?? 'Smart card not found.');
+      setBuilderLoadFailed(true);
       setLoading(false);
       return;
     }
 
     const card = cardData as BusinessCardRecord;
-    const [{ data: linkData }, { data: offerData }, { data: galleryData }, { data: qrData }, { data: eventData }, { data: assetData }, { data: beforeAfterData }, { data: testimonialData }, { data: leadData }, { data: bookingServiceData }, { data: attachedAdData }] = await Promise.all([
+    let library: BusinessServiceRecord[] = [];
+    if (card.business_id) {
+      try {
+        library = await fetchActiveBusinessServices(card.business_id);
+      } catch (libraryError) {
+        setError(libraryError instanceof Error ? libraryError.message : 'Could not load the Business Hub Service Library.');
+        setBuilderLoadFailed(true);
+        setLoading(false);
+        return;
+      }
+    }
+
+    setBusinessId(card.business_id);
+    setServiceLibrary(library);
+    setSelectedLibraryServiceId('');
+    const [linkResult, offerResult, galleryResult, qrResult, eventResult, assetResult, beforeAfterResult, testimonialResult, leadResult, bookingServiceResult, attachedAdResult] = await Promise.all([
       supabase
         .from('business_card_links')
         .select('*')
@@ -234,6 +348,8 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         .select('id,slug,scan_count,updated_at')
         .eq('destination_type', 'business_card')
         .eq('destination_id', card.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle(),
       supabase
         .from('business_card_events')
@@ -274,6 +390,42 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         .order('created_at', { ascending: false }),
     ]);
 
+    const failedChildLoad = [
+      ['profile links', linkResult.error],
+      ['offers', offerResult.error],
+      ['gallery', galleryResult.error],
+      ['connected QR', qrResult.error],
+      ['analytics', eventResult.error],
+      ['marketing assets', assetResult.error],
+      ['before/after items', beforeAfterResult.error],
+      ['testimonials', testimonialResult.error],
+      ['recent leads', leadResult.error],
+      ['booking services', bookingServiceResult.error],
+      ['campaign outputs', attachedAdResult.error],
+    ].find((entry): entry is [string, NonNullable<typeof linkResult.error>] => Boolean(entry[1]));
+
+    if (failedChildLoad) {
+      if (import.meta.env.DEV) {
+        console.error(`[SmartCards] failed to load ${failedChildLoad[0]}`, failedChildLoad[1]);
+      }
+      setError(`Could not safely load ${failedChildLoad[0]}. Reload the builder before making changes.`);
+      setBuilderLoadFailed(true);
+      setLoading(false);
+      return;
+    }
+
+    const linkData = linkResult.data;
+    const offerData = offerResult.data;
+    const galleryData = galleryResult.data;
+    const qrData = qrResult.data;
+    const eventData = eventResult.data;
+    const assetData = assetResult.data;
+    const beforeAfterData = beforeAfterResult.data;
+    const testimonialData = testimonialResult.data;
+    const leadData = leadResult.data;
+    const bookingServiceData = bookingServiceResult.data;
+    const attachedAdData = attachedAdResult.data;
+
     const summary = ((eventData ?? []) as Array<{ event_type: string }>).reduce<AnalyticsSummary>((acc, event) => {
       if (event.event_type === 'card_view') acc.views += 1;
       if (event.event_type === 'qr_scan') acc.qrScans += 1;
@@ -283,22 +435,17 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       if (event.event_type === 'save_contact') acc.saveContacts += 1;
       return acc;
     }, { ...EMPTY_ANALYTICS });
+    const loadedMarketingAssets = (assetData ?? []) as BusinessMarketingAssetRecord[];
 
     setSelectedCard(card);
     setConnectedQr((qrData as ConnectedQr | null) ?? null);
     setAnalytics(summary);
-    setMarketingAssets(((assetData ?? []) as BusinessMarketingAssetRecord[]).map(asset => ({
-      id: asset.id,
-      asset_type: asset.asset_type as MarketingAssetDraft['asset_type'],
-      title: asset.title,
-      description: asset.description ?? '',
-      file_url: asset.file_url ?? '',
-      external_url: asset.external_url ?? '',
-      thumbnail_url: asset.thumbnail_url ?? '',
-      provider: asset.provider ?? '',
-      sort_order: asset.sort_order,
-      is_active: asset.is_active,
-    })).filter(asset => ['video', 'brochure', 'menu', 'document', 'virtual_tour'].includes(asset.asset_type)));
+    setMarketingAssets(loadedMarketingAssets
+      .filter(asset => isEditableMarketingAssetType(asset.asset_type))
+      .map(toMarketingAssetDraft));
+    setPreservedMarketingAssetIds(loadedMarketingAssets
+      .filter(asset => !isEditableMarketingAssetType(asset.asset_type))
+      .map(asset => asset.id));
     setBeforeAfterItems(((beforeAfterData ?? []) as BusinessCardBeforeAfterRecord[]).map(item => ({
       id: item.id,
       title: item.title,
@@ -327,9 +474,14 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       .filter((output): output is SmartCardCampaign => Boolean(output))); 
     setBookingServices(((bookingServiceData ?? []) as BusinessCardBookingServiceRecord[]).map(service => ({
       id: service.id,
+      service_id: service.service_id ?? null,
       name: service.name,
       description: service.description ?? '',
       duration_minutes: service.duration_minutes ? String(service.duration_minutes) : '',
+      price: service.price === null ? '' : String(service.price),
+      currency: service.currency ?? '',
+      booking_url: service.booking_url ?? '',
+      service_is_active: service.service_is_active ?? true,
       sort_order: service.sort_order,
       is_active: service.is_active,
     })));
@@ -340,7 +492,15 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       (galleryData ?? []) as BusinessCardGalleryRecord[],
     ));
     setLoading(false);
-  }
+  }, [id, mode]);
+
+  useEffect(() => {
+    if (isBuilder) {
+      void loadBuilder();
+    } else {
+      void loadCards();
+    }
+  }, [isBuilder, loadBuilder, loadCards]);
 
   function updateField<K extends keyof BusinessCardFormState>(key: K, value: BusinessCardFormState[K]) {
     setForm(current => ({ ...current, [key]: value }));
@@ -378,14 +538,6 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     setForm(current => ({ ...current, is_published: updatedCard.is_published }));
     setMessage(updatedCard.is_published ? 'Smart Card published.' : 'Smart Card unpublished.');
     setSaving(false);
-  }
-
-  function updateName(name: string) {
-    setForm(current => ({
-      ...current,
-      business_name: name,
-      slug: selectedCard ? current.slug : createSlugFromTitle(name),
-    }));
   }
 
   function setTheme(themeValue: BusinessCardFormState['theme']) {
@@ -445,6 +597,39 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     setBookingServices(current => current.map((service, serviceIndex) => (serviceIndex === index ? { ...service, [key]: value } : service)));
   }
 
+  function moveBookingService(index: number, direction: -1 | 1) {
+    setBookingServices(current => {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return next.map((service, sortOrder) => ({ ...service, sort_order: sortOrder }));
+    });
+  }
+
+  function addSelectedLibraryService() {
+    const libraryService = availableLibraryServices.find(service => service.id === selectedLibraryServiceId);
+    if (!libraryService) return;
+
+    setBookingServices(current => [
+      ...current,
+      {
+        id: `draft-${Date.now()}-${libraryService.id}`,
+        service_id: libraryService.id,
+        name: libraryService.name,
+        description: libraryService.description ?? '',
+        duration_minutes: libraryService.duration_minutes ? String(libraryService.duration_minutes) : '',
+        price: libraryService.price === null ? '' : String(libraryService.price),
+        currency: libraryService.currency ?? '',
+        booking_url: libraryService.booking_url ?? '',
+        service_is_active: libraryService.is_active,
+        sort_order: current.length,
+        is_active: true,
+      },
+    ]);
+    setSelectedLibraryServiceId('');
+  }
+
   function getImageCount(nextForm = form): number {
     const logoCount = nextForm.logo_url.trim() ? 1 : 0;
     const coverCount = nextForm.cover_image_url.trim() ? 1 : 0;
@@ -457,6 +642,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     if (!slug) return null;
 
     return {
+      business_id: businessId,
       business_name: form.business_name.trim() || 'Untitled business',
       slug,
       tagline: form.tagline.trim() || null,
@@ -618,6 +804,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     setSaving(true);
     setError(null);
     setMessage(null);
+    let persistedCard: BusinessCardRecord | null = null;
 
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -637,6 +824,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         ['Cover image URL', form.cover_image_url],
         ['Featured video URL', form.featured_video_url],
         ['Booking URL', form.booking_url],
+        ...bookingServices.map((service, index) => ['Service ' + (index + 1) + ' booking URL', service.booking_url] as [string, string]),
         ...form.gallery.map((item, index) => [`Gallery image ${index + 1}`, item.image_url] as [string, string]),
         ...marketingAssets.flatMap((asset, index) => [
           [`Media asset ${index + 1} file URL`, asset.file_url] as [string, string],
@@ -673,16 +861,6 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         throw new Error('Add a public slug before saving.');
       }
 
-      const cardPayload = { ...payload, owner_user_id: authData.user.id };
-      const cardResult = selectedCard
-        ? await supabase.from('business_cards').update(cardPayload).eq('id', selectedCard.id).select().single()
-        : await supabase.from('business_cards').insert(cardPayload).select().single();
-
-      if (cardResult.error || !cardResult.data) {
-        throw new Error(cardResult.error?.message ?? 'Could not save smart card.');
-      }
-
-      const savedCard = cardResult.data as BusinessCardRecord;
       const activeLinks = form.links
         .map((link, index) => ({ ...link, sort_order: index }))
         .filter(link => link.label.trim() && link.url.trim());
@@ -696,6 +874,12 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       const activeAssets = marketingAssets
         .map((asset, index) => ({ ...asset, sort_order: index }))
         .filter(asset => asset.title.trim() && (asset.file_url.trim() || asset.external_url.trim()));
+      const retainedMarketingAssetIds = [
+        ...preservedMarketingAssetIds,
+        ...marketingAssets
+          .filter(asset => isUuid(asset.id) && !(asset.title.trim() && (asset.file_url.trim() || asset.external_url.trim())))
+          .map(asset => asset.id),
+      ].filter((assetId, index, allIds) => allIds.indexOf(assetId) === index);
       const activeBeforeAfter = beforeAfterItems
         .map((item, index) => ({ ...item, sort_order: index }))
         .filter(item => item.title.trim() && item.before_image_url.trim() && item.after_image_url.trim());
@@ -703,31 +887,21 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         .map((item, index) => ({ ...item, sort_order: index }))
         .filter(item => item.customer_name.trim() && item.quote.trim());
 
-      const failOnError = (error: { message: string } | null | undefined, label: string) => {
-        if (error) throw new Error(`${label}: ${error.message}`);
-      };
-
-      const { error: linksDeleteError } = await supabase.from('business_card_links').delete().eq('business_card_id', savedCard.id);
-      failOnError(linksDeleteError, 'Could not replace smart card links');
-      if (activeLinks.length > 0) {
-        const { error: linkError } = await supabase.from('business_card_links').insert(
-          activeLinks.map(link => ({
-            business_card_id: savedCard.id,
+      const { data: saveBundleData, error: saveBundleError } = await supabase.rpc('save_smart_card_bundle', {
+        p_bundle: {
+          card: {
+            ...payload,
+            ...(selectedCard ? { id: selectedCard.id } : {}),
+          },
+          links: activeLinks.map(link => ({
+            id: link.id,
             label: link.label.trim(),
             url: link.url.trim(),
             sort_order: link.sort_order,
             is_active: link.is_active,
           })),
-        );
-        failOnError(linkError, 'Could not save smart card links');
-      }
-
-      const { error: offersDeleteError } = await supabase.from('business_card_offers').delete().eq('business_card_id', savedCard.id);
-      failOnError(offersDeleteError, 'Could not replace smart card offers');
-      if (activeOffers.length > 0) {
-        const { error: offerError } = await supabase.from('business_card_offers').insert(
-          activeOffers.map(offer => ({
-            business_card_id: savedCard.id,
+          offers: activeOffers.map(offer => ({
+            id: offer.id,
             title: offer.title.trim(),
             description: offer.description.trim() || null,
             claim_url: normalizeOptionalUrl(offer.claim_url),
@@ -735,16 +909,8 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             ends_at: offer.ends_at || null,
             is_active: offer.is_active,
           })),
-        );
-        failOnError(offerError, 'Could not save smart card offers');
-      }
-
-      const { error: galleryDeleteError } = await supabase.from('business_card_gallery_items').delete().eq('card_id', savedCard.id);
-      failOnError(galleryDeleteError, 'Could not replace smart card gallery');
-      if (activeGallery.length > 0) {
-        const { error: galleryError } = await supabase.from('business_card_gallery_items').insert(
-          activeGallery.map(item => ({
-            card_id: savedCard.id,
+          gallery: activeGallery.map(item => ({
+            id: item.id,
             image_url: item.image_url.trim(),
             cloudflare_image_id: item.cloudflare_image_id || null,
             fit: normalizeImageFit(item.fit),
@@ -755,55 +921,32 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             sort_order: item.sort_order,
             is_active: item.is_active,
           })),
-        );
-        failOnError(galleryError, 'Could not save smart card gallery');
-      }
-
-      const { error: bookingServicesDeleteError } = await supabase.from('business_card_booking_services').delete().eq('card_id', savedCard.id);
-      failOnError(bookingServicesDeleteError, 'Could not replace booking services');
-      if (activeBookingServices.length > 0) {
-        const { error: bookingServiceError } = await supabase.from('business_card_booking_services').insert(
-          activeBookingServices.map(service => ({
-            card_id: savedCard.id,
-            owner_id: authData.user.id,
+          booking_services: activeBookingServices.map(service => ({
+            id: service.id,
+            service_id: service.service_id ?? null,
             name: service.name.trim(),
             description: service.description.trim() || null,
             duration_minutes: service.duration_minutes.trim() ? Number(service.duration_minutes) : null,
             sort_order: service.sort_order,
             is_active: service.is_active,
           })),
-        );
-        failOnError(bookingServiceError, 'Could not save booking services');
-      }
-
-      const { error: assetsDeleteError } = await supabase.from('business_marketing_assets').delete().eq('smart_card_id', savedCard.id);
-      failOnError(assetsDeleteError, 'Could not replace marketing assets');
-      if (activeAssets.length > 0) {
-        const { error: assetError } = await supabase.from('business_marketing_assets').insert(
-          activeAssets.map(asset => ({
-            smart_card_id: savedCard.id,
-            owner_id: authData.user.id,
-            asset_type: asset.asset_type,
-            title: asset.title.trim(),
-            description: asset.description.trim() || null,
-            file_url: normalizeOptionalUrl(asset.file_url),
-            external_url: normalizeOptionalUrl(asset.external_url),
-            thumbnail_url: normalizeOptionalUrl(asset.thumbnail_url),
-            provider: asset.provider.trim() || null,
-            sort_order: asset.sort_order,
-            is_active: asset.is_active,
-          })),
-        );
-        failOnError(assetError, 'Could not save marketing assets');
-      }
-
-      const { error: beforeAfterDeleteError } = await supabase.from('business_card_before_after_items').delete().eq('card_id', savedCard.id);
-      failOnError(beforeAfterDeleteError, 'Could not replace before/after items');
-      if (activeBeforeAfter.length > 0) {
-        const { error: beforeAfterError } = await supabase.from('business_card_before_after_items').insert(
-          activeBeforeAfter.map(item => ({
-            card_id: savedCard.id,
-            owner_id: authData.user.id,
+          marketing_assets: [
+            ...activeAssets.map(asset => ({
+              id: asset.id,
+              asset_type: asset.asset_type,
+              title: asset.title.trim(),
+              description: asset.description.trim() || null,
+              file_url: normalizeOptionalUrl(asset.file_url),
+              external_url: normalizeOptionalUrl(asset.external_url),
+              thumbnail_url: normalizeOptionalUrl(asset.thumbnail_url),
+              provider: asset.provider.trim() || null,
+              sort_order: asset.sort_order,
+              is_active: asset.is_active,
+            })),
+            ...retainedMarketingAssetIds.map(assetId => ({ id: assetId })),
+          ],
+          before_after_items: activeBeforeAfter.map(item => ({
+            id: item.id,
             title: item.title.trim(),
             description: item.description.trim() || null,
             before_image_url: item.before_image_url.trim(),
@@ -813,17 +956,8 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             sort_order: item.sort_order,
             is_active: item.is_active,
           })),
-        );
-        failOnError(beforeAfterError, 'Could not save before/after items');
-      }
-
-      const { error: testimonialsDeleteError } = await supabase.from('business_card_testimonials').delete().eq('card_id', savedCard.id);
-      failOnError(testimonialsDeleteError, 'Could not replace testimonials');
-      if (activeTestimonials.length > 0) {
-        const { error: testimonialError } = await supabase.from('business_card_testimonials').insert(
-          activeTestimonials.map(item => ({
-            card_id: savedCard.id,
-            owner_id: authData.user.id,
+          testimonials: activeTestimonials.map(item => ({
+            id: item.id,
             customer_name: item.customer_name.trim(),
             rating: item.rating ? Number(item.rating) : null,
             quote: item.quote.trim(),
@@ -833,9 +967,33 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             sort_order: item.sort_order,
             is_active: item.is_active,
           })),
-        );
-        failOnError(testimonialError, 'Could not save testimonials');
+        },
+      });
+
+      if (saveBundleError) {
+        if (saveBundleError.code === '40001' || saveBundleError.code === '40P01') {
+          throw new Error('This profile changed in another request. Reload it, review the latest data, and save again.');
+        }
+        const transactionDetails = [saveBundleError.message, saveBundleError.details, saveBundleError.hint]
+          .filter((part): part is string => Boolean(part))
+          .join(' ');
+        throw new Error(transactionDetails || 'Could not save the Smart Card transaction.');
       }
+
+      const savedCard = (saveBundleData as { card?: BusinessCardRecord } | null)?.card;
+      if (!savedCard?.id) {
+        throw new Error('The Smart Card transaction completed without returning a saved card.');
+      }
+      persistedCard = savedCard;
+
+      // Keep the persisted identity even if the verification reload is interrupted;
+      // a retry must update this card instead of creating a duplicate.
+      setSelectedCard(savedCard);
+      setBusinessId(savedCard.business_id);
+
+      const failOnError = (error: { message: string } | null | undefined, label: string) => {
+        if (error) throw new Error(`${label}: ${error.message}`);
+      };
 
       const [
         freshCardResult,
@@ -854,7 +1012,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
         supabase.from('business_card_links').select('*').eq('business_card_id', savedCard.id).order('sort_order', { ascending: true }),
         supabase.from('business_card_offers').select('*').eq('business_card_id', savedCard.id).order('created_at', { ascending: false }),
         supabase.from('business_card_gallery_items').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
-        supabase.from('qr_links').select('id,slug,scan_count,updated_at').eq('destination_type', 'business_card').eq('destination_id', savedCard.id).maybeSingle(),
+        supabase.from('qr_links').select('id,slug,scan_count,updated_at').eq('destination_type', 'business_card').eq('destination_id', savedCard.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('business_card_events').select('event_type').eq('business_card_id', savedCard.id),
         supabase.from('business_marketing_assets').select('*').eq('smart_card_id', savedCard.id).order('sort_order', { ascending: true }),
         supabase.from('business_card_before_after_items').select('*').eq('card_id', savedCard.id).order('sort_order', { ascending: true }),
@@ -891,22 +1049,22 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       const freshBeforeAfter = (freshBeforeAfterResult.data ?? []) as BusinessCardBeforeAfterRecord[];
       const freshTestimonials = (freshTestimonialsResult.data ?? []) as BusinessCardTestimonialRecord[];
       const freshBookingServices = (freshBookingServicesResult.data ?? []) as BusinessCardBookingServiceRecord[];
+      const freshServiceLibrary = freshCard.business_id
+        ? await fetchActiveBusinessServices(freshCard.business_id)
+        : [];
 
       setSelectedCard(freshCard);
+      setBusinessId(freshCard.business_id);
+      setServiceLibrary(freshServiceLibrary);
+      setSelectedLibraryServiceId('');
       setConnectedQr((freshQrResult.data as ConnectedQr | null) ?? null);
       setAnalytics(summary);
-      setMarketingAssets(freshAssets.map(asset => ({
-        id: asset.id,
-        asset_type: asset.asset_type as MarketingAssetDraft['asset_type'],
-        title: asset.title,
-        description: asset.description ?? '',
-        file_url: asset.file_url ?? '',
-        external_url: asset.external_url ?? '',
-        thumbnail_url: asset.thumbnail_url ?? '',
-        provider: asset.provider ?? '',
-        sort_order: asset.sort_order,
-        is_active: asset.is_active,
-      })).filter(asset => ['video', 'brochure', 'menu', 'document', 'virtual_tour'].includes(asset.asset_type)));
+      setMarketingAssets(freshAssets
+        .filter(asset => isEditableMarketingAssetType(asset.asset_type))
+        .map(toMarketingAssetDraft));
+      setPreservedMarketingAssetIds(freshAssets
+        .filter(asset => !isEditableMarketingAssetType(asset.asset_type))
+        .map(asset => asset.id));
       setBeforeAfterItems(freshBeforeAfter.map(item => ({
         id: item.id,
         title: item.title,
@@ -932,9 +1090,14 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       setRecentLeads((freshLeadsResult.data ?? []) as BusinessCardLeadRecord[]);
       setBookingServices(freshBookingServices.map(service => ({
         id: service.id,
+        service_id: service.service_id ?? null,
         name: service.name,
         description: service.description ?? '',
         duration_minutes: service.duration_minutes ? String(service.duration_minutes) : '',
+        price: service.price === null ? '' : String(service.price),
+        currency: service.currency ?? '',
+        booking_url: service.booking_url ?? '',
+        service_is_active: service.service_is_active ?? true,
         sort_order: service.sort_order,
         is_active: service.is_active,
       })));
@@ -952,6 +1115,16 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     } catch (saveError) {
       if (import.meta.env.DEV) {
         console.error('[SmartCards] save failed', saveError);
+      }
+      if (persistedCard) {
+        setSelectedCard(persistedCard);
+        setBusinessId(persistedCard.business_id);
+        setBuilderLoadFailed(true);
+        setError('The profile was saved, but its latest data could not be verified. Reload the editor before making another change.');
+        if (mode === 'new') {
+          navigate(`/app/business/smart-cards/${persistedCard.id}/edit`, { replace: true });
+        }
+        return;
       }
       setError(saveError instanceof Error ? saveError.message : 'Could not save Smart Card.');
     } finally {
@@ -1036,12 +1209,20 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     setError(null);
     setMessage(null);
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('qr_links')
       .select('id,slug')
       .eq('destination_type', 'business_card')
       .eq('destination_id', selectedCard.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
+
+    if (existingError) {
+      setSaving(false);
+      setError('Could not safely check the existing QR connection. Try again.');
+      return;
+    }
 
     const qrSlug = normalizeSlug(`${selectedCard.slug}-card`);
     const payload = {
@@ -1050,6 +1231,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
       destination_url: publicUrl,
       destination_type: 'business_card',
       destination_id: selectedCard.id,
+      business_id: selectedCard.business_id,
       campaign_name: 'Smart Card',
       purpose: 'local business profile',
       source: 'smart card builder',
@@ -1080,6 +1262,178 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
 
     setConnectedQr(data as ConnectedQr);
     setMessage(`Connected to QR Studio: ${buildShortUrl(data.slug)}`);
+  }
+
+  function renderServicePicker() {
+    const selectedLibraryService = availableLibraryServices.find(service => service.id === selectedLibraryServiceId) ?? null;
+
+    return (
+      <>
+        {!businessId ? (
+          <div className='mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-xs text-amber-100'>
+            Save Business Settings before selecting reusable services.
+            <Link to='/app/business/settings' className='ml-2 font-black underline'>Open Settings</Link>
+          </div>
+        ) : (
+          <div className='mt-4 grid gap-2 sm:grid-cols-[1fr_auto]'>
+            <select
+              className='input-field'
+              value={selectedLibraryServiceId}
+              onChange={event => setSelectedLibraryServiceId(event.target.value)}
+              disabled={availableLibraryServices.length === 0}
+            >
+              <option value=''>
+                {availableLibraryServices.length > 0 ? 'Select an active Business Hub service' : 'All active library services are already placed'}
+              </option>
+              {availableLibraryServices.map(service => {
+                const duration = service.duration_minutes ? `${service.duration_minutes} min` : null;
+                const price = formatServicePrice(service.price === null ? '' : String(service.price), service.currency ?? '');
+                const detail = [duration, price].filter(Boolean).join(' · ');
+                return <option key={service.id} value={service.id}>{service.name}{detail ? ` — ${detail}` : ''}</option>;
+              })}
+            </select>
+            <button
+              type='button'
+              onClick={addSelectedLibraryService}
+              disabled={!selectedLibraryService}
+              className='btn-secondary px-4 disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              <Plus className='h-4 w-4' /> Add selected
+            </button>
+          </div>
+        )}
+
+        <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
+          <p className='text-[11px] text-[var(--text-muted)]'>
+            Need a new shared service? Create it in the Service Library, then select it here.
+          </p>
+          <button
+            type='button'
+            onClick={() => setBookingServices(current => [
+              ...current,
+              {
+                id: `draft-${Date.now()}`,
+                service_id: null,
+                name: '',
+                description: '',
+                duration_minutes: '',
+                price: '',
+                currency: '',
+                booking_url: '',
+                service_is_active: true,
+                sort_order: current.length,
+                is_active: true,
+              },
+            ])}
+            className='btn-ghost px-3 py-2 text-xs'
+          >
+            <Plus className='h-4 w-4' /> Add custom service
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  function renderPlacedService(service: BookingServiceDraft, index: number) {
+    const linked = Boolean(service.service_id);
+    const price = formatServicePrice(service.price, service.currency);
+
+    return (
+      <div key={service.id} className='rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4'>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='min-w-0 flex-1'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='rounded-full bg-neon/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-neon'>
+                {linked ? 'Shared service' : 'Custom / legacy'}
+              </span>
+              {linked && !service.service_is_active && (
+                <span className='rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-200'>
+                  Archived in library
+                </span>
+              )}
+            </div>
+
+            {linked ? (
+              <div className='mt-3'>
+                <p className='text-base font-black'>{service.name}</p>
+                <p className='mt-1 text-xs text-[var(--text-muted)]'>
+                  {[service.duration_minutes ? `${service.duration_minutes} min` : null, price].filter(Boolean).join(' · ') || 'No duration or price set'}
+                </p>
+                {service.description && <p className='mt-2 text-sm text-[var(--text-secondary)]'>{service.description}</p>}
+                {service.booking_url && <p className='mt-2 truncate text-xs text-[var(--text-muted)]'>Booking URL: {service.booking_url}</p>}
+                <p className='mt-2 text-[11px] text-[var(--text-muted)]'>Shared details are locked here and edited in the Service Library.</p>
+              </div>
+            ) : (
+              <div className='mt-3 space-y-3'>
+                <div className='grid grid-cols-1 gap-3 md:grid-cols-[1fr_140px]'>
+                  <input className='input-field' value={service.name} onChange={event => updateBookingService(index, 'name', event.target.value)} placeholder='Consultation, haircut, detailing package' />
+                  <input className='input-field' inputMode='numeric' value={service.duration_minutes} onChange={event => updateBookingService(index, 'duration_minutes', event.target.value.replace(/[^\d]/g, ''))} placeholder='60 min' />
+                </div>
+                <textarea className='input-field min-h-20 resize-y' value={service.description} onChange={event => updateBookingService(index, 'description', event.target.value)} placeholder='Optional service description' />
+                <p className='text-[11px] text-[var(--text-muted)]'>
+                  Hub-backed custom services are promoted to the shared library when this Smart Card is saved.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <button
+            type='button'
+            onClick={() => setBookingServices(current => current.filter((_, serviceIndex) => serviceIndex !== index))}
+            className='btn-secondary px-4'
+            aria-label={`Remove ${service.name || 'service'} from this Smart Card`}
+          >
+            <Trash2 className='h-4 w-4' />
+          </button>
+        </div>
+
+        <div className='mt-3 flex flex-col gap-3 border-t border-[var(--border-default)] pt-3 sm:flex-row sm:items-center sm:justify-between'>
+          <label className='flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]'>
+            <input type='checkbox' checked={service.is_active} onChange={event => updateBookingService(index, 'is_active', event.target.checked)} />
+            Active on this public Smart Card
+          </label>
+          <div className='flex items-center gap-2 text-xs text-[var(--text-muted)]'>
+            <span>Display order: {index + 1}</span>
+            <button type='button' className='btn-ghost px-2 py-1 text-xs' onClick={() => moveBookingService(index, -1)} disabled={index === 0} aria-label={`Move ${service.name || 'service'} up`}>↑</button>
+            <button type='button' className='btn-ghost px-2 py-1 text-xs' onClick={() => moveBookingService(index, 1)} disabled={index === bookingServices.length - 1} aria-label={`Move ${service.name || 'service'} down`}>↓</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderPlacedServices() {
+    if (bookingServices.length === 0) {
+      return (
+        <div className='mt-4 rounded-2xl border border-dashed border-[var(--border-default)] px-4 py-5 text-sm text-[var(--text-muted)]'>
+          No services are placed on this Smart Card yet.
+        </div>
+      );
+    }
+
+    return (
+      <div className='mt-4 space-y-3'>
+        {bookingServices.map((service, index) => renderPlacedService(service, index))}
+      </div>
+    );
+  }
+
+  function renderBookingServicesManager() {
+    return (
+      <div className='mt-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] p-4'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <p className='text-sm font-semibold'>Smart Card services</p>
+            <p className='mt-1 text-xs text-[var(--text-muted)]'>
+              Select shared services from the Business Hub. This card controls only placement, order, and public visibility.
+            </p>
+          </div>
+          <Link to='/app/business/services' className='btn-ghost shrink-0 px-3 py-2 text-xs'>Edit Service Library</Link>
+        </div>
+        {renderServicePicker()}
+        {renderPlacedServices()}
+      </div>
+    );
   }
 
   if (!isBuilder) {
@@ -1172,6 +1526,21 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
     );
   }
 
+  if (builderLoadFailed) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-3xl border border-red-400/30 bg-red-500/10 p-6">
+        <h1 className="text-xl font-black">Business Profile editor paused</h1>
+        <p role="alert" className="mt-2 text-sm text-red-100">{error ?? 'The complete profile could not be loaded safely.'}</p>
+        <p className="mt-2 text-xs text-[var(--text-muted)]">No changes can be saved until every profile section has loaded successfully.</p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button type="button" onClick={() => void loadBuilder()} className="btn-primary px-4 py-2.5 text-sm">Try again</button>
+          <Link to="/app/business/settings" className="btn-secondary px-4 py-2.5 text-sm">Business Settings</Link>
+          <Link to="/app/business/smart-cards" className="btn-secondary px-4 py-2.5 text-sm">Back to Business Profile</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1217,10 +1586,16 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
           <CampaignOutputsPanel campaigns={smartCardCampaigns} saving={saving} onUpdate={updateCampaignOutput} />
 
           <section className="card-surface p-5">
-            <h2 className="mb-4 text-sm font-semibold">Business profile</h2>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Business profile</h2>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Business identity is shared from the Business Hub; this editor controls profile presentation.</p>
+              </div>
+              <Link to="/app/business/settings" className="text-xs font-black text-neon hover:underline">Edit Business Hub</Link>
+            </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Business name">
-                <input className="input-field" value={form.business_name} onChange={event => updateName(event.target.value)} />
+              <Field label="Business name (Hub)">
+                <input className="input-field opacity-75" value={form.business_name} readOnly aria-readonly="true" />
               </Field>
               <Field label="Public slug">
                 <input className="input-field" value={form.slug} onChange={event => updateField('slug', normalizeSlug(event.target.value))} />
@@ -1282,29 +1657,30 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
                   <input className="input-field mt-2" value={form.cover_image_url} onChange={event => setForm(current => ({ ...current, cover_image_url: event.target.value, cover_image_id: '', cover_fit: 'cover', cover_position_x: 50, cover_position_y: 50, cover_zoom: 1, cover_overlay_opacity: 90 }))} placeholder="https://..." />
                 </details>
               </ImageUploadControl>
-              <Field label="Bio" className="md:col-span-2">
-                <textarea className="input-field min-h-28 resize-y" value={form.bio} onChange={event => updateField('bio', event.target.value)} />
+              <Field label="Business description (Hub)" className="md:col-span-2">
+                <textarea className="input-field min-h-28 resize-y opacity-75" value={form.bio} readOnly aria-readonly="true" />
               </Field>
             </div>
           </section>
 
           <section className="card-surface p-5">
-            <h2 className="mb-4 text-sm font-semibold">Contact actions</h2>
+            <h2 className="mb-1 text-sm font-semibold">Contact actions</h2>
+            <p className="mb-4 text-xs text-[var(--text-muted)]">Phone, email, website, and address stay synchronized with Business Settings.</p>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="Phone">
-                <input className="input-field" value={form.phone} onChange={event => updateField('phone', event.target.value)} />
+                <input className="input-field opacity-75" value={form.phone} readOnly aria-readonly="true" />
               </Field>
               <Field label="Email">
-                <input className="input-field" value={form.email} onChange={event => updateField('email', event.target.value)} />
+                <input className="input-field opacity-75" value={form.email} readOnly aria-readonly="true" />
               </Field>
               <Field label="Website">
-                <input className="input-field" value={form.website} onChange={event => updateField('website', event.target.value)} placeholder="https://..." />
+                <input className="input-field opacity-75" value={form.website} readOnly aria-readonly="true" placeholder="Set in Business Settings" />
               </Field>
-              <Field label="Google Maps URL">
+              <Field label="Google Maps URL override">
                 <input className="input-field" value={form.google_maps_url} onChange={event => updateField('google_maps_url', event.target.value)} placeholder="https://maps.google.com/..." />
               </Field>
               <Field label="Address" className="md:col-span-2">
-                <input className="input-field" value={form.address} onChange={event => updateField('address', event.target.value)} />
+                <input className="input-field opacity-75" value={form.address} readOnly aria-readonly="true" />
               </Field>
             </div>
           </section>
@@ -1488,66 +1864,9 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
                       <textarea className="input-field min-h-20 resize-y" value={form.booking_request_description} onChange={event => updateField('booking_request_description', event.target.value)} placeholder="Let customers know you will confirm availability and follow up manually." />
                     </Field>
 
-                    <div className="mt-4 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] p-4">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold">Services manager</p>
-                          <p className="mt-1 text-xs text-[var(--text-muted)]">Add requestable services for the booking form dropdown.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setBookingServices(current => [
-                            ...current,
-                            {
-                              id: `draft-${Date.now()}`,
-                              name: '',
-                              description: '',
-                              duration_minutes: '',
-                              sort_order: current.length,
-                              is_active: true,
-                            },
-                          ])}
-                          className="btn-ghost text-xs"
-                        >
-                          <Plus className="h-4 w-4" /> Add service
-                        </button>
-                      </div>
-
-                      {bookingServices.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-[var(--border-default)] px-4 py-5 text-sm text-[var(--text-muted)]">
-                          No services yet. Customers can still submit a general booking request, or you can add service options here.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {bookingServices.map((service, index) => (
-                            <div key={service.id} className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4">
-                              <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_140px_auto]">
-                                <input className="input-field" value={service.name} onChange={event => updateBookingService(index, 'name', event.target.value)} placeholder="Consultation, haircut, detailing package" />
-                                <input className="input-field" inputMode="numeric" value={service.duration_minutes} onChange={event => updateBookingService(index, 'duration_minutes', event.target.value.replace(/[^\d]/g, ''))} placeholder="60 min" />
-                                <button
-                                  type="button"
-                                  onClick={() => setBookingServices(current => current.filter((_, serviceIndex) => serviceIndex !== index))}
-                                  className="btn-secondary px-4"
-                                  aria-label="Remove service"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                              <textarea className="input-field mt-3 min-h-20 resize-y" value={service.description} onChange={event => updateBookingService(index, 'description', event.target.value)} placeholder="Optional service description" />
-                              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-                                  <input type="checkbox" checked={service.is_active} onChange={event => updateBookingService(index, 'is_active', event.target.checked)} />
-                                  Active on public Smart Card
-                                </label>
-                                <span className="text-xs text-[var(--text-muted)]">Display order: {index + 1}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   </>
                 )}
+                {renderBookingServicesManager()}
               </div>
 
               <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-input)] p-4"> 
@@ -1743,7 +2062,7 @@ export default function SmartCards({ mode = 'list' }: { mode?: 'list' | 'new' | 
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Gallery</h2>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">Add product, work, menu, team, or storefront images. Current placeholder Pro limit: {DEFAULT_SMART_CARD_IMAGE_LIMIT} images.</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Add product, work, menu, team, or storefront images. Current gallery limit: {DEFAULT_SMART_CARD_IMAGE_LIMIT} images.</p>
               </div>
               <button
                 type="button"
@@ -2202,6 +2521,33 @@ function ImageDisplayControls({
     </div>
   );
 }
+
+async function fetchActiveBusinessServices(businessId: string): Promise<BusinessServiceRecord[]> {
+  const { data, error } = await supabase
+    .from('business_services')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error(`Could not load the Business Hub Service Library: ${error.message}`);
+  return (data ?? []) as BusinessServiceRecord[];
+}
+
+function formatServicePrice(price: string, currency: string): string | null {
+  if (!price.trim()) return null;
+  const amount = Number(price);
+  if (!Number.isFinite(amount)) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency || 'USD',
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`.trim();
+  }
+}
+
 function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
     <label className={`block ${className}`}>

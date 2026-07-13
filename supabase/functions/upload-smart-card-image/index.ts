@@ -15,7 +15,8 @@ type CloudflareImagesUploadResult = {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -38,16 +39,20 @@ Deno.serve(async (request: Request) => {
   try {
     const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').trim();
     const supabaseAnonKey = (Deno.env.get('SUPABASE_ANON_KEY') || '').trim();
-    const cloudflareAccountId = (Deno.env.get('CLOUDFLARE_ACCOUNT_ID') || '').trim();
+    const cloudflareAccountId = (Deno.env.get('CLOUDFLARE_ACCOUNT_ID') || '')
+      .trim();
     const cloudflareToken = (
       Deno.env.get('CLOUDFLARE_IMAGES_API_TOKEN') ||
       Deno.env.get('CLOUDFLARE_API_TOKEN') ||
       ''
     ).trim();
-    const cloudflareAccountHash = (Deno.env.get('CLOUDFLARE_IMAGES_ACCOUNT_HASH') || '').trim();
+    const cloudflareAccountHash =
+      (Deno.env.get('CLOUDFLARE_IMAGES_ACCOUNT_HASH') || '').trim();
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      return json({ error: 'Upload service is missing Supabase configuration.' }, 500);
+      return json({
+        error: 'Upload service is missing Supabase configuration.',
+      }, 500);
     }
 
     if (!cloudflareAccountId) {
@@ -66,7 +71,17 @@ Deno.serve(async (request: Request) => {
     const { data: userData, error: userError } = await supabase.auth.getUser();
 
     if (userError || !userData.user) {
-      return json({ error: 'Sign in before uploading Smart Card images.' }, 401);
+      return json(
+        { error: 'Sign in before uploading Smart Card images.' },
+        401,
+      );
+    }
+
+    if (userData.user.app_metadata?.is_demo === true) {
+      return json(
+        { error: 'Image uploads are disabled in the resettable demo account.' },
+        403,
+      );
     }
 
     const incomingFormData = await request.formData();
@@ -75,7 +90,10 @@ Deno.serve(async (request: Request) => {
     const imageType = String(incomingFormData.get('image_type') ?? '').trim();
 
     if (!cardId) {
-      return json({ error: 'Save the Smart Card before uploading images.' }, 400);
+      return json(
+        { error: 'Save the Smart Card before uploading images.' },
+        400,
+      );
     }
 
     if (!file) {
@@ -112,7 +130,9 @@ Deno.serve(async (request: Request) => {
       .maybeSingle();
 
     if (cardError || !card) {
-      return json({ error: 'You can only upload images to Smart Cards you own.' }, 403);
+      return json({
+        error: 'You can only upload images to Smart Cards you own.',
+      }, 403);
     }
 
     const cloudflareForm = new FormData();
@@ -150,15 +170,21 @@ Deno.serve(async (request: Request) => {
         body: responseText,
       });
 
-      return json({ error: 'Cloudflare Images returned an invalid upload response.' }, 502);
+      return json({
+        error: 'Cloudflare Images returned an invalid upload response.',
+      }, 502);
     }
 
     const imageId = uploadResult.result.id;
     const firstVariant = uploadResult.result.variants?.find(Boolean) ?? null;
-    const url = firstVariant || buildCloudflareDeliveryUrl(cloudflareAccountHash, imageId);
+    const url = firstVariant ||
+      buildCloudflareDeliveryUrl(cloudflareAccountHash, imageId);
 
     if (!url) {
-      return json({ error: 'Cloudflare Images did not return a delivery URL.' }, 502);
+      return json(
+        { error: 'Cloudflare Images did not return a delivery URL.' },
+        502,
+      );
     }
 
     return json({
@@ -169,7 +195,10 @@ Deno.serve(async (request: Request) => {
       size: file.size,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : 'Image upload failed.' }, 500);
+    console.error('Unexpected Smart Card image upload failure', error);
+    return json({
+      error: 'Image upload failed. Please try again.',
+    }, 500);
   }
 });
 
@@ -187,7 +216,10 @@ function isSmartCardImageType(value: string): value is SmartCardImageType {
   return value === 'logo' || value === 'cover' || value === 'gallery';
 }
 
-function buildCloudflareDeliveryUrl(accountHash: string, imageId: string): string | null {
+function buildCloudflareDeliveryUrl(
+  accountHash: string,
+  imageId: string,
+): string | null {
   if (!accountHash) {
     return null;
   }

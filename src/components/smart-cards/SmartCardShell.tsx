@@ -1,5 +1,6 @@
 import { BadgePercent, Download, ExternalLink, Link as LinkIcon, type LucideIcon } from 'lucide-react';
 import { getCoverOverlayStyle, getImageDisplayStyle, type ImageFitMode } from '../../lib/smartCards';
+import { safeActionHref, safeHttpUrl } from '../../lib/urls';
 
 export type SmartCardShellAction = {
   label: string;
@@ -125,9 +126,10 @@ export function SmartCardShell({
             {offer.description && <p className={`mt-1 text-xs ${mutedClass}`}>{offer.description}</p>}
           </div>
         )}
-        {links.slice(0, 3).map(link => (
-          interactive ? (
-            <a key={link.id} href={link.url} target="_blank" rel="noreferrer" onClick={link.onClick} className={`mt-2 flex items-center justify-between rounded-2xl px-3 py-2 text-xs font-semibold ${linkClass}`}>
+        {links.slice(0, 3).map(link => {
+          const safeUrl = safeHttpUrl(link.url);
+          return interactive && safeUrl ? (
+            <a key={link.id} href={safeUrl} target="_blank" rel="noreferrer" onClick={link.onClick} className={`mt-2 flex items-center justify-between rounded-2xl px-3 py-2 text-xs font-semibold ${linkClass}`}>
               <span className="inline-flex items-center gap-2">
                 <LinkIcon className="h-3.5 w-3.5" style={{ color: primaryColor }} />
                 {link.label}
@@ -142,8 +144,8 @@ export function SmartCardShell({
               </span>
               <ExternalLink className="h-3.5 w-3.5 text-neutral-500" />
             </div>
-          )
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -151,7 +153,8 @@ export function SmartCardShell({
 
 function ShellActionButton({ action, interactive, lightMode, color, className }: { action: SmartCardShellAction; interactive: boolean; lightMode: boolean; color: string; className: string }) {
   const Icon = action.icon;
-  const disabled = action.disabled || !interactive || !action.href;
+  const safeHref = safeActionHref(action.href);
+  const disabled = action.disabled || !interactive || !safeHref;
   const sharedClass = `flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-2xl text-[9px] font-bold ${disabled ? `${lightMode ? 'opacity-60' : 'opacity-70'} ${className}` : className}`;
 
   if (disabled) {
@@ -164,7 +167,7 @@ function ShellActionButton({ action, interactive, lightMode, color, className }:
   }
 
   return (
-    <a href={action.href} target={action.href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer" onClick={action.onClick} className={sharedClass}>
+    <a href={safeHref!} target={safeHref?.startsWith('http') ? '_blank' : undefined} rel="noreferrer" onClick={action.onClick} className={sharedClass}>
       <Icon className="h-4 w-4" style={{ color }} />
       {action.label}
     </a>

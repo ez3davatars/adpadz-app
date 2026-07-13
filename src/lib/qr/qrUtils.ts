@@ -13,8 +13,13 @@ export function createSlugFromTitle(title: string): string {
 }
 
 export function validateHttpUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || Array.from(trimmed).some(character => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  })) return false;
   try {
-    const url = new URL(value);
+    const url = new URL(trimmed);
     return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;

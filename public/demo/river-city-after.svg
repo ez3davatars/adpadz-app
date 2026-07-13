@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title">
+  <title id="title">Fictional patio after renovation</title>
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#31514a"/><stop offset=".62" stop-color="#d7bd86"/></linearGradient><linearGradient id="floor" x2="1" y2="1"><stop stop-color="#d7d1c2"/><stop offset="1" stop-color="#8b8e83"/></linearGradient><radialGradient id="sun"><stop stop-color="#fff1ac"/><stop offset="1" stop-color="#ffd56a" stop-opacity="0"/></radialGradient></defs>
+  <rect width="1200" height="800" fill="url(#sky)"/><circle cx="950" cy="135" r="130" fill="url(#sun)"/><path d="M0 410c220-50 420-4 580 18 216 29 380-40 620-72v444H0Z" fill="#263b2c"/>
+  <path d="m95 560 790-45 315 285H0Z" fill="url(#floor)"/>
+  <g fill="#242724"><rect x="250" y="150" width="32" height="400"/><rect x="858" y="150" width="32" height="365"/><rect x="220" y="130" width="700" height="40"/><path d="m265 168 72 340h24l-50-340Zm170 0 30 325h23l-8-325Zm170 0-20 316h24l45-316Zm170 0-65 320h24l91-320Z"/></g>
+  <path d="M270 145h612" stroke="#b6ff00" stroke-width="4" opacity=".45"/><g fill="#ffe39b"><circle cx="310" cy="188" r="8"/><circle cx="410" cy="179" r="8"/><circle cx="510" cy="175" r="8"/><circle cx="610" cy="175" r="8"/><circle cx="710" cy="179" r="8"/><circle cx="810" cy="188" r="8"/></g>
+  <g><rect x="330" y="500" width="370" height="130" rx="42" fill="#ede8da"/><rect x="360" y="530" width="140" height="70" rx="25" fill="#6e8c73"/><rect x="530" y="530" width="140" height="70" rx="25" fill="#6e8c73"/><ellipse cx="760" cy="600" rx="100" ry="34" fill="#29312b"/><rect x="744" y="590" width="32" height="80" rx="14" fill="#252a26"/></g>
+  <g fill="#789d61"><circle cx="125" cy="500" r="80"/><circle cx="1020" cy="485" r="90"/><circle cx="1120" cy="530" r="60"/></g><g fill="#a5cc70"><circle cx="90" cy="460" r="30"/><circle cx="175" cy="460" r="34"/><circle cx="990" cy="440" r="34"/><circle cx="1080" cy="440" r="38"/></g>
+  <g><circle cx="930" cy="640" r="75" fill="#151a17"/><circle cx="930" cy="640" r="49" fill="#d77738"/><circle cx="930" cy="640" r="24" fill="#ffd275"/></g>
+  <rect width="1200" height="800" fill="none" stroke="#b6ff00" stroke-opacity=".2" stroke-width="10"/>
+</svg>

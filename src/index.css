@@ -27,7 +27,7 @@
   /* Text */
   --text-primary: #FFFFFF;
   --text-secondary: #A0A0A0;
-  --text-muted: #666666;
+  --text-muted: #858585;
   --text-neon: #B6FF00;
 
   /* Glow effects */
@@ -204,4 +204,18 @@
   .safe-bottom { padding-bottom: var(--safe-bottom); }
   .safe-left { padding-left: var(--safe-left); }
   .safe-right { padding-right: var(--safe-right); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,23 +1,15 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Loader2, QrCode } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 type RedirectStatus = 'loading' | 'not-found' | 'inactive' | 'error';
-
-type PublicQRLink = {
-  id: string;
-  title: string;
-  destination_url: string;
-  destination_type: string | null;
-  destination_id: string | null;
-  status: string;
-  expires_at: string | null;
-};
+type RedirectResult = { ok?: boolean; status?: string; destination_url?: string };
 
 export default function QRRedirect() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug = '' } = useParams();
   const [status, setStatus] = useState<RedirectStatus>('loading');
+  const [detail, setDetail] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -28,122 +20,56 @@ export default function QRRedirect() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('qr_links')
-        .select('id,title,destination_url,destination_type,destination_id,status,expires_at')
-        .eq('slug', slug)
-        .maybeSingle();
-
+      const { data, error } = await supabase.rpc('resolve_qr_redirect', {
+        p_slug: slug,
+        p_user_agent: navigator.userAgent,
+        p_referrer: document.referrer || null,
+      });
       if (cancelled) return;
 
       if (error) {
+        if (import.meta.env.DEV) console.error('[QRRedirect] redirect resolution failed', error);
+        setDetail('The QR service could not resolve this destination. Please try again.');
         setStatus('error');
         return;
       }
 
-      if (!data) {
-        setStatus('not-found');
+      const result = (data ?? {}) as RedirectResult;
+      if (!result.ok || !result.destination_url) {
+        setStatus(result.status === 'not_found' ? 'not-found' : 'inactive');
         return;
       }
 
-      const link = data as PublicQRLink;
-      const expired = link.expires_at ? new Date(link.expires_at).getTime() < Date.now() : false;
-
-      if (link.status !== 'active' || expired) {
-        setStatus('inactive');
-        return;
-      }
-
-      await supabase.from('qr_scan_events').insert({
-        qr_link_id: link.id,
-        user_agent: navigator.userAgent,
-        referrer: document.referrer || null,
-        metadata: {
-          language: navigator.language,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          screen: `${window.screen.width}x${window.screen.height}`,
-        },
-      });
-
-      if (!cancelled) {
-        if (link.destination_type === 'business_card' && link.destination_id) {
-          const { data: cardData } = await supabase
-            .from('business_cards')
-            .select('id,slug,is_published')
-            .eq('id', link.destination_id)
-            .eq('is_published', true)
-            .maybeSingle();
-
-          if (cardData?.slug) {
-            await supabase.from('business_card_events').insert({
-              business_card_id: cardData.id,
-              qr_link_id: link.id,
-              event_type: 'qr_scan',
-              user_agent: navigator.userAgent,
-              referrer: document.referrer || null,
-              metadata: {
-                source: 'qr_redirect',
-                slug,
-              },
-            });
-
-            window.location.replace(`/c/${cardData.slug}?qr=${link.id}`);
-            return;
-          }
-        }
-
-        window.location.replace(link.destination_url);
+      try {
+        const destination = new URL(result.destination_url);
+        if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('Unsupported destination protocol.');
+        window.location.replace(destination.toString());
+      } catch (destinationError) {
+        setDetail(destinationError instanceof Error ? destinationError.message : 'The saved destination is invalid.');
+        setStatus('error');
       }
     }
 
     void runRedirect();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [slug]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg-base)' }}>
-      <div className="card-surface p-8 max-w-md w-full text-center">
-        <div className="w-14 h-14 rounded-2xl bg-neon/10 flex items-center justify-center mx-auto mb-4">
-          {status === 'loading' ? <Loader2 className="w-7 h-7 text-neon animate-spin" /> : <QrCode className="w-7 h-7 text-neon" />}
+    <main className="flex min-h-screen items-center justify-center bg-[var(--bg-base)] p-6">
+      <div className="card-surface w-full max-w-md p-8 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-neon/10">
+          {status === 'loading' ? <Loader2 className="h-7 w-7 animate-spin text-neon" /> : <QrCode className="h-7 w-7 text-neon" />}
         </div>
-
-        {status === 'loading' && (
-          <>
-            <h1 className="text-xl font-bold">Opening Adpadz link...</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-2">Your scan is being routed to the right destination.</p>
-          </>
-        )}
-
-        {status === 'not-found' && (
-          <>
-            <h1 className="text-xl font-bold">QR link not found</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-2">This Adpadz QR code does not exist or has not been published yet.</p>
-            <Link to="/" className="btn-primary mt-5 text-sm px-5 py-2.5">Go to Adpadz</Link>
-          </>
-        )}
-
-        {status === 'inactive' && (
-          <>
-            <h1 className="text-xl font-bold">QR link inactive</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-2">This Adpadz QR code has been paused, archived, or expired.</p>
-            <Link to="/" className="btn-primary mt-5 text-sm px-5 py-2.5">Go to Adpadz</Link>
-          </>
-        )}
-
-        {status === 'error' && (
-          <>
-            <h1 className="text-xl font-bold">Could not open QR link</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-2">Something went wrong while loading this Adpadz QR destination.</p>
-            <Link to="/" className="btn-primary mt-5 text-sm px-5 py-2.5">Go to Adpadz</Link>
-          </>
-        )}
+        {status === 'loading' && <StatusCopy title="Opening Adpadz link..." body="Your scan is being recorded and routed to the current destination." />}
+        {status === 'not-found' && <StatusCopy title="QR link not found" body="This Adpadz QR code does not exist or has not been published." />}
+        {status === 'inactive' && <StatusCopy title="QR destination unavailable" body="This link, Business Profile, or campaign is paused, archived, expired, or not active yet." />}
+        {status === 'error' && <StatusCopy title="Could not open QR link" body={detail || 'The QR service could not resolve this destination.'} />}
+        {status !== 'loading' && <Link to="/" className="btn-primary mt-5 px-5 py-2.5 text-sm">Go to Adpadz</Link>}
       </div>
     </main>
   );
 }
 
-
-
+function StatusCopy({ title, body }: { title: string; body: string }) {
+  return <><h1 className="text-xl font-black">{title}</h1><p className="mt-2 text-sm text-[var(--text-muted)]">{body}</p></>;
+}

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   BadgePercent,
@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { safeActionHref, safeHttpUrl } from '../lib/urls';
 import {
   getCoverOverlayStyle,
   getCurrentOffer,
@@ -34,7 +35,7 @@ import {
   type BusinessCardOfferRecord,
   type BusinessCardRecord,
 } from '../lib/smartCards';
-import { getCampaignFormatLabel, getCampaignOffer, getCampaignSection, getCampaignTitle, normalizeCampaignOutput, type CampaignOutputRecord, type SmartCardCampaign } from '../lib/ads';
+import { getCampaignFormatLabel, getCampaignOffer, getCampaignSection, getCampaignTitle, isCampaignPublicNow, normalizeCampaignOutput, type CampaignOutputRecord, type SmartCardCampaign } from '../lib/ads';
 import { AdpadzButton, AdpadzCouponCard, AdpadzPill } from '../components/adpadz-ui';
 type PublicCardState = 'loading' | 'ready' | 'not-found' | 'error';
 
@@ -69,7 +70,12 @@ export default function SmartCardPublic() {
   const qrLinkId = searchParams.get('qr') || null;
 
   const currentOffer = useMemo(() => getCurrentOffer(offers), [offers]);
-  const activeBookingServices = useMemo(() => bookingServices.filter(service => service.is_active).sort((a, b) => a.sort_order - b.sort_order), [bookingServices]);
+  const activeBookingServices = useMemo(
+    () => bookingServices
+      .filter(service => service.is_active && service.service_is_active)
+      .sort((a, b) => a.sort_order - b.sort_order),
+    [bookingServices],
+  );
   const activeLinks = useMemo(() => links.filter(link => link.is_active).sort((a, b) => a.sort_order - b.sort_order), [links]);
   const activeGallery = useMemo(() => gallery.filter(item => item.is_active).sort((a, b) => a.sort_order - b.sort_order), [gallery]);
   const activeAssets = useMemo(() => marketingAssets.filter(item => item.is_active).sort((a, b) => a.sort_order - b.sort_order), [marketingAssets]);
@@ -115,6 +121,29 @@ export default function SmartCardPublic() {
           return;
         }
 
+        if (!loadedCard.business_id || !loadedCard.owner_user_id) {
+          setStatus('not-found');
+          return;
+        }
+
+        const { data: activeBusiness, error: businessError } = await supabase
+          .from('businesses')
+          .select('id')
+          .eq('id', loadedCard.business_id)
+          .eq('owner_user_id', loadedCard.owner_user_id)
+          .eq('active', true)
+          .maybeSingle();
+        if (cancelled) return;
+        if (businessError) {
+          if (import.meta.env.DEV) console.error('[SmartCardPublic] failed to verify Business Hub', businessError);
+          setStatus('error');
+          return;
+        }
+        if (!activeBusiness) {
+          setStatus('not-found');
+          return;
+        }
+
         setCard(loadedCard);
         setDraftPreview(!loadedCard.is_published);
 
@@ -143,9 +172,10 @@ export default function SmartCardPublic() {
             .order('created_at', { ascending: false }),
           supabase
             .from('business_card_booking_services')
-            .select('id, card_id, owner_id, name, description, duration_minutes, is_active, sort_order')
+            .select('id, card_id, owner_id, service_id, name, description, duration_minutes, price, currency, booking_url, service_is_active, is_active, sort_order')
             .eq('card_id', loadedCard.id)
             .eq('is_active', true)
+            .eq('service_is_active', true)
             .order('sort_order', { ascending: true }),
           supabase
             .from('business_card_gallery_items')
@@ -210,7 +240,8 @@ export default function SmartCardPublic() {
         const testimonialData = extractRows<BusinessCardTestimonialRecord>(results[6], 'testimonials');
         const campaignOutputData = extractRows<CampaignOutputRecord>(results[7], 'smart card campaigns')
           .map(output => normalizeCampaignOutput(output))
-          .filter((output): output is SmartCardCampaign => Boolean(output));
+          .filter((output): output is SmartCardCampaign => Boolean(output))
+          .filter(output => isCampaignPublicNow(output.campaign));
 
         setLinks(linkData);
         setOffers(offerData);
@@ -322,7 +353,11 @@ export default function SmartCardPublic() {
       qr_link_id: qrLinkId,
       path: window.location.pathname,
       service_id: selectedService?.id ?? null,
+      business_service_id: selectedService?.service_id ?? null,
       service_name: selectedService?.name ?? null,
+      service_duration_minutes: selectedService?.duration_minutes ?? null,
+      service_price: selectedService?.price ?? null,
+      service_currency: selectedService?.currency ?? null,
       preferred_date: bookingRequestForm.preferred_date,
       preferred_time: bookingRequestForm.preferred_time,
       booking_request: true,
@@ -355,15 +390,16 @@ export default function SmartCardPublic() {
     if (!card) return;
 
     handleAction('save_contact');
+    const website = safeHttpUrl(card.website);
     const lines = [
       'BEGIN:VCARD',
       'VERSION:3.0',
-      `FN:${card.business_name}`,
-      card.phone ? `TEL:${card.phone}` : '',
-      card.email ? `EMAIL:${card.email}` : '',
-      card.website ? `URL:${card.website}` : '',
-      card.address ? `ADR:;;${card.address}` : '',
-      card.bio ? `NOTE:${card.bio}` : '',
+      `FN:${escapeVCardValue(card.business_name)}`,
+      card.phone ? `TEL:${escapeVCardValue(card.phone)}` : '',
+      card.email ? `EMAIL:${escapeVCardValue(card.email)}` : '',
+      website ? `URL:${escapeVCardValue(website)}` : '',
+      card.address ? `ADR:;;${escapeVCardValue(card.address)}` : '',
+      card.bio ? `NOTE:${escapeVCardValue(card.bio)}` : '',
       'END:VCARD',
     ].filter(Boolean);
     const blob = new Blob([lines.join('\n')], { type: 'text/vcard;charset=utf-8' });
@@ -381,15 +417,17 @@ export default function SmartCardPublic() {
     return <PublicState status={status} />;
   }
 
-  const telHref = card.phone ? `tel:${card.phone.replace(/[^\d+]/g, '')}` : undefined;
-  const smsHref = card.phone ? `sms:${card.phone.replace(/[^\d+]/g, '')}` : undefined;
-  const mailHref = card.email ? `mailto:${card.email}` : undefined;
-  const directionsHref = card.google_maps_url || (card.address ? `https://maps.google.com/?q=${encodeURIComponent(card.address)}` : undefined);
+  const telHref = safeActionHref(card.phone ? `tel:${card.phone.replace(/[^\d+]/g, '')}` : null) ?? undefined;
+  const smsHref = safeActionHref(card.phone ? `sms:${card.phone.replace(/[^\d+]/g, '')}` : null) ?? undefined;
+  const mailHref = safeActionHref(card.email ? `mailto:${card.email}` : null) ?? undefined;
+  const directionsHref = safeHttpUrl(card.google_maps_url)
+    ?? safeHttpUrl(card.address ? `https://maps.google.com/?q=${encodeURIComponent(card.address)}` : null)
+    ?? undefined;
   const actions: ActionLink[] = [
     { href: telHref, label: 'Call', eventType: 'call_click', icon: Phone },
     { href: smsHref, label: 'Text', eventType: 'text_click', icon: MessageCircle },
     { href: mailHref, label: 'Email', eventType: 'email_click', icon: Mail },
-    { href: card.website ?? undefined, label: 'Website', eventType: 'website_click', icon: Globe },
+    { href: safeHttpUrl(card.website) ?? undefined, label: 'Website', eventType: 'website_click', icon: Globe },
     { href: directionsHref, label: 'Directions', eventType: 'directions_click', icon: MapPin },
   ];
   const template = getTemplateOption(card.template);
@@ -398,14 +436,14 @@ export default function SmartCardPublic() {
   const accentColor = normalizeHexColor(card.accent_color, template.colors[1]);
   const displayCard = { ...card, primary_color: primaryColor, accent_color: accentColor };
   const bookingRequestEnabled = Boolean(card.booking_mode === 'request' && card.booking_request_enabled);
-  const bookingExternalEnabled = Boolean(card.booking_mode !== 'request' && card.booking_enabled && !!card.booking_url);
+  const bookingExternalEnabled = Boolean(card.booking_mode !== 'request' && card.booking_enabled && safeHttpUrl(card.booking_url));
   const supplementalAssets = activeAssets.filter(asset => asset.asset_type !== 'video');
 
   const landingSections = [
-    { key: 'offer', element: currentOffer ? <OfferSection card={displayCard} offer={currentOffer} lightMode={lightMode} onClaim={offerId => handleAction('offer_claim', offerId)} /> : null },
+    { key: 'offer', element: currentOffer ? <OfferSection card={displayCard} offer={currentOffer} lightMode={lightMode} /> : null },
     { key: 'promotionCampaigns', element: <CampaignOutputSection title="Interactive Promotions" campaigns={promotionCampaigns} card={displayCard} lightMode={lightMode} onOpen={handleCampaignClick} /> },
     { key: 'booking', element: <BookingSection card={displayCard} lightMode={lightMode} onAction={handleAction} bookingServices={activeBookingServices} bookingRequestForm={bookingRequestForm} bookingRequestStatus={bookingRequestStatus} setBookingRequestForm={setBookingRequestForm} onSubmitBookingRequest={submitBookingRequest} /> },
-    { key: 'services', element: <ServicesSection services={activeBookingServices} card={displayCard} lightMode={lightMode} bookingRequestEnabled={bookingRequestEnabled} onRequestService={serviceId => { setBookingRequestForm({ ...bookingRequestForm, service_id: serviceId }); document.getElementById('booking-request-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} /> },
+    { key: 'services', element: <ServicesSection services={activeBookingServices} card={displayCard} lightMode={lightMode} bookingRequestEnabled={bookingRequestEnabled} onBookingClick={() => handleAction('booking_click')} onRequestService={serviceId => { setBookingRequestForm({ ...bookingRequestForm, service_id: serviceId }); document.getElementById('booking-request-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} /> },
     { key: 'about', element: <AboutSection card={displayCard} lightMode={lightMode} /> },
     { key: 'video', element: <FeaturedVideoSection card={displayCard} assets={activeAssets} lightMode={lightMode} onAction={handleAction} /> },
     { key: 'mediaCampaigns', element: <CampaignOutputSection title="Interactive Media" campaigns={mediaCampaigns} card={displayCard} lightMode={lightMode} onOpen={handleCampaignClick} /> },
@@ -455,12 +493,14 @@ function HeroSection({ card, currentOffer, lightMode }: { card: BusinessCardReco
   const coverImageStyle = getImageDisplayStyle({ fit: card.cover_fit, position_x: card.cover_position_x, position_y: card.cover_position_y, zoom: card.cover_zoom });
   const coverOverlayStyle = lightMode ? null : getCoverOverlayStyle(card.cover_overlay_opacity, false);
   const logoImageStyle = getImageDisplayStyle({ fit: card.logo_fit, position_x: card.logo_position_x, position_y: card.logo_position_y, zoom: card.logo_zoom });
+  const coverImageUrl = safeHttpUrl(card.cover_image_url);
+  const logoImageUrl = safeHttpUrl(card.logo_url);
 
   return (
     <section className={`mx-auto max-w-5xl overflow-hidden rounded-[2.5rem] border shadow-[0_40px_120px_rgba(0,0,0,0.28)] ${lightMode ? 'border-black/10 bg-white' : 'border-white/10 bg-neutral-950'}`}>
       <div className="relative h-[340px] sm:h-[430px]">
-        {card.cover_image_url ? (
-          <img src={card.cover_image_url} alt="" className="absolute inset-0 block h-full w-full" style={coverImageStyle} />
+        {coverImageUrl ? (
+          <img src={coverImageUrl} alt="" className="absolute inset-0 block h-full w-full" style={coverImageStyle} />
         ) : (
           <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }} />
         )}
@@ -468,8 +508,8 @@ function HeroSection({ card, currentOffer, lightMode }: { card: BusinessCardReco
         {!lightMode ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" /> : null}
         <div className="absolute -bottom-12 left-5 z-10 sm:left-8 lg:left-10">
           <div className={`h-24 w-24 overflow-hidden rounded-[1.7rem] border-4 shadow-[0_14px_38px_rgba(0,0,0,0.26),0_0_22px_rgba(255,255,255,0.16)] sm:h-28 sm:w-28 ${lightMode ? 'border-white bg-white' : 'border-neutral-950 bg-neutral-900'}`}>
-            {card.logo_url ? (
-              <img src={card.logo_url} alt={`${card.business_name} logo`} className="h-full w-full" style={logoImageStyle} />
+            {logoImageUrl ? (
+              <img src={logoImageUrl} alt={`${card.business_name} logo`} className="h-full w-full" style={logoImageStyle} />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-4xl font-black text-black" style={{ background: card.primary_color }}>
                 {card.business_name.charAt(0).toUpperCase()}
@@ -513,6 +553,7 @@ function ActionHubSection({ actions, card, onAction, onSaveContact, lightMode, b
   onOpenBooking: () => void;
 }) {
   const bookingLabel = bookingRequestEnabled ? card.booking_request_button_label || 'Request Service' : card.booking_label || 'Book Appointment';
+  const bookingUrl = safeHttpUrl(card.booking_url);
 
   return (
     <section className={`sticky top-3 z-30 rounded-[1.75rem] border px-4 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.16)] backdrop-blur-xl sm:px-5 ${lightMode ? 'border-black/10 bg-white/[0.92] text-neutral-950' : 'border-white/10 bg-neutral-950/90 text-white'}`}>
@@ -534,8 +575,8 @@ function ActionHubSection({ actions, card, onAction, onSaveContact, lightMode, b
             <button type="button" onClick={onOpenBooking} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.accent_color}, ${card.primary_color})` }}>
               <CalendarDays className="h-4 w-4" /> {bookingLabel || 'Request Service'}
             </button>
-          ) : bookingExternalEnabled ? (
-            <a href={card.booking_url ?? '#'} target="_blank" rel="noreferrer" onClick={() => onAction('booking_click')} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.accent_color}, ${card.primary_color})` }}>
+          ) : bookingExternalEnabled && bookingUrl ? (
+            <a href={bookingUrl} target="_blank" rel="noreferrer" onClick={() => onAction('booking_click')} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black shadow-lg transition-transform active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${card.accent_color}, ${card.primary_color})` }}>
               <CalendarDays className="h-4 w-4" /> {bookingLabel || 'Book Appointment'}
             </a>
           ) : null}
@@ -563,11 +604,12 @@ function ActionButton({ action, color, lightMode, onClick }: { action: ActionLin
     </a>
   );
 }
-function ServicesSection({ services, card, lightMode, bookingRequestEnabled, onRequestService }: {
+function ServicesSection({ services, card, lightMode, bookingRequestEnabled, onBookingClick, onRequestService }: {
   services: BusinessCardBookingServiceRecord[];
   card: BusinessCardRecord;
   lightMode: boolean;
   bookingRequestEnabled: boolean;
+  onBookingClick: () => void;
   onRequestService: (serviceId: string) => void;
 }) {
   if (services.length === 0) return null;
@@ -582,25 +624,41 @@ function ServicesSection({ services, card, lightMode, bookingRequestEnabled, onR
         <p className={`max-w-2xl text-sm ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>Browse the available services and jump straight into a request.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        {services.map(service => (
-          <article key={service.id} className={`rounded-[1.75rem] border p-4 ${lightMode ? 'border-black/10 bg-black/[0.025]' : 'border-white/10 bg-white/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-black">{service.name}</h3>
-                {service.duration_minutes ? <p className={`mt-1 inline-flex items-center gap-2 text-xs font-semibold ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}><Clock3 className="h-3.5 w-3.5" style={{ color: card.primary_color }} />{formatDuration(service.duration_minutes)}</p> : null}
+        {services.map(service => {
+          const serviceBookingUrl = card.booking_enabled && card.booking_mode !== 'request'
+            ? safeHttpUrl(service.booking_url)
+            : null;
+          const price = formatServicePrice(service.price, service.currency);
+          return (
+            <article key={service.id} className={`rounded-[1.75rem] border p-4 ${lightMode ? 'border-black/10 bg-black/[0.025]' : 'border-white/10 bg-white/[0.04]'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">{service.name}</h3>
+                  <div className={`mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>
+                    {service.duration_minutes ? <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" style={{ color: card.primary_color }} />{formatDuration(service.duration_minutes)}</span> : null}
+                    {price ? <span>{price}</span> : null}
+                  </div>
+                </div>
+                {bookingRequestEnabled ? (
+                  <button type="button" onClick={() => onRequestService(service.id)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Request this service</button>
+                ) : serviceBookingUrl ? (
+                  <a href={serviceBookingUrl} target="_blank" rel="noreferrer" onClick={onBookingClick} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
+                    Book this service <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
               </div>
-              {bookingRequestEnabled ? <button type="button" onClick={() => onRequestService(service.id)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Request this service</button> : null}
-            </div>
-            {service.description ? <p className={`mt-3 text-sm leading-relaxed ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{service.description}</p> : null}
-          </article>
-        ))}
+              {service.description ? <p className={`mt-3 text-sm leading-relaxed ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{service.description}</p> : null}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
 }
 function FeaturedVideoSection({ card, assets, lightMode, onAction }: { card: BusinessCardRecord; assets: BusinessMarketingAssetRecord[]; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
   const videoAsset = assets.find(asset => asset.asset_type === 'video');
-  const videoUrl = card.featured_video_enabled ? card.featured_video_url : videoAsset?.external_url || videoAsset?.file_url;
+  const videoUrl = safeHttpUrl(card.featured_video_enabled ? card.featured_video_url : videoAsset?.external_url || videoAsset?.file_url);
+  const thumbnailUrl = safeHttpUrl(videoAsset?.thumbnail_url);
   const title = card.featured_video_enabled ? card.featured_video_title || 'Local Spotlight' : videoAsset?.title || 'Local Spotlight';
   const description = videoAsset?.description || 'Watch the local spotlight';
   const youtubeEmbedUrl = getYouTubeEmbedUrl(videoUrl);
@@ -634,7 +692,7 @@ function FeaturedVideoSection({ card, assets, lightMode, onAction }: { card: Bus
         </div>
       ) : directVideoUrl ? (
         <div className={`overflow-hidden rounded-3xl border ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'}`}>
-          <video controls playsInline poster={videoAsset?.thumbnail_url ?? undefined} className="aspect-video w-full bg-black" onPlay={() => onAction('media_click')}>
+          <video controls playsInline poster={thumbnailUrl ?? undefined} className="aspect-video w-full bg-black" onPlay={() => onAction('media_click')}>
             <source src={directVideoUrl} />
           </video>
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm font-bold">
@@ -647,7 +705,7 @@ function FeaturedVideoSection({ card, assets, lightMode, onAction }: { card: Bus
       ) : (
         <a href={videoUrl} target="_blank" rel="noreferrer" onClick={() => onAction('media_click')} className={`group block overflow-hidden rounded-3xl border ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'}`}>
           <div className="flex aspect-video items-center justify-center" style={{ background: `linear-gradient(135deg, ${card.primary_color}44, ${card.accent_color}33)` }}>
-            {videoAsset?.thumbnail_url ? <img src={videoAsset.thumbnail_url} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <Sparkles className={`h-12 w-12 drop-shadow ${lightMode ? 'text-neutral-900' : 'text-white'}`} />}
+            {thumbnailUrl ? <img src={thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <Sparkles className={`h-12 w-12 drop-shadow ${lightMode ? 'text-neutral-900' : 'text-white'}`} />}
           </div>
           <div className="flex items-center justify-between px-4 py-3 text-sm font-bold">
             <span>{description}</span>
@@ -679,7 +737,8 @@ function BookingSection({
   onSubmitBookingRequest: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const isExternal = card.booking_mode !== 'request';
-  const showExternal = isExternal && card.booking_enabled && !!card.booking_url;
+  const bookingUrl = safeHttpUrl(card.booking_url);
+  const showExternal = isExternal && card.booking_enabled && !!bookingUrl;
   const showRequest = card.booking_mode === 'request' && card.booking_request_enabled;
 
   if (!showExternal && !showRequest) return null;
@@ -689,7 +748,7 @@ function BookingSection({
       <section className={sectionClass(lightMode)}>
         <h2 className="mb-2 text-sm font-black uppercase tracking-[0.16em] opacity-70">Book or schedule</h2>
         {card.booking_provider && <p className={`mb-3 text-sm ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>Powered by {card.booking_provider}</p>}
-        <a href={card.booking_url ?? '#'} target="_blank" rel="noreferrer" onClick={() => onAction('booking_click')} className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
+        <a href={bookingUrl ?? undefined} target="_blank" rel="noreferrer" onClick={() => onAction('booking_click')} className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
           {card.booking_label || 'Book Now'} <ExternalLink className="h-4 w-4" />
         </a>
       </section>
@@ -702,54 +761,40 @@ function BookingSection({
       <p className={`mb-4 text-sm ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>
         {card.booking_request_description || 'Request a preferred appointment time and this business will follow up manually.'}
       </p>
-      <form onSubmit={onSubmitBookingRequest} className="space-y-3">
+      <form onSubmit={onSubmitBookingRequest} className="space-y-3" aria-busy={bookingRequestStatus === 'sending'} aria-describedby={bookingRequestStatus === 'sent' || bookingRequestStatus === 'error' ? 'booking-request-feedback' : undefined}>
         {bookingServices.length > 0 && (
-          <select
-            className={publicInputClass(lightMode)}
-            value={bookingRequestForm.service_id}
-            onChange={event => setBookingRequestForm({ ...bookingRequestForm, service_id: event.target.value })}
-          >
-            <option value="">Select a service</option>
-            {bookingServices.map(service => (
-              <option key={service.id} value={service.id}>
-                {service.name}{service.duration_minutes ? ` (${service.duration_minutes} min)` : ''}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label htmlFor="booking-service" className="sr-only">Service</label>
+            <select id="booking-service" name="service" className={publicInputClass(lightMode)} value={bookingRequestForm.service_id} onChange={event => setBookingRequestForm({ ...bookingRequestForm, service_id: event.target.value })}>
+              <option value="">Select a service</option>
+              {bookingServices.map(service => <option key={service.id} value={service.id}>{formatServiceOption(service)}</option>)}
+            </select>
+          </div>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            className={publicInputClass(lightMode)}
-            type="date"
-            value={bookingRequestForm.preferred_date}
-            onChange={event => setBookingRequestForm({ ...bookingRequestForm, preferred_date: event.target.value })}
-            required
-          />
-          <input
-            className={publicInputClass(lightMode)}
-            type="time"
-            value={bookingRequestForm.preferred_time}
-            onChange={event => setBookingRequestForm({ ...bookingRequestForm, preferred_time: event.target.value })}
-            required
-          />
+          <div>
+            <label htmlFor="booking-date" className="mb-1 block text-xs font-bold opacity-70">Preferred date</label>
+            <input id="booking-date" name="preferred-date" className={publicInputClass(lightMode)} type="date" value={bookingRequestForm.preferred_date} onChange={event => setBookingRequestForm({ ...bookingRequestForm, preferred_date: event.target.value })} required aria-invalid={bookingRequestStatus === 'error' && !bookingRequestForm.preferred_date} />
+          </div>
+          <div>
+            <label htmlFor="booking-time" className="mb-1 block text-xs font-bold opacity-70">Preferred time</label>
+            <input id="booking-time" name="preferred-time" className={publicInputClass(lightMode)} type="time" value={bookingRequestForm.preferred_time} onChange={event => setBookingRequestForm({ ...bookingRequestForm, preferred_time: event.target.value })} required aria-invalid={bookingRequestStatus === 'error' && !bookingRequestForm.preferred_time} />
+          </div>
         </div>
-        <input
-          className={publicInputClass(lightMode)}
-          value={bookingRequestForm.name}
-          onChange={event => setBookingRequestForm({ ...bookingRequestForm, name: event.target.value })}
-          placeholder="Name"
-          required
-        />
+        <label htmlFor="booking-name" className="sr-only">Name</label>
+        <input id="booking-name" name="name" autoComplete="name" className={publicInputClass(lightMode)} value={bookingRequestForm.name} onChange={event => setBookingRequestForm({ ...bookingRequestForm, name: event.target.value })} placeholder="Name" required aria-invalid={bookingRequestStatus === 'error' && !bookingRequestForm.name.trim()} />
+        <p id="booking-contact-hint" className="text-xs opacity-65">Provide at least a phone number or email address.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input className={publicInputClass(lightMode)} value={bookingRequestForm.phone} onChange={event => setBookingRequestForm({ ...bookingRequestForm, phone: event.target.value })} placeholder="Phone" />
-          <input className={publicInputClass(lightMode)} type="email" value={bookingRequestForm.email} onChange={event => setBookingRequestForm({ ...bookingRequestForm, email: event.target.value })} placeholder="Email" />
+          <div><label htmlFor="booking-phone" className="sr-only">Phone</label><input id="booking-phone" name="phone" autoComplete="tel" type="tel" aria-describedby="booking-contact-hint" className={publicInputClass(lightMode)} value={bookingRequestForm.phone} onChange={event => setBookingRequestForm({ ...bookingRequestForm, phone: event.target.value })} placeholder="Phone" /></div>
+          <div><label htmlFor="booking-email" className="sr-only">Email</label><input id="booking-email" name="email" autoComplete="email" aria-describedby="booking-contact-hint" className={publicInputClass(lightMode)} type="email" value={bookingRequestForm.email} onChange={event => setBookingRequestForm({ ...bookingRequestForm, email: event.target.value })} placeholder="Email" /></div>
         </div>
-        <textarea className={`${publicInputClass(lightMode)} min-h-24 resize-y`} value={bookingRequestForm.message} onChange={event => setBookingRequestForm({ ...bookingRequestForm, message: event.target.value })} placeholder="Optional details for the business" />
+        <label htmlFor="booking-message" className="sr-only">Additional details</label>
+        <textarea id="booking-message" name="message" className={`${publicInputClass(lightMode)} min-h-24 resize-y`} value={bookingRequestForm.message} onChange={event => setBookingRequestForm({ ...bookingRequestForm, message: event.target.value })} placeholder="Optional details for the business" />
         <button type="submit" disabled={bookingRequestStatus === 'sending'} className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
           {bookingRequestStatus === 'sending' ? 'Sending...' : card.booking_request_button_label || 'Request Booking'}
         </button>
-        {bookingRequestStatus === 'sent' && <p className="text-center text-xs font-semibold" style={{ color: card.primary_color }}>Booking request sent.</p>}
-        {bookingRequestStatus === 'error' && <p className="text-center text-xs font-semibold text-red-400">Add your name, preferred date/time, and a phone or email.</p>}
+        {bookingRequestStatus === 'sent' && <p id="booking-request-feedback" role="status" className="text-center text-xs font-semibold" style={{ color: card.primary_color }}>Booking request sent.</p>}
+        {bookingRequestStatus === 'error' && <p id="booking-request-feedback" role="alert" className="text-center text-xs font-semibold text-red-400">Add your name, preferred date/time, and a phone or email.</p>}
       </form>
     </section>
   );
@@ -761,42 +806,82 @@ function LeadFormSection({ card, leadForm, leadStatus, setLeadForm, onSubmit, li
     <section className={sectionClass(lightMode)}>
       <h2 className="mb-2 text-sm font-black uppercase tracking-[0.16em] opacity-70">{card.lead_form_title || 'Request Information'}</h2>
       {card.lead_form_description && <p className={`mb-4 text-sm ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{card.lead_form_description}</p>}
-      <form onSubmit={onSubmit} className="space-y-3">
-        <input className={publicInputClass(lightMode)} value={leadForm.name} onChange={event => setLeadForm({ ...leadForm, name: event.target.value })} placeholder="Name" required />
+      <form onSubmit={onSubmit} className="space-y-3" aria-busy={leadStatus === 'sending'} aria-describedby={leadStatus === 'sent' || leadStatus === 'error' ? 'lead-form-feedback' : undefined}>
+        <label htmlFor="lead-name" className="sr-only">Name</label>
+        <input id="lead-name" name="name" autoComplete="name" className={publicInputClass(lightMode)} value={leadForm.name} onChange={event => setLeadForm({ ...leadForm, name: event.target.value })} placeholder="Name" required aria-invalid={leadStatus === 'error' && !leadForm.name.trim()} />
+        <p id="lead-contact-hint" className="text-xs opacity-65">Provide at least a phone number or email address.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input className={publicInputClass(lightMode)} value={leadForm.phone} onChange={event => setLeadForm({ ...leadForm, phone: event.target.value })} placeholder="Phone" />
-          <input className={publicInputClass(lightMode)} type="email" value={leadForm.email} onChange={event => setLeadForm({ ...leadForm, email: event.target.value })} placeholder="Email" />
+          <div><label htmlFor="lead-phone" className="sr-only">Phone</label><input id="lead-phone" name="phone" autoComplete="tel" type="tel" aria-describedby="lead-contact-hint" className={publicInputClass(lightMode)} value={leadForm.phone} onChange={event => setLeadForm({ ...leadForm, phone: event.target.value })} placeholder="Phone" /></div>
+          <div><label htmlFor="lead-email" className="sr-only">Email</label><input id="lead-email" name="email" autoComplete="email" type="email" aria-describedby="lead-contact-hint" className={publicInputClass(lightMode)} value={leadForm.email} onChange={event => setLeadForm({ ...leadForm, email: event.target.value })} placeholder="Email" /></div>
         </div>
-        <textarea className={`${publicInputClass(lightMode)} min-h-24 resize-y`} value={leadForm.message} onChange={event => setLeadForm({ ...leadForm, message: event.target.value })} placeholder="What can they help with?" />
+        <label htmlFor="lead-message" className="sr-only">How can this business help?</label>
+        <textarea id="lead-message" name="message" className={`${publicInputClass(lightMode)} min-h-24 resize-y`} value={leadForm.message} onChange={event => setLeadForm({ ...leadForm, message: event.target.value })} placeholder="What can they help with?" />
         <button type="submit" disabled={leadStatus === 'sending'} className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>
           {leadStatus === 'sending' ? 'Sending...' : card.lead_form_button_label || 'Send Request'}
         </button>
-        {leadStatus === 'sent' && <p className="text-center text-xs font-semibold" style={{ color: card.primary_color }}>Request sent.</p>}
-        {leadStatus === 'error' && <p className="text-center text-xs font-semibold text-red-400">Add your name and a phone or email.</p>}
+        {leadStatus === 'sent' && <p id="lead-form-feedback" role="status" className="text-center text-xs font-semibold" style={{ color: card.primary_color }}>Request sent.</p>}
+        {leadStatus === 'error' && <p id="lead-form-feedback" role="alert" className="text-center text-xs font-semibold text-red-400">Add your name and a phone or email.</p>}
       </form>
     </section>
   );
 }
 
 function BeforeAfterSection({ items, lightMode, onAction }: { items: BusinessCardBeforeAfterRecord[]; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
-  if (items.length === 0) return null;
+  const safeItems = items.filter(item => safeHttpUrl(item.before_image_url) && safeHttpUrl(item.after_image_url));
+  if (safeItems.length === 0) return null;
 
   return (
     <section className={sectionClass(lightMode)}>
       <h2 className="mb-3 text-sm font-black uppercase tracking-[0.16em] opacity-70">Before and after</h2>
       <div className="space-y-4">
-        {items.slice(0, 4).map(item => (
+        {safeItems.slice(0, 4).map(item => (
           <div key={item.id}>
-            <div className="grid grid-cols-2 gap-2 overflow-hidden rounded-3xl" onMouseEnter={() => onAction('before_after_view')}>
-              <img src={item.before_image_url} alt={`${item.title} before`} className="aspect-square w-full object-cover" />
-              <img src={item.after_image_url} alt={`${item.title} after`} className="aspect-square w-full object-cover" />
-            </div>
+            <BeforeAfterComparison item={item} onView={() => onAction('before_after_view')} />
             <p className="mt-2 text-sm font-black">{item.title}</p>
             {item.description && <p className={`text-xs ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{item.description}</p>}
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function BeforeAfterComparison({ item, onView }: { item: BusinessCardBeforeAfterRecord; onView: () => void }) {
+  const [position, setPosition] = useState(50);
+  const tracked = useRef(false);
+  const beforeImageUrl = safeHttpUrl(item.before_image_url);
+  const afterImageUrl = safeHttpUrl(item.after_image_url);
+
+  function trackView() {
+    if (tracked.current) return;
+    tracked.current = true;
+    onView();
+  }
+
+  if (!beforeImageUrl || !afterImageUrl) return null;
+
+  return (
+    <figure className="relative aspect-[4/3] overflow-hidden rounded-3xl bg-black focus-within:ring-2 focus-within:ring-white focus-within:ring-offset-2 focus-within:ring-offset-black" onMouseEnter={trackView}>
+      <img src={afterImageUrl} alt={`${item.title} after`} className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}>
+        <img src={beforeImageUrl} alt={`${item.title} before`} className="h-full w-full object-cover" />
+      </div>
+      <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-white">Before</span>
+      <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-white">After</span>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow-lg" style={{ left: `${position}%` }} />
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={position}
+        onFocus={trackView}
+        onPointerDown={trackView}
+        onChange={event => { setPosition(Number(event.target.value)); trackView(); }}
+        aria-label={`Compare before and after for ${item.title}`}
+        aria-valuetext={`${position}% before, ${100 - position}% after`}
+        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+      />
+    </figure>
   );
 }
 
@@ -807,10 +892,12 @@ function TestimonialsSection({ items, card, lightMode, onAction }: { items: Busi
     <section className={sectionClass(lightMode)}>
       <h2 className="mb-3 text-sm font-black uppercase tracking-[0.16em] opacity-70">Local proof</h2>
       <div className="space-y-3">
-        {items.slice(0, 4).map(item => (
-          <a key={item.id} href={item.video_url || undefined} target={item.video_url ? '_blank' : undefined} rel="noreferrer" onClick={() => onAction('testimonial_view')} className={`block rounded-3xl border p-4 ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.05]'}`}>
+        {items.slice(0, 4).map(item => {
+          const videoUrl = safeHttpUrl(item.video_url);
+          const imageUrl = safeHttpUrl(item.image_url);
+          const content = (
             <div className="flex items-start gap-3">
-              {item.image_url && <img src={item.image_url} alt="" className="h-12 w-12 rounded-2xl object-cover" />}
+              {imageUrl && <img src={imageUrl} alt="" className="h-12 w-12 rounded-2xl object-cover" />}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-black">{item.customer_name}</p>
@@ -820,8 +907,14 @@ function TestimonialsSection({ items, card, lightMode, onAction }: { items: Busi
                 {item.source && <p className="mt-2 text-[11px] opacity-60">{item.source}</p>}
               </div>
             </div>
-          </a>
-        ))}
+          );
+          const className = `block rounded-3xl border p-4 ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.05]'}`;
+          return videoUrl ? (
+            <a key={item.id} href={videoUrl} target="_blank" rel="noreferrer" onClick={() => onAction('testimonial_view')} className={className}>{content}</a>
+          ) : (
+            <article key={item.id} className={className}>{content}</article>
+          );
+        })}
       </div>
     </section>
   );
@@ -860,7 +953,7 @@ function CampaignOutputSection({ title, campaigns, card, lightMode, onOpen }: { 
     </section>
   );
 }
-function OfferSection({ card, offer, lightMode, onClaim }: { card: BusinessCardRecord; offer: BusinessCardOfferRecord | null; lightMode: boolean; onClaim: (offerId: string) => void }) {
+function OfferSection({ card, offer, lightMode }: { card: BusinessCardRecord; offer: BusinessCardOfferRecord | null; lightMode: boolean }) {
   if (!offer) return null;
 
   const expiresLabel = offer.ends_at ? formatPublicDate(offer.ends_at) : null;
@@ -872,12 +965,8 @@ function OfferSection({ card, offer, lightMode, onClaim }: { card: BusinessCardR
       <AdpadzPill lightMode={lightMode}>Show this Smart Card to redeem</AdpadzPill>
     </>
   );
-  const action = offer.claim_url ? (
-    <AdpadzButton href={offer.claim_url} target="_blank" rel="noreferrer" onClick={() => onClaim(offer.id)} size="lg" gradient={ctaGradient} className="relative text-black md:min-w-48">
-      Claim Offer <ExternalLink className="h-4 w-4" />
-    </AdpadzButton>
-  ) : (
-    <AdpadzButton type="button" onClick={() => onClaim(offer.id)} size="lg" gradient={ctaGradient} className="relative text-black md:min-w-48">
+  const action = (
+    <AdpadzButton href={`/redeem/${offer.id}`} size="lg" gradient={ctaGradient} className="relative text-black md:min-w-48">
       Claim Offer
     </AdpadzButton>
   );
@@ -895,7 +984,10 @@ function OfferSection({ card, offer, lightMode, onClaim }: { card: BusinessCardR
 }
 
 function GallerySection({ gallery, lightMode }: { gallery: BusinessCardGalleryRecord[]; lightMode: boolean }) {
-  if (gallery.length === 0) return null;
+  const safeGallery = gallery
+    .map(item => ({ item, imageUrl: safeHttpUrl(item.image_url) }))
+    .filter((entry): entry is { item: BusinessCardGalleryRecord; imageUrl: string } => Boolean(entry.imageUrl));
+  if (safeGallery.length === 0) return null;
 
   return (
     <section className={sectionClass(lightMode)}>
@@ -903,10 +995,10 @@ function GallerySection({ gallery, lightMode }: { gallery: BusinessCardGalleryRe
         <ImageIcon className="h-4 w-4" /> Gallery
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {gallery.slice(0, 6).map(item => (
-          <a key={item.id} href={item.image_url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+        {safeGallery.slice(0, 6).map(({ item, imageUrl }) => (
+          <a key={item.id} href={imageUrl} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-2xl border border-white/10 bg-black/10">
             <div className="aspect-square overflow-hidden">
-              <img src={item.image_url} alt={item.caption ?? ''} className="h-full w-full transition-transform duration-300 group-hover:scale-105" style={getImageDisplayStyle({ fit: item.fit, position_x: item.position_x, position_y: item.position_y, zoom: item.zoom })} />
+              <img src={imageUrl} alt={item.caption ?? ''} className="h-full w-full transition-transform duration-300 group-hover:scale-105" style={getImageDisplayStyle({ fit: item.fit, position_x: item.position_x, position_y: item.position_y, zoom: item.zoom })} />
             </div>
             {item.caption && <p className={`px-3 py-2 text-xs ${lightMode ? 'text-neutral-700' : 'text-neutral-300'}`}>{item.caption}</p>}
           </a>
@@ -917,7 +1009,10 @@ function GallerySection({ gallery, lightMode }: { gallery: BusinessCardGalleryRe
 }
 
 function LinksSection({ links, card, lightMode }: { links: BusinessCardLinkRecord[]; card: BusinessCardRecord; lightMode: boolean }) {
-  if (links.length === 0) return null;
+  const safeLinks = links
+    .map(link => ({ link, href: safeHttpUrl(link.url) }))
+    .filter((entry): entry is { link: BusinessCardLinkRecord; href: string } => Boolean(entry.href));
+  if (safeLinks.length === 0) return null;
 
   return (
     <section className={sectionClass(lightMode)}>
@@ -925,8 +1020,8 @@ function LinksSection({ links, card, lightMode }: { links: BusinessCardLinkRecor
         <Share2 className="h-4 w-4" style={{ color: card.primary_color }} /> Local links
       </h2>
       <div className="space-y-2">
-        {links.map(link => (
-          <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.05] text-white'}`}>
+        {safeLinks.map(({ link, href }) => (
+          <a key={link.id} href={href} target="_blank" rel="noreferrer" className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.05] text-white'}`}>
             {link.label}
             <ExternalLink className="h-4 w-4 opacity-50" />
           </a>
@@ -937,8 +1032,11 @@ function LinksSection({ links, card, lightMode }: { links: BusinessCardLinkRecor
 }
 
 function ResourcesSection({ assets, card, lightMode, onAction }: { assets: BusinessMarketingAssetRecord[]; card: BusinessCardRecord; lightMode: boolean; onAction: (eventType: BusinessCardEventType) => void }) {
-  const documents = assets.filter(asset => ['brochure', 'menu', 'document'].includes(asset.asset_type));
-  const tours = assets.filter(asset => asset.asset_type === 'virtual_tour');
+  const resources = assets
+    .map(asset => ({ asset, href: safeHttpUrl(asset.external_url) ?? safeHttpUrl(asset.file_url) }))
+    .filter((entry): entry is { asset: BusinessMarketingAssetRecord; href: string } => Boolean(entry.href));
+  const documents = resources.filter(({ asset }) => ['brochure', 'menu', 'document'].includes(asset.asset_type));
+  const tours = resources.filter(({ asset }) => asset.asset_type === 'virtual_tour');
 
   if (documents.length === 0 && tours.length === 0) return null;
 
@@ -952,18 +1050,18 @@ function ResourcesSection({ assets, card, lightMode, onAction }: { assets: Busin
         <p className={`max-w-2xl text-sm ${lightMode ? 'text-neutral-600' : 'text-neutral-300'}`}>Helpful resources for visitors who want more detail before reaching out.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        {tours.map(asset => (
-          <a key={asset.id} href={asset.external_url || asset.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('virtual_tour_click')} className={`group overflow-hidden rounded-[1.75rem] border ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'}`}>
+        {tours.map(({ asset, href }) => (
+          <a key={asset.id} href={href} target="_blank" rel="noreferrer" onClick={() => onAction('virtual_tour_click')} className={`group overflow-hidden rounded-[1.75rem] border ${lightMode ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.04]'}`}>
             <div className="relative aspect-[16/10] overflow-hidden">
-              {asset.thumbnail_url ? <img src={asset.thumbnail_url} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Open Tour</div>}
+              {safeHttpUrl(asset.thumbnail_url) ? <img src={safeHttpUrl(asset.thumbnail_url) ?? undefined} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <div className="flex h-full w-full items-center justify-center text-sm font-black text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}>Open Tour</div>}
               <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
               <div className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white"><PlayCircle className="h-4 w-4" /> Virtual Tour</div>
             </div>
             <div className="flex items-center justify-between px-4 py-3 text-sm font-bold"><span>{asset.title}</span><ExternalLink className="h-4 w-4 opacity-60" /></div>
           </a>
         ))}
-        {documents.map(asset => (
-          <a key={asset.id} href={asset.external_url || asset.file_url || '#'} target="_blank" rel="noreferrer" onClick={() => onAction('document_click')} className={`flex items-center justify-between gap-3 rounded-[1.75rem] border px-4 py-4 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.05] text-white'}`}>
+        {documents.map(({ asset, href }) => (
+          <a key={asset.id} href={href} target="_blank" rel="noreferrer" onClick={() => onAction('document_click')} className={`flex items-center justify-between gap-3 rounded-[1.75rem] border px-4 py-4 text-sm font-bold ${lightMode ? 'border-black/10 bg-black/[0.03] text-neutral-950' : 'border-white/10 bg-white/[0.05] text-white'}`}>
             <span className="inline-flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl text-black" style={{ background: `linear-gradient(135deg, ${card.primary_color}, ${card.accent_color})` }}><FileText className="h-5 w-5" /></span><span className="min-w-0"><span className="block truncate">{asset.title}</span>{asset.description ? <span className={`mt-0.5 block truncate text-xs font-medium ${lightMode ? 'text-neutral-600' : 'text-neutral-400'}`}>{asset.description}</span> : null}</span></span>
             <ExternalLink className="h-4 w-4 flex-none opacity-60" />
           </a>
@@ -989,6 +1087,37 @@ function formatPublicDate(value: string): string {
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
+
+function formatServicePrice(price: number | string | null, currency: string | null): string | null {
+  if (price === null) return null;
+  const amount = Number(price);
+  if (!Number.isFinite(amount)) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency || 'USD',
+    }).format(amount);
+  } catch {
+    return `${currency ?? ''} ${amount.toFixed(2)}`.trim();
+  }
+}
+
+function formatServiceOption(service: BusinessCardBookingServiceRecord): string {
+  const details = [
+    service.duration_minutes ? formatDuration(service.duration_minutes) : null,
+    formatServicePrice(service.price, service.currency),
+  ].filter((value): value is string => Boolean(value));
+  return details.length > 0 ? `${service.name} (${details.join(' · ')})` : service.name;
+}
+
+function escapeVCardValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\r\n|\r|\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);

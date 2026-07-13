@@ -1,13 +1,15 @@
-﻿export type QRStylePreset = 'standard' | 'circular-pad' | 'digital-pad';
+export type QRStylePreset = 'standard' | 'circular-pad' | 'digital-pad';
 
 export type QRStatus = 'active' | 'paused' | 'archived';
-export type QRDestinationType = 'url' | 'business_card';
+export type QRDestinationType = 'url' | 'business_card' | 'campaign';
 
 export type QRCenterFrameShape = 'rounded-rect' | 'circle';
 export type QRRimDecoration = 'none';
 export type QROrnamentStyle = 'none' | 'wave-premium';
 export type QROuterBackgroundType = 'none' | 'solid' | 'gradient' | 'image' | 'pattern';
 export type QROuterBackgroundFit = 'cover' | 'contain';
+export type QRRimBandBackgroundType = 'solid' | 'image' | 'gradient' | 'pattern';
+export type QRRimBandImageFit = 'cover' | 'contain';
 
 export type QRLinkRecord = {
   id: string;
@@ -33,6 +35,32 @@ export type QRLinkRecord = {
   accent_color: string;
   show_center_label: boolean;
   show_short_url: boolean;
+  logo_data_url: string;
+  center_frame_shape: QRCenterFrameShape;
+  center_frame_stroke_color: string;
+  center_frame_fill_color: string;
+  rim_decoration: QRRimDecoration;
+  rim_band_color: string;
+  rim_text_color: string;
+  inner_field_color: string;
+  outer_border_color: string;
+  outer_background_type: QROuterBackgroundType;
+  outer_background_color: string;
+  outer_background_image_data_url: string;
+  outer_background_image_opacity: number;
+  outer_background_image_fit: QROuterBackgroundFit;
+  outer_background_overlay_color: string;
+  rim_band_background_type: QRRimBandBackgroundType;
+  rim_band_image_data_url: string;
+  rim_band_image_opacity: number;
+  rim_band_image_fit: QRRimBandImageFit;
+  rim_band_overlay_color: string;
+  rim_band_overlay_opacity: number;
+  ornament_style: QROrnamentStyle;
+  ornament_main_color: string;
+  ornament_accent_color: string;
+  ornament_shadow_color: string;
+  ornament_opacity: number;
   scan_count: number;
   expires_at: string | null;
   created_at: string;
@@ -74,6 +102,12 @@ export type QRFormState = {
   outer_background_image_opacity: number;
   outer_background_image_fit: QROuterBackgroundFit;
   outer_background_overlay_color: string;
+  rim_band_background_type: QRRimBandBackgroundType;
+  rim_band_image_data_url: string;
+  rim_band_image_opacity: number;
+  rim_band_image_fit: QRRimBandImageFit;
+  rim_band_overlay_color: string;
+  rim_band_overlay_opacity: number;
   ornament_style: QROrnamentStyle;
   ornament_main_color: string;
   ornament_accent_color: string;
