@@ -1,0 +1,339 @@
+/*
+ * Marketing-page readability layer.
+ * Loaded after LandingPage.css so these minimum sizes always win.
+ */
+
+@media (min-width: 821px) {
+  .premium-landing .premium-nav nav a,
+  .premium-landing .premium-sign-in {
+    font-size: 16px;
+  }
+
+  .premium-landing .premium-kicker {
+    font-size: 14px;
+  }
+
+  .premium-landing .premium-text-link {
+    font-size: 15px;
+  }
+
+  .premium-landing .premium-hero__proof {
+    gap: 16px 26px;
+    font-size: 16px;
+  }
+
+  .premium-landing .premium-hero__proof svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .premium-landing .frog-note {
+    padding: 15px 19px;
+    font-size: 15px;
+  }
+
+  .premium-landing .frog-note svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .premium-landing .hero-campaign__tag {
+    font-size: 13px;
+  }
+
+  .premium-landing .hero-campaign__tag svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .premium-landing .hero-campaign > p {
+    font-size: 14px;
+  }
+
+  .premium-landing .hero-campaign__offer {
+    font-size: 15px;
+  }
+
+  .premium-landing .hero-node {
+    gap: 9px;
+    padding: 13px 17px;
+    font-size: 14px;
+  }
+
+  .premium-landing .hero-node svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .premium-landing .premium-scroll-cue {
+    font-size: 13px;
+  }
+
+  .premium-landing .campaign-ribbon strong {
+    font-size: 16px;
+  }
+
+  .premium-landing .journey-source__top {
+    font-size: 14px;
+  }
+
+  .premium-landing .journey-source__top b {
+    font-size: 12px;
+  }
+
+  .premium-landing .journey-source__body small {
+    font-size: 13px;
+  }
+
+  .premium-landing .journey-source__body > p {
+    font-size: 16px;
+  }
+
+  .premium-landing .journey-source__body > div {
+    font-size: 14px;
+  }
+
+  .premium-landing .journey-source__body svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .premium-landing .journey-selector button {
+    min-height: 78px;
+    font-size: 15px;
+  }
+
+  .premium-landing .journey-selector button > svg:first-child {
+    width: 23px;
+    height: 23px;
+  }
+
+  .premium-landing .journey-selector button > svg:last-child {
+    width: 20px;
+    height: 20px;
+  }
+
+  .premium-landing .journey-result__eyebrow {
+    font-size: 13px;
+  }
+
+  .premium-landing .journey-result > p:nth-of-type(2) {
+    font-size: 17px;
+  }
+
+  .premium-landing .journey-result__event {
+    font-size: 15px;
+  }
+
+  .premium-landing .journey-result__footer small {
+    font-size: 12px;
+  }
+
+  .premium-landing .journey-result__footer strong {
+    font-size: 15px;
+  }
+
+  .premium-landing .sample-notice {
+    font-size: 12px;
+  }
+
+  .premium-landing .perspective-section__intro > p:nth-of-type(2) {
+    font-size: 18px;
+  }
+
+  .premium-landing .perspective-toggle button {
+    min-height: 52px;
+    padding-inline: 21px;
+    font-size: 15px;
+  }
+
+  .premium-landing .perspective-toggle button svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .premium-landing .perspective-card__eyebrow {
+    font-size: 13px;
+  }
+
+  .premium-landing .perspective-steps span {
+    min-height: 132px;
+    font-size: 14px;
+  }
+
+  .premium-landing .perspective-steps svg {
+    width: 25px;
+    height: 25px;
+  }
+
+  .premium-landing .perspective-card__moment b {
+    font-size: 12px;
+  }
+
+  .premium-landing .perspective-card__moment p {
+    font-size: 15px;
+  }
+
+  .premium-landing .perspective-card__moment > svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .premium-landing .privacy-copy > p:last-child {
+    font-size: 18px;
+  }
+
+  .premium-landing .privacy-points div {
+    grid-template-columns: 38px 1fr;
+    min-height: 92px;
+    font-size: 16px;
+  }
+
+  .premium-landing .privacy-points svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .premium-landing .guide-section__copy > p:nth-of-type(2) {
+    font-size: 18px;
+  }
+
+  .premium-landing .guide-section__note {
+    font-size: 14px;
+  }
+
+  .premium-landing .guide-section__note svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .premium-landing .premium-final__actions > a:last-child {
+    font-size: 15px;
+  }
+
+  .premium-landing .premium-footer > p,
+  .premium-landing .premium-footer > div a {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 820px) {
+  .premium-landing .premium-kicker {
+    font-size: 11px;
+  }
+
+  .premium-landing .premium-hero__proof,
+  .premium-landing .campaign-ribbon strong,
+  .premium-landing .journey-selector button,
+  .premium-landing .journey-result__event,
+  .premium-landing .perspective-toggle button,
+  .premium-landing .privacy-points div,
+  .premium-landing .guide-section__note,
+  .premium-landing .premium-final__actions > a:last-child {
+    font-size: 13px;
+  }
+
+  .premium-landing .journey-result > p:nth-of-type(2),
+  .premium-landing .perspective-section__intro > p:nth-of-type(2),
+  .premium-landing .privacy-copy > p:last-child,
+  .premium-landing .guide-section__copy > p:nth-of-type(2) {
+    font-size: 16px;
+  }
+}
+/* ==================================================
+   EASY FONT-SIZE CONTROLS
+   Change only these five numbers.
+   ================================================== */
+
+@media (min-width: 901px) {
+  .premium-landing {
+    --landing-nav-size: 15px;
+    --landing-support-size: 17px;
+    --landing-label-size: 15px;
+    --landing-body-size: 18px;
+    --landing-icon-size: 21px;
+  }
+
+  /* Header navigation */
+  .premium-landing .premium-nav nav a,
+  .premium-landing .premium-sign-in {
+    font-size: var(--landing-nav-size) !important;
+  }
+
+  /* Supporting text throughout the page */
+  .premium-landing :is(
+    .premium-hero__proof,
+    .hero-node,
+    .campaign-ribbon strong,
+    .journey-selector button,
+    .journey-result__event,
+    .perspective-toggle button,
+    .perspective-steps span,
+    .privacy-points div,
+    .guide-section__note,
+    .premium-final__actions > a:last-child,
+    .premium-footer > p,
+    .premium-footer > div a
+  ) {
+    font-size: var(--landing-support-size) !important;
+  }
+
+  /* Small uppercase labels */
+  .premium-landing :is(
+    .premium-kicker,
+    .hero-campaign__tag,
+    .journey-source__top,
+    .journey-source__body small,
+    .journey-result__eyebrow,
+    .perspective-card__eyebrow,
+    .perspective-card__moment b
+  ) {
+    font-size: var(--landing-label-size) !important;
+  }
+
+  /* Paragraph and descriptive text */
+  .premium-landing :is(
+    .hero-campaign__offer,
+    .journey-source__body > p,
+    .journey-result > p:nth-of-type(2),
+    .perspective-section__intro > p:nth-of-type(2),
+    .privacy-copy > p:last-child,
+    .guide-section__copy > p:nth-of-type(2)
+  ) {
+    font-size: var(--landing-body-size) !important;
+  }
+
+  /* Interface icons */
+  .premium-landing :is(
+    .premium-hero__proof,
+    .hero-node,
+    .journey-selector button,
+    .perspective-toggle button,
+    .perspective-steps span,
+    .privacy-points div,
+    .guide-section__note
+  ) svg {
+    width: var(--landing-icon-size) !important;
+    height: var(--landing-icon-size) !important;
+  }
+}
+/* Floating badge position controls — desktop */
+@media (min-width: 901px) {
+  /* QR badge */
+  .premium-landing .hero-node--qr {
+    top: 105px !important;
+    right: 25px !important;
+  }
+
+  /* Mailer badge */
+  .premium-landing .hero-node--mailer {
+    bottom: 35px !important;
+    left: 30px !important;
+  }
+}
+@media (min-width: 901px) {
+  .premium-landing .frog-note {
+    top: 28px !important;
+    right: 55px !important;
+  }
+}

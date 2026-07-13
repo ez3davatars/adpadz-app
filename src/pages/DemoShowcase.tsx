@@ -8,22 +8,19 @@ import {
   Check,
   Eye,
   HeartHandshake,
+  Mail,
+  Megaphone,
   MousePointerClick,
   QrCode,
   ScanLine,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Target,
   Users,
 } from 'lucide-react';
-import {
-  AdpadzBadge,
-  AdpadzButton,
-  AdpadzCard,
-  AdpadzMetricCard,
-  AdpadzSection,
-} from '../components/adpadz-ui';
 import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
+import './DemoShowcase.css';
 
 const showcaseWorkspace = createInitialDemoWorkspaceState();
 const showcaseCampaign = showcaseWorkspace.campaigns[0];
@@ -33,28 +30,28 @@ const journeySteps = [
   {
     number: '01',
     icon: Building2,
-    title: 'Build the Business Hub',
-    description: 'See one permanent source for the brand, services, contact paths, assets, and public profile.',
+    title: 'Build the business hub',
+    description: 'Give the brand, services, contact paths, assets, and public profile one permanent home.',
     view: 'overview',
   },
   {
     number: '02',
     icon: Target,
     title: 'Launch one campaign',
-    description: 'Create the offer, message, call to action, schedule, and every connected output from one record.',
+    description: 'Create the offer, message, action, schedule, and connected outputs from one record.',
     view: 'campaigns',
   },
   {
     number: '03',
     icon: QrCode,
     title: 'Simulate QR discovery',
-    description: 'Use the branded Pad QR and watch an attributed scan become part of the customer journey.',
+    description: 'Use the branded Pad QR and watch an attributed scan join the customer journey.',
     view: 'qr',
   },
   {
     number: '04',
     icon: Sparkles,
-    title: 'Experience the customer view',
+    title: 'Meet the customer view',
     description: 'Reveal the promotion and request a design visit exactly as a customer would.',
     view: 'customer',
   },
@@ -62,197 +59,218 @@ const journeySteps = [
     number: '05',
     icon: Users,
     title: 'Turn interest into a lead',
-    description: 'Submit a sample request and move it through the same lead pipeline a business owner uses.',
+    description: 'Submit a sample request and move it through the same pipeline an owner uses.',
     view: 'leads',
   },
   {
     number: '06',
     icon: BarChart3,
     title: 'Close the loop',
-    description: 'See views, offer reveals, QR scans, bookings, and leads update together in analytics.',
+    description: 'See views, reveals, scans, bookings, and leads update together in analytics.',
     view: 'analytics',
   },
 ];
 
-const outputLabels = ['Business Profile', 'Interactive campaign', 'Pad QR', 'Community mailer', 'Social & email', 'Lead capture'];
+const outputChannels = [
+  { icon: Smartphone, label: 'Business profile', detail: 'Always-on foundation' },
+  { icon: MousePointerClick, label: 'Interactive campaign', detail: 'Offer experience' },
+  { icon: QrCode, label: 'Pad QR', detail: 'Offline discovery' },
+  { icon: Megaphone, label: 'Community mailer', detail: 'Shared local reach' },
+  { icon: Mail, label: 'Social & email', detail: 'Prepared to share' },
+  { icon: Users, label: 'Lead capture', detail: 'Response with context' },
+];
 
 export default function DemoShowcase() {
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Adpadz Interactive Demo | One Campaign, Complete Journey';
+    document.title = 'Adpadz Examples | One Campaign, Complete Journey';
     return () => { document.title = previousTitle; };
   }, []);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[var(--bg-base)]">
-      <a href="#demo-showcase-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-neon focus:px-4 focus:py-2 focus:text-sm focus:font-black focus:text-black">Skip to demo showcase</a>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.07] bg-[color-mix(in_srgb,var(--bg-base)_88%,transparent)] backdrop-blur-xl safe-top">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2" aria-label="Adpadz home">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-neon text-sm font-black text-black shadow-[var(--glow-sm)]">A</span>
-            <span className="font-black">adpadz<span className="text-neon">.co</span></span>
+    <div className="examples-page">
+      <a href="#examples-content" className="examples-skip-link">Skip to examples</a>
+
+      <header className="examples-nav">
+        <div className="examples-nav__inner">
+          <Link to="/" className="examples-brand" aria-label="Adpadz home">
+            <img src="/brand/adpadz-logo.png" alt="" />
+            <span>adpadz<span>.co</span></span>
           </Link>
-          <div className="flex items-center gap-2">
-            <Link to="/" className="hidden items-center gap-2 px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:text-white sm:inline-flex">
-              <ArrowLeft className="h-3.5 w-3.5" /> Home
-            </Link>
-            <AdpadzButton href="/demo/workspace" size="sm">Open guided demo <ArrowRight className="h-3.5 w-3.5" /></AdpadzButton>
+          <nav aria-label="Examples navigation">
+            <a href="#perspectives">Perspectives</a>
+            <a href="#journey">The journey</a>
+            <a href="#outputs">Outputs</a>
+          </nav>
+          <div className="examples-nav__actions">
+            <Link to="/" className="examples-back-link"><ArrowLeft /> Home</Link>
+            <Link to="/demo/workspace" className="examples-button examples-button--small">Open demo <ArrowRight /></Link>
           </div>
         </div>
       </header>
 
-      <main id="demo-showcase-content">
-        <section className="relative px-4 pb-20 pt-32 sm:px-6 sm:pt-40 lg:px-8">
-          <div className="pointer-events-none absolute left-1/2 top-10 h-[38rem] w-[62rem] -translate-x-1/2 rounded-full bg-neon/[0.08] blur-[140px]" />
-          <div className="relative mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_0.9fr] lg:items-center">
-            <div>
-              <AdpadzBadge variant="local" className="mb-7"><Sparkles className="h-3.5 w-3.5" /> Interactive product demo · no sign-in</AdpadzBadge>
-              <h1 className="max-w-4xl text-5xl font-black leading-[0.96] tracking-tight sm:text-6xl lg:text-7xl">
-                See one local campaign become <span className="gradient-text">an entire customer journey.</span>
-              </h1>
-              <p className="mt-7 max-w-2xl text-base leading-relaxed text-[var(--text-secondary)] sm:text-lg">
-                Follow River City Outdoor Living—a fictional sample business—from Business Hub setup to campaign launch, QR discovery, lead capture, and measurable results.
+      <main id="examples-content">
+        <section className="examples-hero">
+          <div className="examples-grain" />
+          <div className="examples-hero__layout">
+            <div className="examples-hero__copy">
+              <p className="examples-kicker"><span /> A working campaign, not a slideshow.</p>
+              <h1>See one local offer become a <em>complete customer journey.</em></h1>
+              <p className="examples-hero__lead">
+                Follow River City Outdoor Living—a fictional sample business—from its permanent profile to campaign launch, neighborhood discovery, lead capture, and measurable response.
               </p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <AdpadzButton href="/demo/workspace" size="lg">Start the guided demo <ArrowRight className="h-4 w-4" /></AdpadzButton>
-                <AdpadzButton href="/demo/workspace?view=customer" variant="secondary" size="lg">Experience the customer view</AdpadzButton>
+              <div className="examples-actions">
+                <Link to="/demo/workspace" className="examples-button">Start the guided demo <ArrowRight /></Link>
+                <Link to="/demo/workspace?view=customer" className="examples-text-link">Enter as a customer <ArrowRight /></Link>
               </div>
-              <div className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-[11px] font-bold text-[var(--text-secondary)]">
-                {['Fictional sample business', 'Safe demo data', 'Reset anytime'].map(item => (
-                  <span key={item} className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-neon" />{item}</span>
+              <div className="examples-proof">
+                {['No sign-in', 'Safe sample data', 'Reset anytime'].map(item => (
+                  <span key={item}><ShieldCheck /> {item}</span>
                 ))}
               </div>
             </div>
 
-            <AdpadzCard variant="glass" className="overflow-visible p-3 shadow-[0_40px_120px_rgba(0,0,0,0.55)] sm:p-4">
-              <div className="rounded-[1.6rem] border border-white/[0.07] bg-black/35 p-5 sm:p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neon">Sample campaign</p>
-                <h2 className="mt-1 text-lg font-black">{showcaseCampaign.title}</h2>
-                  </div>
-                  <AdpadzBadge variant="status">Active</AdpadzBadge>
+            <div className="examples-hero__stage" aria-label="Sample Adpadz campaign preview">
+              <div className="examples-orbit examples-orbit--outer" />
+              <div className="examples-orbit examples-orbit--inner" />
+              <div className="examples-stage-note"><Sparkles /> Follow it from launch to lead.</div>
+
+              <article className="examples-campaign-card">
+                <div className="examples-campaign-card__top">
+                  <span><Target /> Live campaign</span>
+                  <b>Active</b>
                 </div>
-                <div className="mt-5 rounded-3xl border border-neon/25 bg-[radial-gradient(circle_at_20%_20%,rgba(182,255,0,0.2),transparent_35%),linear-gradient(145deg,#20251b,#090b08)] p-5">
-                  <div className="flex items-start gap-4">
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neon text-lg font-black text-black">R</span>
-                    <div>
-                      <p className="text-sm font-black">{showcaseWorkspace.business.name}</p>
-                      <p className="mt-1 text-xs text-neutral-300">{showcaseWorkspace.business.tagline}</p>
-                    </div>
-                  </div>
-                  <p className="mt-8 text-[10px] font-black uppercase tracking-[0.2em] text-neon">Limited seasonal offer</p>
-                  <p className="mt-2 text-2xl font-black leading-tight">{showcaseCampaign.offer.title}</p>
-                  <div className="mt-5 inline-flex rounded-full bg-neon px-4 py-2.5 text-xs font-black text-black">{showcaseCampaign.ctaLabel}</div>
+                <p>{showcaseWorkspace.business.name}</p>
+                <h2>{showcaseCampaign.title}</h2>
+                <div className="examples-campaign-card__offer">
+                  <small>Seasonal offer</small>
+                  <strong>{showcaseCampaign.offer.title}</strong>
+                  <span>{showcaseCampaign.ctaLabel} <ArrowRight /></span>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="examples-mini-metrics">
                   <MiniMetric icon={Eye} value={showcaseCampaign.metrics.views.toLocaleString()} label="Views" />
                   <MiniMetric icon={MousePointerClick} value={showcaseCampaign.metrics.offerReveals.toLocaleString()} label="Reveals" />
                   <MiniMetric icon={ScanLine} value={showcaseCampaign.metrics.qrScans.toLocaleString()} label="Scans" />
                 </div>
-                <p className="mt-4 text-center text-xs font-bold text-[var(--text-secondary)]">Illustrative sample performance—not customer results</p>
-              </div>
-            </AdpadzCard>
-          </div>
-        </section>
+              </article>
 
-        <section className="border-y border-white/[0.07] bg-white/[0.02] px-4 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 md:grid-cols-4">
-            <AdpadzMetricCard icon={Eye} label="Sample views" value={showcaseTotalViews.toLocaleString()} detail="Profile and campaign discovery" />
-            <AdpadzMetricCard icon={MousePointerClick} label="Sample reveals" value={showcaseWorkspace.metrics.offerReveals.toLocaleString()} detail="Interactive offer engagement" />
-            <AdpadzMetricCard icon={Users} label="Sample leads" value={showcaseWorkspace.metrics.leads.toLocaleString()} detail="Design requests and inquiries" />
-            <AdpadzMetricCard icon={QrCode} label="Sample QR scans" value={showcaseWorkspace.metrics.qrScans.toLocaleString()} detail="Attributed offline discovery" />
-          </div>
-        </section>
-
-        <section className="px-4 py-24 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <AdpadzSection
-              eyebrow="Choose your perspective"
-              title="See the same promotion from every side"
-              description="The demo is designed for a sales conversation: start with the owner workspace, switch to the customer experience, then finish with the measurable result."
-            >
-              <div className="grid gap-4 md:grid-cols-3">
-                <PerspectiveCard icon={Building2} title="Business owner" description="Build and publish every customer touchpoint from one source." href="/demo/workspace?view=overview" action="Open the workspace" />
-                <PerspectiveCard icon={HeartHandshake} title="Customer" description="Discover, reveal, scan, and request a design visit." href="/demo/workspace?view=customer" action="Try the experience" featured />
-                <PerspectiveCard icon={BarChart3} title="Results" description="Watch each action become visible in the connected analytics story." href="/demo/workspace?view=analytics" action="See the results" />
-              </div>
-            </AdpadzSection>
-          </div>
-        </section>
-
-        <section className="bg-[var(--bg-surface)] px-4 py-24 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <div className="mx-auto max-w-3xl text-center">
-              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">The complete loop</p>
-              <h2 className="mt-3 text-3xl font-black sm:text-4xl">A guided six-step story you can show in five minutes</h2>
-              <p className="mt-4 text-sm leading-relaxed text-[var(--text-secondary)]">Every step opens a working part of the sandbox. Actions are stored only for the current browser session and can be reset instantly.</p>
+              <img className="examples-hero__frog" src="/brand/adpadz-frog.webp" alt="The Adpadz frog guide presenting a sample campaign" />
+              <div className="examples-stage-chip examples-stage-chip--profile"><Smartphone /> Profile</div>
+              <div className="examples-stage-chip examples-stage-chip--qr"><QrCode /> QR path</div>
+              <div className="examples-stage-chip examples-stage-chip--lead"><Users /> Lead</div>
             </div>
-            <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {journeySteps.map(step => (
-                <Link key={step.number} to={`/demo/workspace?view=${step.view}`} className="group">
-                  <AdpadzCard as="article" variant="flat" className="h-full p-6 transition group-hover:-translate-y-1 group-hover:border-neon/35">
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neon/10 text-neon"><step.icon className="h-5 w-5" /></span>
-                      <span className="text-3xl font-black text-white/10">{step.number}</span>
-                    </div>
-                    <h3 className="mt-5 text-lg font-black">{step.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{step.description}</p>
-                    <span className="mt-5 inline-flex items-center gap-2 text-xs font-black text-neon">Open this step <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" /></span>
-                  </AdpadzCard>
-                </Link>
+          </div>
+        </section>
+
+        <section className="examples-metric-ribbon" aria-label="Illustrative sample campaign metrics">
+          <div>
+            <Metric icon={Eye} label="Sample views" value={showcaseTotalViews.toLocaleString()} detail="Profile + campaign" />
+            <Metric icon={MousePointerClick} label="Offer reveals" value={showcaseWorkspace.metrics.offerReveals.toLocaleString()} detail="Intentional engagement" />
+            <Metric icon={Users} label="Sample leads" value={showcaseWorkspace.metrics.leads.toLocaleString()} detail="Requests + inquiries" />
+            <Metric icon={QrCode} label="QR scans" value={showcaseWorkspace.metrics.qrScans.toLocaleString()} detail="Attributed discovery" />
+          </div>
+          <p>Illustrative demo activity—not customer results.</p>
+        </section>
+
+        <section className="examples-perspectives" id="perspectives">
+          <div className="examples-section-heading examples-section-heading--dark">
+            <p className="examples-kicker"><span /> Three views. One source of truth.</p>
+            <h2>Walk through the promotion from every side.</h2>
+            <p>Start with the owner workspace, switch into the customer’s moment, then return to the measurable result.</p>
+          </div>
+          <div className="examples-perspective-grid">
+            <PerspectiveCard
+              number="01"
+              icon={Building2}
+              eyebrow="Business workspace"
+              title="Build and publish without repeating the work."
+              description="Manage the business foundation, campaign, connected outputs, and response from one workspace."
+              href="/demo/workspace?view=overview"
+              action="Open the workspace"
+            />
+            <PerspectiveCard
+              number="02"
+              icon={HeartHandshake}
+              eyebrow="Customer moment"
+              title="Discover an offer worth choosing to explore."
+              description="Experience the interactive promotion, reveal the value, and take the next step without pressure."
+              href="/demo/workspace?view=customer"
+              action="Try the experience"
+              featured
+            />
+            <PerspectiveCard
+              number="03"
+              icon={BarChart3}
+              eyebrow="Connected result"
+              title="See which customer actions actually came back."
+              description="Follow views, scans, reveals, requests, and leads as parts of the same campaign story."
+              href="/demo/workspace?view=analytics"
+              action="See the results"
+            />
+          </div>
+        </section>
+
+        <section className="examples-journey" id="journey">
+          <div className="examples-journey__intro">
+            <div className="examples-section-heading">
+              <p className="examples-kicker"><span /> The complete loop.</p>
+              <h2>Six working steps. About five minutes.</h2>
+            </div>
+            <p>Every step opens a functioning part of the safe sandbox. Choose a starting point or follow the story in order.</p>
+          </div>
+          <div className="examples-journey-grid">
+            {journeySteps.map(step => (
+              <JourneyCard key={step.number} {...step} />
+            ))}
+          </div>
+        </section>
+
+        <section className="examples-outputs" id="outputs">
+          <div className="examples-outputs__copy">
+            <p className="examples-kicker"><span /> Create once. Travel well.</p>
+            <h2>One clear promotion.<br /><em>Six useful forms.</em></h2>
+            <p>The message stays recognizable while each output is shaped for the place and moment in which someone encounters it.</p>
+            <ul>
+              {['One permanent business foundation', 'One campaign-controlled message', 'Customer actions connected to context'].map(item => (
+                <li key={item}><Check /> {item}</li>
               ))}
-            </div>
+            </ul>
+          </div>
+          <div className="examples-output-grid">
+            {outputChannels.map((output, index) => (
+              <article key={output.label} className={index === 1 ? 'is-featured' : ''}>
+                <div><output.icon /><span>0{index + 1}</span></div>
+                <h3>{output.label}</h3>
+                <p>{output.detail}</p>
+              </article>
+            ))}
           </div>
         </section>
 
-        <section className="px-4 py-24 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Create once</p>
-                <h2 className="mt-3 text-3xl font-black sm:text-4xl">One promotion. Multiple ready-to-use experiences.</h2>
-                <p className="mt-4 text-sm leading-relaxed text-[var(--text-secondary)]">The working example keeps the headline, offer, dates, and action consistent while adapting the presentation for each channel.</p>
-                <ul className="mt-7 space-y-3">
-                  {['A permanent business foundation', 'Campaign-controlled offer and message', 'Customer actions connected to analytics'].map(item => (
-                    <li key={item} className="flex items-center gap-3 text-sm font-bold"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-neon/10 text-neon"><Check className="h-3.5 w-3.5" /></span>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <AdpadzCard variant="glass" className="p-4 sm:p-6">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {outputLabels.map((label, index) => (
-                    <div key={label} className={`rounded-3xl border p-4 ${index === 1 ? 'border-neon/40 bg-neon/[0.08]' : 'border-white/[0.08] bg-white/[0.035]'}`}>
-                      <span className="text-[10px] font-black text-neon">0{index + 1}</span>
-                      <p className="mt-7 text-sm font-black">{label}</p>
-                      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">Connected & ready</p>
-                    </div>
-                  ))}
-                </div>
-              </AdpadzCard>
-            </div>
+        <section className="examples-final">
+          <div className="examples-final__frog-wrap">
+            <div />
+            <img src="/brand/adpadz-frog.webp" alt="The Adpadz frog guide" />
           </div>
-        </section>
-
-        <section className="px-4 pb-24 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl rounded-[2.5rem] border border-neon/25 bg-neon/[0.055] p-8 text-center shadow-[var(--glow-sm)] sm:p-12">
-            <Sparkles className="mx-auto h-9 w-9 text-neon" />
-            <h2 className="mt-5 text-3xl font-black sm:text-4xl">Ready to explore the whole product?</h2>
-            <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[var(--text-secondary)]">No account is required. Create sample campaigns, trigger customer actions, manage leads, and reset everything when your presentation is done.</p>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <AdpadzButton href="/demo/workspace" size="lg">Open guided demo <ArrowRight className="h-4 w-4" /></AdpadzButton>
-              <AdpadzButton href="/auth" variant="secondary" size="lg">Create my own account</AdpadzButton>
+          <div>
+            <p className="examples-kicker"><span /> Safe to explore.</p>
+            <h2>Try the whole journey before creating an account.</h2>
+            <p>Create sample campaigns, trigger customer actions, manage leads, and reset the fictional workspace whenever you’re finished.</p>
+            <div className="examples-actions">
+              <Link to="/demo/workspace" className="examples-button">Open guided demo <ArrowRight /></Link>
+              <Link to="/auth" className="examples-text-link">Create my account <ArrowRight /></Link>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-white/[0.07] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 sm:flex-row">
-          <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-neon text-xs font-black text-black">A</span><span className="text-sm font-black">adpadz<span className="text-neon">.co</span></span></div>
-          <p className="text-center text-xs text-[var(--text-secondary)]">Fictional business, leads, and performance data for product demonstration.</p>
-          <div className="flex gap-4 text-xs font-bold text-[var(--text-muted)]"><Link to="/privacy" className="hover:text-white">Privacy</Link><Link to="/terms" className="hover:text-white">Terms</Link></div>
-        </div>
+      <footer className="examples-footer">
+        <Link to="/" className="examples-brand" aria-label="Adpadz home">
+          <img src="/brand/adpadz-logo.png" alt="" />
+          <span>adpadz<span>.co</span></span>
+        </Link>
+        <p>Fictional businesses, leads, and performance data for product demonstration.</p>
+        <div><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
       </footer>
     </div>
   );
@@ -260,23 +278,36 @@ export default function DemoShowcase() {
 
 function MiniMetric({ icon: Icon, value, label }: { icon: typeof Eye; value: string; label: string }) {
   return (
-    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.04] p-3 text-center">
-      <Icon className="mx-auto h-3.5 w-3.5 text-neon" />
-      <p className="mt-2 text-sm font-black">{value}</p>
-      <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.13em] text-[var(--text-secondary)]">{label}</p>
+    <div>
+      <Icon />
+      <strong>{value}</strong>
+      <span>{label}</span>
     </div>
   );
 }
 
+function Metric({ icon: Icon, value, label, detail }: { icon: typeof Eye; value: string; label: string; detail: string }) {
+  return (
+    <article>
+      <Icon />
+      <div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>
+    </article>
+  );
+}
+
 function PerspectiveCard({
+  number,
   icon: Icon,
+  eyebrow,
   title,
   description,
   href,
   action,
   featured = false,
 }: {
+  number: string;
   icon: typeof Building2;
+  eyebrow: string;
   title: string;
   description: string;
   href: string;
@@ -284,13 +315,30 @@ function PerspectiveCard({
   featured?: boolean;
 }) {
   return (
-    <Link to={href} className="group">
-      <AdpadzCard as="article" variant={featured ? 'featured' : 'flat'} className={`h-full p-6 transition group-hover:-translate-y-1 ${featured ? 'border-neon/35 bg-neon/[0.055]' : 'group-hover:border-neon/30'}`}>
-        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${featured ? 'bg-neon text-black' : 'bg-neon/10 text-neon'}`}><Icon className="h-5 w-5" /></span>
-        <h3 className="mt-5 text-xl font-black">{title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{description}</p>
-        <span className="mt-6 inline-flex items-center gap-2 text-xs font-black text-neon">{action} <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" /></span>
-      </AdpadzCard>
+    <Link to={href} className={`examples-perspective-card${featured ? ' is-featured' : ''}`}>
+      <span className="examples-perspective-card__number">{number}</span>
+      <div className="examples-perspective-card__icon"><Icon /></div>
+      <p>{eyebrow}</p>
+      <h3>{title}</h3>
+      <blockquote>{description}</blockquote>
+      <span className="examples-card-link">{action} <ArrowRight /></span>
+    </Link>
+  );
+}
+
+function JourneyCard({
+  number,
+  icon: Icon,
+  title,
+  description,
+  view,
+}: (typeof journeySteps)[number]) {
+  return (
+    <Link to={`/demo/workspace?view=${view}`} className="examples-journey-card">
+      <div><span>{number}</span><Icon /></div>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      <span className="examples-card-link">Open this step <ArrowRight /></span>
     </Link>
   );
 }

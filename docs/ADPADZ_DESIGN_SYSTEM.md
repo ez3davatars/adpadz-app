@@ -1,6 +1,6 @@
 # ADPADZ DESIGN SYSTEM
 
-Version 1.0
+Version 1.1
 
 ## PURPOSE
 
@@ -44,7 +44,26 @@ Cheap
 
 Dashboard-heavy
 
+Generic AI-generated SaaS
+
+Gaming-oriented
+
 Every screen should feel like it belongs to one product.
+
+---
+
+# BRAND IDEA
+
+Adpadz turns one local campaign into a connected path between a business and its community.
+
+The visual language is built from:
+
+- Lily-pad circles and cropped organic shapes.
+- Leaf-vein networks for connected distribution.
+- Editorial composition inspired by premium local publications.
+- Product evidence shown as real campaign outputs, not generic dashboard mockups.
+
+Technology should feel useful and quietly advanced. Nature and community make the product memorable.
 
 ---
 
@@ -68,9 +87,17 @@ Primary Accent
 
 Adpadz Green
 
+Use as a signal for action, connection, success, and selected states. Do not wash every surface in green glow.
+
 Secondary Accent
 
 Adpadz Blue
+
+Use sparingly for information, distribution paths, and mascot-derived supporting details.
+
+Mascot Orange
+
+Use only for small moments of warmth, attention, or character. It must never compete with Adpadz Green as the primary action color.
 
 Neutral
 
@@ -94,9 +121,20 @@ Amber
 
 Never invent random colors.
 
+Marketing surfaces may use a warmer near-black and warm off-white to create editorial contrast. Pure black and pure white remain available for product UI.
+
 ---
 
 # TYPOGRAPHY
+
+Product UI uses Poppins for continuity and legibility.
+
+Brand and marketing pages use:
+
+- Barlow Condensed for large display statements, short labels, and editorial numerals.
+- Manrope for navigation, body copy, controls, and supporting text.
+
+Do not use condensed type for paragraphs or controls.
 
 Only use these levels.
 
@@ -112,7 +150,7 @@ Body
 
 Caption
 
-Do not create custom font sizes.
+Use the defined type tokens. Responsive fluid sizing is allowed for Hero and Section Title only.
 
 ---
 
@@ -383,6 +421,82 @@ Modals:
 Fade
 
 Never use flashy animation.
+
+---
+
+# VISUAL RESTRAINT
+
+Premium means restrained, specific, and well composed.
+
+Use glow only to indicate a live connection, selected control, or primary action. Avoid ambient glow on every card and heading.
+
+Avoid repeated rows of equal glass cards. Marketing pages should vary rhythm with editorial layouts, product moments, generous negative space, and controlled overlap.
+
+Avoid decorative gradients, floating blobs, oversized generic icons, and fake metrics that do not help explain the product.
+
+Every major marketing section must demonstrate one concrete idea rather than restate a feature list.
+
+---
+
+# MASCOT
+
+The Adpadz red-eyed tree frog is the official brand guide and spokesperson.
+
+The mascot should feel:
+
+Confident
+
+Friendly
+
+Observant
+
+Practical
+
+Community-minded
+
+Never portray the mascot as childish, frantic, sarcastic, or as a replacement for clear product explanation.
+
+Use the mascot for:
+
+- A memorable introduction or hero moment.
+- Short guidance that makes a product concept easier to understand.
+- Campaign education, onboarding, community messages, and brand sign-offs.
+
+Do not place the mascot in every section. On one marketing page, use no more than three meaningful appearances and only one dominant full-body appearance.
+
+Preserve the approved anatomy, red-orange eyes, orange feet, blue side markings, black vest, Adpadz emblem, and lily pad. Do not recolor, stretch, mirror text, crop through the face, or place busy content behind the silhouette.
+
+Mascot dialogue must be concise and useful. Never use the mascot to make unverified performance claims.
+
+---
+
+# MARKETING PAGE STRUCTURE
+
+Marketing pages may use a narrative structure when it communicates the product more clearly than the standard product-page structure:
+
+Promise
+
+↓
+
+Product transformation
+
+↓
+
+Business and customer perspectives
+
+↓
+
+Trust and privacy
+
+↓
+
+Guided product experience
+
+↓
+
+Single primary conversion
+
+The landing page should lead with the guided demo before account creation. The visitor should understand the system by experiencing it.
 
 ---
 

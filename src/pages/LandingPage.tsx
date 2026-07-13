@@ -1,258 +1,267 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, BarChart3, Building2, Check, HeartHandshake, Megaphone,
-  MousePointerClick, QrCode, Smartphone, Sparkles, Target, Users,
+  ArrowRight,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  Check,
+  Eye,
+  HeartHandshake,
+  Mail,
+  MapPin,
+  Megaphone,
+  MousePointerClick,
+  QrCode,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Target,
+  Users,
 } from 'lucide-react';
-import { AdpadzBadge, AdpadzButton, AdpadzCard } from '../components/adpadz-ui';
+import type { LucideIcon } from 'lucide-react';
+import { AdpadzButton } from '../components/adpadz-ui';
 import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
 import './LandingPage.css';
+import './LandingPageReadability.css';
 
-const landingDemo = createInitialDemoWorkspaceState();
-const landingDemoCampaign = landingDemo.campaigns[0];
-const landingDemoViews = landingDemo.metrics.profileViews + landingDemo.metrics.campaignViews;
+const demo = createInitialDemoWorkspaceState();
+const campaign = demo.campaigns[0];
 
-const productPillars = [
-  { icon: Building2, title: 'Business Hub', description: 'Keep permanent business details, brand assets, services, contact paths, and customer-facing content in one place.' },
-  { icon: Target, title: 'Campaign Engine', description: 'Create a promotion once. Campaigns remain the single source of truth for the offer, dates, message, and call to action.' },
-  { icon: Megaphone, title: 'Publish Everywhere', description: 'Turn the same campaign into a Business Profile feature, interactive experience, QR path, mailer, social post, email, or flyer.' },
-  { icon: BarChart3, title: 'Leads & Analytics', description: 'Measure discovery, reveals, calls, bookings, claims, QR scans, and lead forms in one customer journey.' },
+type OutputKey = 'profile' | 'experience' | 'qr' | 'mailer' | 'social' | 'lead';
+
+type Output = {
+  key: OutputKey;
+  icon: LucideIcon;
+  label: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  action: string;
+};
+
+const outputs: Output[] = [
+  { key: 'profile', icon: Smartphone, label: 'Business profile', eyebrow: 'Always-on home', title: 'Your best business information stays ready.', description: 'Services, proof, contact paths, and active promotions live together in one polished public destination.', action: 'Customer taps Call' },
+  { key: 'experience', icon: MousePointerClick, label: 'Interactive ad', eyebrow: 'Campaign moment', title: 'A promotion people can experience.', description: 'Reveal, scratch, compare, watch, or respond instead of scrolling past another static post.', action: 'Offer is revealed' },
+  { key: 'qr', icon: QrCode, label: 'QR path', eyebrow: 'Physical to digital', title: 'Every printed piece can stay connected.', description: 'A branded QR path carries the same campaign from a counter card, mailer, sign, or receipt into action.', action: 'QR scan recorded' },
+  { key: 'mailer', icon: Megaphone, label: 'Community mailer', eyebrow: 'Shared local reach', title: 'A neighborhood publication, powered by local businesses.', description: 'Campaign-ready content moves into cooperative print distribution without starting the work over.', action: 'Household discovers offer' },
+  { key: 'social', icon: Mail, label: 'Social & email', eyebrow: 'Prepared to share', title: 'Channel-ready copy from the same source.', description: 'Adpadz prepares consistent social, email, and flyer content for the channels a business chooses to use.', action: 'Publishing handoff ready' },
+  { key: 'lead', icon: Users, label: 'Lead & insight', eyebrow: 'Action returns', title: 'Customer response comes back with context.', description: 'Calls, claims, bookings, forms, and scans become one readable journey instead of unrelated reports.', action: 'Qualified lead arrives' },
 ];
 
-const outputs = [
-  { icon: Smartphone, label: 'Business Profile' },
-  { icon: MousePointerClick, label: 'Interactive Campaign' },
-  { icon: QrCode, label: 'QR Experience' },
-  { icon: Megaphone, label: 'Community Mailer' },
-  { icon: Sparkles, label: 'Social & Email' },
-  { icon: Users, label: 'Lead Capture' },
-];
-
-const lifecycle = [
-  { value: 'Discovery', detail: 'QR, mailers, campaigns' },
-  { value: 'Engagement', detail: 'Interactive and profile experiences' },
-  { value: 'Conversion', detail: 'Calls, offers, booking, leads' },
-  { value: 'Retention', detail: 'Customer follow-up and insight' },
-];
-
-const journeySteps = [
-  { number: '01', title: 'Build the foundation', description: 'Add permanent business information, services, brand assets, contact actions, and the public Business Profile.' },
-  { number: '02', title: 'Create one campaign', description: 'Set the promotion, offer, media, dates, call to action, interactive format, and the outputs it should power.' },
-  { number: '03', title: 'Learn from customer action', description: 'Track views, reveals, clicks, QR scans, bookings, claims, and leads without stitching together unrelated reports.' },
+const privacyPoints = [
+  'People choose when to explore an offer',
+  'No microphone listening or behavioral surveillance',
+  'No feed designed to keep people trapped',
 ];
 
 export default function LandingPage() {
+  const [activeOutput, setActiveOutput] = useState<OutputKey>('experience');
+  const [perspective, setPerspective] = useState<'business' | 'customer'>('business');
+  const selectedOutput = outputs.find(output => output.key === activeOutput) ?? outputs[1];
+
   return (
-    <div className="landing-page min-h-screen overflow-hidden">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.07] bg-[color-mix(in_srgb,var(--bg-base)_88%,transparent)] backdrop-blur-xl safe-top">
-        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" aria-label="Adpadz home">
-            <img src="/brand/adpadz-logo.png" alt="Adpadz" className="landing-nav-logo" />
+    <div className="premium-landing">
+      <header className="premium-nav">
+        <div className="premium-nav__inner">
+          <Link to="/" className="premium-brand" aria-label="Adpadz home">
+            <img src="/brand/adpadz-logo.png" alt="" />
+            <span>adpadz<span>.co</span></span>
           </Link>
-          <nav className="hidden items-center gap-8 text-sm font-bold text-[var(--text-secondary)] md:flex" aria-label="Main navigation">
-            <a href="#platform" className="transition hover:text-white">Platform</a>
-            <a href="#journey" className="transition hover:text-white">How it works</a>
-            <Link to="/examples" className="transition hover:text-white">Examples</Link>
-            <Link to="/feed" className="transition hover:text-white">Explore local</Link>
+          <nav aria-label="Main navigation">
+            <a href="#journey">The journey</a>
+            <a href="#for-everyone">How it works</a>
+            <a href="#privacy">Our promise</a>
+            <Link to="/examples">Examples</Link>
           </nav>
-          <div className="flex items-center gap-2">
-            <Link to="/auth" className="hidden px-3 py-2 text-sm font-bold text-[var(--text-secondary)] hover:text-white sm:inline-flex">Sign in</Link>
-            <AdpadzButton href="/auth" size="md" className="text-sm">Start a campaign <ArrowRight className="h-4 w-4" /></AdpadzButton>
+          <div className="premium-nav__actions">
+            <Link to="/auth" className="premium-sign-in">Sign in</Link>
+            <AdpadzButton href="/demo/workspace" size="md">Explore Adpadz <ArrowRight /></AdpadzButton>
           </div>
         </div>
       </header>
 
       <main>
-        <section className="landing-hero-section">
-          <div className="landing-hero-grid">
-            <div className="landing-hero-copy">
-              <AdpadzBadge variant="local" className="text-xs"><HeartHandshake className="h-4 w-4" /> Built for local business</AdpadzBadge>
-              <h1 className="landing-hero-title">Create once.<span>Grow everywhere.</span></h1>
-              <p className="landing-hero-description">
-                Adpadz turns one clear campaign into every customer experience your business needs—then shows which actions are actually creating growth.
-              </p>
-              <div className="landing-hero-actions">
-                <AdpadzButton href="/auth" size="lg">Build your first campaign <ArrowRight className="h-4 w-4" /></AdpadzButton>
-                <AdpadzButton href="/demo/workspace" variant="secondary" size="lg">Explore the live demo</AdpadzButton>
+        <section className="premium-hero">
+          <div className="premium-hero__grain" aria-hidden="true" />
+          <div className="premium-hero__layout">
+            <div className="premium-hero__copy">
+              <p className="premium-kicker"><span /> Local marketing, connected</p>
+              <h1>Your promotion shouldn’t disappear after <em>one post.</em></h1>
+              <p className="premium-hero__lead">Adpadz turns one clear campaign into a connected local customer journey—from discovery to response.</p>
+              <div className="premium-hero__actions">
+                <AdpadzButton href="/demo/workspace" size="lg">Experience a campaign <ArrowRight /></AdpadzButton>
+                <Link to="/examples" className="premium-text-link">See real product examples <ArrowRight /></Link>
               </div>
-              <div className="landing-proof">
-                {['One source of truth', 'Reusable business assets', 'Real customer actions'].map(item => (
-                  <span key={item}><Check className="h-4 w-4 text-neon" />{item}</span>
-                ))}
+              <div className="premium-hero__proof" aria-label="Adpadz product principles">
+                <span><Check /> One campaign source</span>
+                <span><Check /> Many connected outputs</span>
+                <span><Check /> Customer action you can follow</span>
               </div>
             </div>
 
-            <div className="landing-control" aria-label="Example Adpadz campaign workflow">
-              <div className="landing-control-head">
-                <p className="landing-control-kicker">Campaign control</p>
-                <span className="landing-control-status">Ready to publish</span>
+            <div className="premium-hero__story" aria-label="One campaign connecting to local customer experiences">
+              <div className="hero-orbit hero-orbit--outer" aria-hidden="true" />
+              <div className="hero-orbit hero-orbit--inner" aria-hidden="true" />
+              <div className="hero-campaign">
+                <span className="hero-campaign__tag"><Target /> Live campaign</span>
+                <p>River City Outdoor Living</p>
+                <strong>{campaign.title}</strong>
+                <span className="hero-campaign__offer">{campaign.offer.title}</span>
               </div>
-
-              <ControlRow icon={Building2} label="Foundation" title="River City Outdoor Living" meta="Business Hub" />
-              <ControlRow icon={Target} label="Active campaign" title={landingDemoCampaign.title} meta="One source" active />
-
-              <div className="landing-control-outputs">
-                <p className="landing-control-label">Connected outputs</p>
-                <div className="landing-control-output-grid">
-                  {outputs.slice(0, 4).map(output => (
-                    <div key={output.label} className="landing-output-chip">
-                      <output.icon className="h-4 w-4 shrink-0 text-neon" />
-                      <span>{output.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="landing-control-metrics">
-                <Metric value={landingDemoViews.toLocaleString()} label="Views" />
-                <Metric value={landingDemo.metrics.qrScans.toLocaleString()} label="QR scans" />
-                <Metric value={landingDemo.metrics.leads.toLocaleString()} label="Leads" />
-              </div>
+              <div className="hero-node hero-node--profile"><Smartphone /><span>Profile</span></div>
+              <div className="hero-node hero-node--qr"><QrCode /><span>QR</span></div>
+              <div className="hero-node hero-node--mailer"><Megaphone /><span>Mailer</span></div>
+              <div className="hero-node hero-node--lead"><Users /><span>Lead</span></div>
+              <img className="premium-hero__frog" src="/brand/adpadz-frog.webp" alt="The Adpadz frog guide standing confidently on a lily pad" />
+              <div className="frog-note"><Sparkles /> Build it once. Let it travel.</div>
             </div>
           </div>
+          <a className="premium-scroll-cue" href="#journey"><span>Follow one campaign</span><ArrowRight /></a>
         </section>
 
-        <section className="border-y border-white/[0.07] bg-white/[0.018] px-4 py-11 sm:px-6 lg:px-8">
-          <div className="landing-lifecycle">
-            {lifecycle.map((stage, index) => (
-              <article key={stage.value} className="landing-stage">
-                <span className="landing-stage-number">0{index + 1}</span>
-                <h3>{stage.value}</h3>
-                <p>{stage.detail}</p>
-              </article>
-            ))}
+        <section className="campaign-ribbon" aria-label="Adpadz campaign flow">
+          <div><span>01</span><strong>Build the business foundation</strong></div>
+          <i />
+          <div><span>02</span><strong>Create one campaign</strong></div>
+          <i />
+          <div><span>03</span><strong>Connect every response</strong></div>
+        </section>
+
+        <section id="journey" className="journey-section">
+          <div className="section-heading section-heading--dark">
+            <p className="premium-kicker"><span /> One source. Six useful forms.</p>
+            <h2>Watch a campaign move through the neighborhood.</h2>
+            <p>The content stays consistent. The experience changes to fit the moment.</p>
           </div>
-        </section>
 
-        <section id="platform" className="scroll-mt-20 px-4 py-28 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">
-            <div className="max-w-3xl">
-              <p className="landing-section-eyebrow">The local marketing system</p>
-              <h2 className="landing-section-title">Fewer disconnected tools.<br />One clear next step.</h2>
-              <p className="landing-section-description">Adpadz keeps permanent business information separate from temporary campaigns, then connects both to every customer-facing output.</p>
+          <div className="journey-workbench">
+            <div className="journey-source">
+              <div className="journey-source__top">
+                <span>Campaign source</span>
+                <b>Active</b>
+              </div>
+              <img src="/demo/river-city-hero.svg" alt="Fictional River City Outdoor Living campaign" />
+              <div className="journey-source__body">
+                <small>{demo.business.name}</small>
+                <h3>{campaign.title}</h3>
+                <p>{campaign.headline}</p>
+                <div><CalendarDays /> Jun 15 – Sep 15</div>
+              </div>
             </div>
-            <div className="landing-pillar-grid">
-              {productPillars.map((pillar, index) => (
-                <AdpadzCard key={pillar.title} as="article" variant="glass" className="landing-pillar">
-                  <span className="landing-pillar-number">0{index + 1}</span>
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neon/10 text-neon"><pillar.icon className="h-5 w-5" /></span>
-                  <h3>{pillar.title}</h3>
-                  <p>{pillar.description}</p>
-                </AdpadzCard>
+
+            <div className="journey-selector" role="tablist" aria-label="Campaign output">
+              {outputs.map(output => (
+                <button
+                  key={output.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeOutput === output.key}
+                  className={activeOutput === output.key ? 'is-active' : ''}
+                  onClick={() => setActiveOutput(output.key)}
+                >
+                  <output.icon />
+                  <span>{output.label}</span>
+                  <ArrowRight />
+                </button>
               ))}
             </div>
-          </div>
-        </section>
 
-        <section id="journey" className="scroll-mt-20 border-y border-white/[0.07] bg-[var(--bg-surface)] px-4 py-28 sm:px-6 lg:px-8">
-          <div className="landing-journey mx-auto max-w-6xl">
-            <div>
-              <p className="landing-section-eyebrow">How it works</p>
-              <h2 className="landing-section-title">One campaign becomes a measurable journey.</h2>
-              <p className="landing-section-description">The business owner stays in control. Adpadz reduces repeated work and keeps every output connected.</p>
-            </div>
-            <div className="landing-step-list">
-              {journeySteps.map(step => (
-                <article key={step.number} className="landing-step">
-                  <span className="landing-step-number">{step.number}</span>
-                  <div>
-                    <h3>{step.title}</h3>
-                    <p>{step.description}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="examples" className="scroll-mt-20 px-4 py-28 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">
-            <div className="grid gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
-              <div className="landing-example-copy">
-                <AdpadzBadge variant="local" className="mb-5 text-xs"><Sparkles className="h-4 w-4" /> Working example · sample data</AdpadzBadge>
-                <h2 className="landing-section-title">See the whole customer journey before you subscribe.</h2>
-                <p className="mt-5">
-                  River City Outdoor Living is a fictional business built to show the complete Adpadz experience. Create a promotion as the owner, experience it as a customer, then watch every action appear in analytics.
-                </p>
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
-                  <AdpadzButton href="/demo/workspace" size="lg">Open the guided demo <ArrowRight className="h-4 w-4" /></AdpadzButton>
-                  <AdpadzButton href="/examples" variant="secondary" size="lg">View the showcase</AdpadzButton>
-                </div>
-                <div className="landing-proof mt-6">
-                  {['No sign-in', 'Safe sandbox', 'Reset anytime'].map(item => <span key={item}><Check className="h-4 w-4 text-neon" />{item}</span>)}
-                </div>
+            <article className={`journey-result journey-result--${selectedOutput.key}`} aria-live="polite">
+              <div className="journey-result__signal"><selectedOutput.icon /></div>
+              <p className="journey-result__eyebrow">{selectedOutput.eyebrow}</p>
+              <h3>{selectedOutput.title}</h3>
+              <p>{selectedOutput.description}</p>
+              <div className="journey-result__event"><span /> {selectedOutput.action}</div>
+              <div className="journey-result__footer">
+                <small>Still powered by</small>
+                <strong>{campaign.title}</strong>
               </div>
+            </article>
+          </div>
+          <p className="sample-notice">Interactive product illustration using fictional sample data.</p>
+        </section>
 
-              <AdpadzCard variant="glass" className="landing-example-card p-5 sm:p-7">
-                <div className="grid gap-3 md:grid-cols-3 md:items-stretch">
-                  {[
-                    { icon: Target, number: '01', title: 'Create', detail: landingDemoCampaign.title, meta: `One offer · ${landingDemoCampaign.outputs.length} outputs` },
-                    { icon: MousePointerClick, number: '02', title: 'Experience', detail: 'Reveal, scan, request', meta: 'Customer journey' },
-                    { icon: BarChart3, number: '03', title: 'Measure', detail: 'Actions become insight', meta: 'Connected analytics' },
-                  ].map((item, index) => (
-                    <div key={item.number} className={`relative rounded-3xl border p-5 ${index === 1 ? 'border-neon/40 bg-neon/[0.075]' : 'border-white/[0.08] bg-white/[0.035]'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${index === 1 ? 'bg-neon text-black' : 'bg-neon/10 text-neon'}`}><item.icon className="h-4 w-4" /></span>
-                        <span className="text-2xl font-black text-white/10">{item.number}</span>
-                      </div>
-                      <p className="mt-7 text-xs font-black uppercase tracking-[0.16em] text-neon">{item.title}</p>
-                      <p className="landing-example-detail mt-2 font-black">{item.detail}</p>
-                      <p className="mt-1 text-[var(--text-muted)]">{item.meta}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.07] text-center">
-                  <ExampleMetric value={landingDemoViews.toLocaleString()} label="Sample views" />
-                  <ExampleMetric value={landingDemo.metrics.qrScans.toLocaleString()} label="Sample scans" />
-                  <ExampleMetric value={landingDemo.metrics.leads.toLocaleString()} label="Sample leads" />
-                </div>
-              </AdpadzCard>
+        <section id="for-everyone" className="perspective-section">
+          <div className="perspective-section__intro">
+            <p className="premium-kicker"><span /> Two sides. One local connection.</p>
+            <h2>Useful for the business.<br />Enjoyable for the customer.</h2>
+            <p>Most platforms optimize one side and make the other do the work. Adpadz connects both experiences by design.</p>
+            <div className="perspective-toggle" role="group" aria-label="Choose a perspective">
+              <button type="button" onClick={() => setPerspective('business')} className={perspective === 'business' ? 'is-active' : ''}><Building2 /> I’m a business</button>
+              <button type="button" onClick={() => setPerspective('customer')} className={perspective === 'customer' ? 'is-active' : ''}><HeartHandshake /> I’m a customer</button>
             </div>
+          </div>
+
+          <div className={`perspective-card perspective-card--${perspective}`} aria-live="polite">
+            {perspective === 'business' ? (
+              <>
+                <div className="perspective-card__number">01</div>
+                <p className="perspective-card__eyebrow">Business workspace</p>
+                <h3>Stop rebuilding the same promotion in five different places.</h3>
+                <div className="perspective-steps">
+                  <span><Target /> Create the campaign</span>
+                  <span><Megaphone /> Choose its outputs</span>
+                  <span><BarChart3 /> Follow customer action</span>
+                </div>
+                <div className="perspective-card__moment"><b>Next best step</b><p>Review 3 new leads from Summer Patio Transformation.</p><ArrowRight /></div>
+              </>
+            ) : (
+              <>
+                <div className="perspective-card__number">02</div>
+                <p className="perspective-card__eyebrow">Customer experience</p>
+                <h3>Find useful local offers when you actually want them.</h3>
+                <div className="perspective-steps">
+                  <span><MapPin /> Discover nearby</span>
+                  <span><MousePointerClick /> Explore by choice</span>
+                  <span><HeartHandshake /> Contact the business directly</span>
+                </div>
+                <div className="perspective-card__moment"><b>Offer revealed</b><p>{campaign.offer.title}</p><ArrowRight /></div>
+              </>
+            )}
           </div>
         </section>
 
-        <section className="px-4 pb-28 pt-8 sm:px-6 lg:px-8">
-          <div className="landing-final-cta">
-            <div className="relative z-10">
-              <p className="landing-section-eyebrow">Ready when you are</p>
-              <h2>Make local marketing feel manageable again.</h2>
-              <p>Build the Business Hub, launch one campaign, and let every output stay connected to the same source of truth.</p>
-            </div>
-            <div className="landing-final-actions">
-              <AdpadzButton href="/auth" size="lg">Start building <ArrowRight className="h-4 w-4" /></AdpadzButton>
-              <AdpadzButton href="/examples" variant="secondary" size="lg">See the example</AdpadzButton>
-            </div>
+        <section id="privacy" className="privacy-section">
+          <div className="privacy-mark" aria-hidden="true"><Eye /><span /><ShieldCheck /></div>
+          <div className="privacy-copy">
+            <p className="premium-kicker"><span /> Respect is part of the product.</p>
+            <h2>Seen by choice.<br /><em>Never by surveillance.</em></h2>
+            <p>Adpadz is built for intentional local discovery—not the uneasy feeling that an app listened, followed, or predicted what someone was thinking.</p>
+          </div>
+          <div className="privacy-points">
+            {privacyPoints.map(point => <div key={point}><Check /><span>{point}</span></div>)}
+          </div>
+        </section>
+
+        <section className="guide-section">
+          <div className="guide-section__image"><img src="/brand/adpadz-frog.webp" alt="Adpadz frog guide" /></div>
+          <div className="guide-section__copy">
+            <p className="premium-kicker"><span /> Your guide to Adpadz</p>
+            <blockquote>“You bring the offer. Adpadz helps it go places.”</blockquote>
+            <p>Try the complete journey as both the business owner and the customer. No account, no pressure, and no guessing what the product does.</p>
+            <AdpadzButton href="/demo/workspace" size="lg">Open the guided demo <ArrowRight /></AdpadzButton>
+            <span className="guide-section__note"><Check /> Safe fictional sandbox · Reset anytime</span>
+          </div>
+        </section>
+
+        <section className="premium-final">
+          <div>
+            <p className="premium-kicker"><span /> Ready when the campaign is.</p>
+            <h2>One clear promotion.<br />A connected local presence.</h2>
+          </div>
+          <div className="premium-final__actions">
+            <AdpadzButton href="/demo/workspace" size="lg">Experience Adpadz <ArrowRight /></AdpadzButton>
+            <Link to="/auth">Create your account</Link>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-white/[0.07] px-4 py-9 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 sm:flex-row">
-          <img src="/brand/adpadz-logo.png" alt="Adpadz" className="landing-footer-logo" />
-          <p className="text-center text-sm text-[var(--text-muted)]">&copy; 2026 Adpadz. The local advertising cooperative.</p>
-          <div className="flex gap-5 text-sm font-bold text-[var(--text-muted)]"><Link to="/examples" className="hover:text-white">Examples</Link><Link to="/privacy" className="hover:text-white">Privacy</Link><Link to="/terms" className="hover:text-white">Terms</Link></div>
-        </div>
+      <footer className="premium-footer">
+        <Link to="/" className="premium-brand"><img src="/brand/adpadz-logo.png" alt="" /><span>adpadz<span>.co</span></span></Link>
+        <p>Helping local businesses grow. Helping communities thrive.</p>
+        <div><Link to="/examples">Examples</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
       </footer>
     </div>
   );
-}
-
-function ControlRow({ icon: Icon, label, title, meta, active = false }: { icon: typeof Building2; label: string; title: string; meta: string; active?: boolean }) {
-  return (
-    <div className={`landing-control-row ${active ? 'landing-control-row--active' : ''}`}>
-      <span className="landing-control-icon"><Icon className="h-5 w-5" /></span>
-      <div>
-        <p className="landing-control-label">{label}</p>
-        <p className="landing-control-title">{title}</p>
-      </div>
-      <span className="landing-control-meta">{meta}</span>
-    </div>
-  );
-}
-
-function Metric({ value, label }: { value: string; label: string }) {
-  return <div className="landing-control-metric"><strong>{value}</strong><span>{label}</span></div>;
-}
-
-function ExampleMetric({ value, label }: { value: string; label: string }) {
-  return <div className="bg-black/30 px-2 py-4"><p className="text-xl font-black text-neon">{value}</p><p className="mt-1 text-[11px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">{label}</p></div>;
 }
