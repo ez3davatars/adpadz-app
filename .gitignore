@@ -23,3 +23,7 @@ dist-ssr
 .env
 
 public/qr-config.php
+
+# Local backups and Supabase CLI state
+backup.zip
+supabase/.temp/
