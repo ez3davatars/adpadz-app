@@ -30,6 +30,11 @@ const BizSocial = lazy(() => import('./pages/business/Social'));
 const BizSettings = lazy(() => import('./pages/business/Settings'));
 const BizBilling = lazy(() => import('./pages/business/Billing'));
 const InstallPrompt = lazy(() => import('./components/ui/InstallPrompt'));
+const AdminGuard = lazy(() => import('./components/admin/AdminGuard'));
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminAccessDenied = lazy(() => import('./pages/admin/AdminAccessDenied'));
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -60,7 +65,7 @@ export default function App() {
     };
   }, []);
 
-  if (loading) return <LoadingScreen label="Restoring your Adpadz workspace..." />;
+  if (loading) return <LoadingScreen label="Restoring your session..." />;
 
   return (
     <BrowserRouter>
@@ -74,6 +79,15 @@ export default function App() {
           <Route path="/privacy" element={<LegalPage />} />
           <Route path="/terms" element={<LegalPage />} />
           <Route path="/auth" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <Navigate to="/app/business/dashboard" replace /> : <AuthPage />} />
+
+          <Route path="/admin/login" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminLogin session={session} />} />
+          <Route path="/admin/access-denied" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminAccessDenied session={session} />} />
+          <Route path="/admin" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminGuard session={session} />}>
+            <Route element={<AdminLayout />}>
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route index element={<Navigate to="dashboard" replace />} />
+            </Route>
+          </Route>
 
           <Route path="/q/:slug" element={<QRRedirect />} />
           <Route path="/c/:slug" element={<SmartCardPublic />} />

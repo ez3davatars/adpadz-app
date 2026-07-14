@@ -42,7 +42,11 @@ export default function InstallPrompt() {
     setShow(false);
   }
 
-  if (!show || location.pathname.startsWith('/demo/workspace')) return null;
+  if (
+    !show
+    || location.pathname.startsWith('/demo/workspace')
+    || location.pathname.startsWith('/admin')
+  ) return null;
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 z-50 card-glass p-4 safe-bottom">
