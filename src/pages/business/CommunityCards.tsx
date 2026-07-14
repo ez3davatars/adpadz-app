@@ -12,7 +12,7 @@ export default function CommunityCards() {
   const card = cards.find(item => item.id === selected); const cardSlots = useMemo(() => slots.filter(slot => slot.community_card_id === card?.id), [slots, card]);
   const sold = cardSlots.filter(s => s.status !== 'available').length;
   async function load() { setLoading(true); const { data: auth } = await supabase.auth.getUser(); if (!auth.user) { setMessage('Sign in to access the operator workspace.'); setLoading(false); return; }
-    const { data: nextCards, error } = await supabase.from('community_cards').select('*').eq('owner_id', auth.user.id).order('updated_at', { ascending: false });
+    const { data: nextCards, error } = await supabase.from('community_cards').select('*').order('updated_at', { ascending: false });
     if (error) setMessage(error.message); const records = (nextCards || []) as CommunityCardRecord[]; setCards(records); setSelected(current => current && records.some(c => c.id === current) ? current : records[0]?.id);
     if (records.length) { const { data } = await supabase.from('community_card_slots').select('*').in('community_card_id', records.map(c => c.id)); setSlots((data || []) as CommunityCardSlotRecord[]); } else setSlots([]); setLoading(false);
   }
