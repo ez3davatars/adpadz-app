@@ -47,6 +47,8 @@ function friendlyError(message: string, fallback: string) {
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const nextPath = new URLSearchParams(window.location.search).get('next');
+  const safeNextPath = nextPath?.startsWith('/') ? nextPath : '/app/business/dashboard';
   const [mode, setMode] = useState<AuthMode>(() => recoveryUrl() ? 'recovery' : 'sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -112,7 +114,7 @@ export default function AuthPage() {
     if (authError) {
       setError(friendlyError(authError.message, 'We could not create your account. Review your details and try again.'));
     } else if (data.session) {
-      navigate('/app/business/dashboard', { replace: true });
+      navigate(safeNextPath, { replace: true });
     } else {
       setConfirmationEmail(email.trim());
       setMode('confirmation');
@@ -123,7 +125,7 @@ export default function AuthPage() {
   async function signIn() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (!authError) {
-      navigate('/app/business/dashboard', { replace: true });
+      navigate(safeNextPath, { replace: true });
       return;
     }
     if (/email not confirmed/i.test(authError.message)) {
