@@ -17,7 +17,9 @@ const BusinessLayout = lazy(() => import('./components/layout/BusinessLayout'));
 const BizDashboard = lazy(() => import('./pages/business/Dashboard'));
 const BizCreateAd = lazy(() => import('./pages/business/CreateAd'));
 const BizCampaigns = lazy(() => import('./pages/business/Campaigns'));
-const BizCommunityCards = lazy(() => import('./pages/business/CommunityCards'));
+const CommunityAdOrders = lazy(() => import('./pages/business/CommunityAdOrders'));
+const CommunityCardAdmin = lazy(() => import('./pages/admin/CommunityCardAdmin'));
+const AdminRoute = lazy(() => import('./components/auth/AdminRoute'));
 const CommunityCardPublic = lazy(() => import('./pages/CommunityCardPublic'));
 const CampaignContentStudio = lazy(() => import('./pages/business/CampaignContentStudio'));
 const BizQRStudio = lazy(() => import('./pages/business/QRStudio'));
@@ -87,7 +89,8 @@ export default function App() {
             <Route path="dashboard" element={<BizDashboard />} />
             <Route path="create-ad" element={<BizCreateAd />} />
             <Route path="campaigns" element={<BizCampaigns />} />
-            <Route path="community-cards" element={<BizCommunityCards />} />
+            <Route path="community-cards" element={<Navigate to="../community-ads" replace />} />
+            <Route path="community-ads" element={<CommunityAdOrders />} />
             <Route path="campaigns/:campaignId/edit" element={<BizCreateAd />} />
             <Route path="campaigns/:campaignId/content" element={<CampaignContentStudio />} />
             <Route path="qr-studio" element={<BizQRStudio />} />
@@ -103,6 +106,8 @@ export default function App() {
             <Route path="billing" element={<BizBilling />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
+
+          <Route path="/app/admin/community-cards" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <AdminRoute><CommunityCardAdmin /></AdminRoute> : <Navigate to="/auth?next=/app/admin/community-cards" replace />} />
 
           <Route path="/dashboard" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <BusinessLayout session={session} /> : <Navigate to="/auth" replace />}>
             <Route path="smart-cards" element={<BizSmartCards />} />
