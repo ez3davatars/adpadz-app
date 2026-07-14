@@ -1,128 +1,36 @@
 export type CommunityCardFormat = 'postcard_9x12' | 'community_card_6x11';
-export type CommunityCardStatus = 'draft' | 'selling' | 'proof' | 'approved' | 'mailed' | 'archived';
 export type CommunityCardSide = 'front' | 'back';
-export type CommunityCardSlotStatus = 'available' | 'reserved' | 'sold' | 'intake' | 'proof' | 'approved';
-export type CommunityCardPlacementType = 'featured' | 'standard' | 'mini' | 'adpadz';
+export type CommunityCardStatus = 'draft' | 'selling' | 'proof' | 'approved' | 'mailed' | 'archived';
+export type CommunityCardSlotStatus = 'available' | 'reserved' | 'sold' | 'proof' | 'approved';
 
-export type CommunityCardRecord = {
-  id: string;
-  owner_id: string;
-  title: string;
-  market_name: string | null;
-  format: CommunityCardFormat;
-  layout_key: string;
-  mailing_date: string | null;
-  household_count: number | null;
-  status: CommunityCardStatus;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
+export type CommunityCardRecord = { id: string; owner_id: string; title: string; market_name: string | null; zone_name: string | null; public_slug: string; format: CommunityCardFormat; layout_key: string; mailing_date: string | null; household_count: number | null; status: CommunityCardStatus; sales_open: boolean; is_published: boolean; created_at: string; updated_at: string };
+export type CommunityCardSlotRecord = { id: string; community_card_id: string; slot_key: string; label: string; side: CommunityCardSide; x: number; y: number; width: number; height: number; price_cents: number; status: CommunityCardSlotStatus; advertiser_name: string | null; ad_image_url: string | null; buyer_user_id: string | null; created_at: string; updated_at: string };
+export type CommunityCardLayout = { key: string; name: string; format: CommunityCardFormat; description: string; sellable_spaces: number; slots: Array<Omit<CommunityCardSlotRecord, 'id' | 'community_card_id' | 'advertiser_name' | 'ad_image_url' | 'buyer_user_id' | 'created_at' | 'updated_at'>> };
 
-export type CommunityCardSlotRecord = {
-  id: string;
-  community_card_id: string;
-  slot_key: string;
-  label: string;
-  placement_type: CommunityCardPlacementType;
-  side: CommunityCardSide;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  price_cents: number;
-  category: string | null;
-  status: CommunityCardSlotStatus;
-  advertiser_name: string | null;
-  campaign_id: string | null;
-  qr_link_id: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-};
+const spot = (slot_key: string, label: string, side: CommunityCardSide, x: number, y: number): CommunityCardLayout['slots'][number] => ({ slot_key, label, side, x, y, width: 21.1, height: 38.9, price_cents: 25000, status: 'available' });
 
-export type CommunityCardLayout = {
-  key: string;
-  name: string;
-  description: string;
-  format: CommunityCardFormat;
-  slots: Array<Omit<CommunityCardSlotRecord, 'id' | 'community_card_id' | 'campaign_id' | 'qr_link_id' | 'advertiser_name' | 'category' | 'notes' | 'created_at' | 'updated_at'>>;
-};
-
-const baseSlot = (slot: Omit<CommunityCardLayout['slots'][number], 'status'>): CommunityCardLayout['slots'][number] => ({ ...slot, status: 'available' });
-
-const postcard9x12Spotlight: CommunityCardLayout = {
-  key: '9x12-spotlight', name: 'Local Spotlight', format: 'postcard_9x12',
-  description: 'A dominant featured sponsor on the front, Adpadz discovery, and twelve sellable local placements on the back.',
+const nineByTwelve: CommunityCardLayout = {
+  key: 'community-appreciation-9x12', name: 'Community Appreciation · 9×12', format: 'postcard_9x12', sellable_spaces: 16,
+  description: 'Eight 2.75″ × 3.5″ spaces per side with a community title band and USPS mail panel reserved on the back.',
   slots: [
-    baseSlot({ slot_key: 'front-featured', label: 'Featured sponsor', placement_type: 'featured', side: 'front', x: 5, y: 8, width: 90, height: 57, price_cents: 60000 }),
-    baseSlot({ slot_key: 'front-adpadz', label: 'Adpadz discovery', placement_type: 'adpadz', side: 'front', x: 5, y: 70, width: 90, height: 23, price_cents: 0 }),
-    ...Array.from({ length: 12 }, (_, index) => baseSlot({
-      slot_key: `back-standard-${index + 1}`, label: `Standard ${index + 1}`, placement_type: 'standard', side: 'back',
-      x: 4 + (index % 3) * 31, y: 6 + Math.floor(index / 3) * 23, width: 29, height: 19, price_cents: 15000,
-    })),
+    ...[0, 1, 2, 3].map(i => spot(`front-top-${i + 1}`, `Front top ${i + 1}`, 'front', 4.5 + i * 22.8, 7)),
+    ...[0, 1, 2, 3].map(i => spot(`front-bottom-${i + 1}`, `Front bottom ${i + 1}`, 'front', 4.5 + i * 22.8, 54)),
+    ...[0, 1, 2, 3].map(i => spot(`back-top-${i + 1}`, `Back top ${i + 1}`, 'back', 4.5 + i * 22.8, 7)),
+    ...[0, 1, 2, 3].map(i => spot(`back-bottom-${i + 1}`, `Back bottom ${i + 1}`, 'back', 4.5 + i * 22.8, 54)),
+  ],
+};
+const sixByEleven: CommunityCardLayout = {
+  key: 'community-appreciation-6x11', name: 'Community Appreciation · 6×11', format: 'community_card_6x11', sellable_spaces: 8,
+  description: 'Four 2.75″ × 3.5″ spaces per side with the community title, sponsor line, and USPS mail panel reserved.',
+  slots: [
+    ...[0, 1, 2, 3].map(i => spot(`front-${i + 1}`, `Front ${i + 1}`, 'front', 4.5 + i * 22.8, 37)),
+    ...[0, 1, 2, 3].map(i => spot(`back-${i + 1}`, `Back ${i + 1}`, 'back', 4.5 + i * 22.8, 37)),
   ],
 };
 
-const postcard9x12Grid: CommunityCardLayout = {
-  key: '9x12-community-grid', name: 'Community Grid', format: 'postcard_9x12',
-  description: 'A balanced sixteen-placement community card with an Adpadz discovery panel and clear category inventory.',
-  slots: [
-    baseSlot({ slot_key: 'front-adpadz', label: 'Adpadz discovery', placement_type: 'adpadz', side: 'front', x: 4, y: 5, width: 92, height: 17, price_cents: 0 }),
-    ...Array.from({ length: 8 }, (_, index) => baseSlot({
-      slot_key: `front-standard-${index + 1}`, label: `Front ${index + 1}`, placement_type: 'standard', side: 'front',
-      x: 4 + (index % 2) * 46, y: 27 + Math.floor(index / 2) * 17, width: 44, height: 13, price_cents: 15000,
-    })),
-    ...Array.from({ length: 8 }, (_, index) => baseSlot({
-      slot_key: `back-standard-${index + 1}`, label: `Back ${index + 1}`, placement_type: 'standard', side: 'back',
-      x: 4 + (index % 2) * 46, y: 6 + Math.floor(index / 2) * 23, width: 44, height: 19, price_cents: 15000,
-    })),
-  ],
-};
-
-const community6x11Feature: CommunityCardLayout = {
-  key: '6x11-feature-grid', name: 'Feature + Grid', format: 'community_card_6x11',
-  description: 'A compact format with one high-visibility featured sponsor and eight standard placements.',
-  slots: [
-    baseSlot({ slot_key: 'front-featured', label: 'Featured sponsor', placement_type: 'featured', side: 'front', x: 5, y: 7, width: 90, height: 42, price_cents: 45000 }),
-    baseSlot({ slot_key: 'front-adpadz', label: 'Adpadz discovery', placement_type: 'adpadz', side: 'front', x: 5, y: 55, width: 90, height: 18, price_cents: 0 }),
-    ...Array.from({ length: 4 }, (_, index) => baseSlot({
-      slot_key: `front-standard-${index + 1}`, label: `Front ${index + 1}`, placement_type: 'standard', side: 'front',
-      x: 5 + (index % 2) * 46, y: 78, width: 44, height: 15, price_cents: 10000,
-    })),
-    ...Array.from({ length: 4 }, (_, index) => baseSlot({
-      slot_key: `back-standard-${index + 1}`, label: `Back ${index + 1}`, placement_type: 'standard', side: 'back',
-      x: 5 + (index % 2) * 46, y: 8 + Math.floor(index / 2) * 43, width: 44, height: 34, price_cents: 10000,
-    })),
-  ],
-};
-
-const community6x11Directory: CommunityCardLayout = {
-  key: '6x11-directory', name: 'Neighborhood Directory', format: 'community_card_6x11',
-  description: 'A compact twelve-placement layout for repeat monthly neighborhood campaigns.',
-  slots: [
-    baseSlot({ slot_key: 'front-adpadz', label: 'Adpadz discovery', placement_type: 'adpadz', side: 'front', x: 5, y: 5, width: 90, height: 14, price_cents: 0 }),
-    ...(['front', 'back'] as CommunityCardSide[]).flatMap(side => Array.from({ length: 6 }, (_, index) => baseSlot({
-      slot_key: `${side}-standard-${index + 1}`, label: `${side === 'front' ? 'Front' : 'Back'} ${index + 1}`, placement_type: 'standard', side,
-      x: 5 + (index % 2) * 46, y: (side === 'front' ? 25 : 7) + Math.floor(index / 2) * 23, width: 44, height: 18, price_cents: 10000,
-    }))),
-  ],
-};
-
-export const COMMUNITY_CARD_LAYOUTS = [postcard9x12Spotlight, postcard9x12Grid, community6x11Feature, community6x11Directory] as const;
-
-export function getCommunityCardLayouts(format: CommunityCardFormat) {
-  return COMMUNITY_CARD_LAYOUTS.filter(layout => layout.format === format);
-}
-
-export function getCommunityCardLayout(key: string) {
-  return COMMUNITY_CARD_LAYOUTS.find(layout => layout.key === key) ?? postcard9x12Spotlight;
-}
-
-export function formatCommunityCardFormat(format: CommunityCardFormat) {
-  return format === 'postcard_9x12' ? '9×12 Postcard' : '6×11 Community Card';
-}
-
-export function formatCurrency(cents: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100);
-}
+export const COMMUNITY_CARD_LAYOUTS = [nineByTwelve, sixByEleven] as const;
+export const getCommunityCardLayout = (key: string) => COMMUNITY_CARD_LAYOUTS.find(layout => layout.key === key) ?? nineByTwelve;
+export const getCommunityCardLayouts = (format: CommunityCardFormat) => COMMUNITY_CARD_LAYOUTS.filter(layout => layout.format === format);
+export const formatCommunityCardFormat = (format: CommunityCardFormat) => format === 'postcard_9x12' ? '9×12 postcard' : '6×11 community card';
+export const formatCurrency = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100);
+export const slotPrice = (count: number) => count * 25000;
