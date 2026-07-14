@@ -29,6 +29,7 @@ const navGroups: NavGroup[] = [
     label: 'Marketing',
     items: [
       { to: '/app/business/campaigns', icon: Target, label: 'Campaigns' },
+      { to: '/app/business/community-cards', icon: LayoutDashboard, label: 'Community Cards' },
       { to: '/app/business/create-ad', icon: Zap, label: 'Campaign Studio' },
       { to: '/app/business/social', icon: Share2, label: 'Publishing Workspace' },
       { to: '/app/business/qr-studio', icon: QrCode, label: 'QR Studio' },
