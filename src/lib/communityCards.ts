@@ -51,7 +51,7 @@ export type CommunityCardLayout = {
 
 const baseSlot = (slot: Omit<CommunityCardLayout['slots'][number], 'status'>): CommunityCardLayout['slots'][number] => ({ ...slot, status: 'available' });
 
-const 9x12Spotlight: CommunityCardLayout = {
+const postcard9x12Spotlight: CommunityCardLayout = {
   key: '9x12-spotlight', name: 'Local Spotlight', format: 'postcard_9x12',
   description: 'A dominant featured sponsor on the front, Adpadz discovery, and twelve sellable local placements on the back.',
   slots: [
@@ -64,7 +64,7 @@ const 9x12Spotlight: CommunityCardLayout = {
   ],
 };
 
-const 9x12Grid: CommunityCardLayout = {
+const postcard9x12Grid: CommunityCardLayout = {
   key: '9x12-community-grid', name: 'Community Grid', format: 'postcard_9x12',
   description: 'A balanced sixteen-placement community card with an Adpadz discovery panel and clear category inventory.',
   slots: [
@@ -80,7 +80,7 @@ const 9x12Grid: CommunityCardLayout = {
   ],
 };
 
-const 6x11Feature: CommunityCardLayout = {
+const community6x11Feature: CommunityCardLayout = {
   key: '6x11-feature-grid', name: 'Feature + Grid', format: 'community_card_6x11',
   description: 'A compact format with one high-visibility featured sponsor and eight standard placements.',
   slots: [
@@ -97,7 +97,7 @@ const 6x11Feature: CommunityCardLayout = {
   ],
 };
 
-const 6x11Directory: CommunityCardLayout = {
+const community6x11Directory: CommunityCardLayout = {
   key: '6x11-directory', name: 'Neighborhood Directory', format: 'community_card_6x11',
   description: 'A compact twelve-placement layout for repeat monthly neighborhood campaigns.',
   slots: [
@@ -109,14 +109,14 @@ const 6x11Directory: CommunityCardLayout = {
   ],
 };
 
-export const COMMUNITY_CARD_LAYOUTS = [9x12Spotlight, 9x12Grid, 6x11Feature, 6x11Directory] as const;
+export const COMMUNITY_CARD_LAYOUTS = [postcard9x12Spotlight, postcard9x12Grid, community6x11Feature, community6x11Directory] as const;
 
 export function getCommunityCardLayouts(format: CommunityCardFormat) {
   return COMMUNITY_CARD_LAYOUTS.filter(layout => layout.format === format);
 }
 
 export function getCommunityCardLayout(key: string) {
-  return COMMUNITY_CARD_LAYOUTS.find(layout => layout.key === key) ?? 9x12Spotlight;
+  return COMMUNITY_CARD_LAYOUTS.find(layout => layout.key === key) ?? postcard9x12Spotlight;
 }
 
 export function formatCommunityCardFormat(format: CommunityCardFormat) {
