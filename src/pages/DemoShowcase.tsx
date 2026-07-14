@@ -19,6 +19,7 @@ import {
   Target,
   Users,
 } from 'lucide-react';
+import AdpadzBrand from '../components/AdpadzBrand';
 import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
 import './DemoShowcase.css';
 
@@ -93,10 +94,7 @@ export default function DemoShowcase() {
 
       <header className="examples-nav">
         <div className="examples-nav__inner">
-          <Link to="/" className="examples-brand" aria-label="Adpadz home">
-            <img src="/brand/adpadz-logo.png" alt="" />
-            <span>adpadz<span>.co</span></span>
-          </Link>
+          <AdpadzBrand />
           <nav aria-label="Examples navigation">
             <a href="#perspectives">Perspectives</a>
             <a href="#journey">The journey</a>
@@ -265,10 +263,7 @@ export default function DemoShowcase() {
       </main>
 
       <footer className="examples-footer">
-        <Link to="/" className="examples-brand" aria-label="Adpadz home">
-          <img src="/brand/adpadz-logo.png" alt="" />
-          <span>adpadz<span>.co</span></span>
-        </Link>
+        <AdpadzBrand compact />
         <p>Fictional businesses, leads, and performance data for product demonstration.</p>
         <div><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
       </footer>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bookmark, Heart, Loader2, MapPin, Search, Share2, Sparkles } from 'lucide-react';
+import AdpadzBrand from '../../components/AdpadzBrand';
 import {
   getCampaignFormat,
   getCampaignImage,
@@ -98,10 +99,7 @@ export default function Feed() {
     <div className="min-h-screen overflow-x-hidden" style={{ background: 'var(--bg-base)' }}>
       <header className="sticky top-0 z-50 border-b safe-top" style={{ background: 'color-mix(in srgb, var(--bg-surface) 94%, transparent)', borderColor: 'var(--border-subtle)', backdropFilter: 'blur(18px)' }}>
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2" aria-label="Adpadz home">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-neon text-sm font-black text-black">A</span>
-            <span className="hidden text-sm font-black sm:inline">adpadz<span className="text-neon">.co</span></span>
-          </Link>
+          <AdpadzBrand compact />
           <div className="relative min-w-0 flex-1">
             <label htmlFor="campaign-search" className="sr-only">Search local campaigns</label>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />

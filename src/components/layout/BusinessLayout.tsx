@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import AdpadzBrand from '../AdpadzBrand';
 
 type NavItem = {
   to: string;
@@ -133,11 +134,8 @@ export default function BusinessLayout({ session }: { session: Session }) {
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-60 flex-col fixed inset-y-0 left-0 z-40 border-r"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}>
-        <div className="p-5 flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-neon flex items-center justify-center">
-            <span className="text-black font-black text-sm">A</span>
-          </div>
-          <span className="font-bold text-sm">adpadz<span className="text-neon">.co</span></span>
+        <div className="p-5">
+          <AdpadzBrand compact />
         </div>
 
         <nav aria-label="Business workspace" className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
@@ -178,12 +176,7 @@ export default function BusinessLayout({ session }: { session: Session }) {
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 border-b safe-top"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}>
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-neon flex items-center justify-center">
-            <span className="text-black font-black text-xs">A</span>
-          </div>
-          <span className="font-bold text-sm">adpadz<span className="text-neon">.co</span></span>
-        </div>
+        <AdpadzBrand compact />
         <button type="button" onClick={() => setMobileNav(!mobileNav)} aria-label={mobileNav ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={mobileNav} aria-controls="mobile-business-nav" className="p-2 text-white">
           {mobileNav ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>

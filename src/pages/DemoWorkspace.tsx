@@ -43,6 +43,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
+import AdpadzBrand from '../components/AdpadzBrand';
 import {
   AdpadzBadge,
   AdpadzButton,
@@ -285,10 +286,7 @@ function DemoSidebar({ view, mobileOpen, onView, onRestartTour, onClose }: { vie
   const content = (
     <>
       <div className="flex h-16 items-center justify-between px-5">
-        <Link to="/" className="flex items-center gap-2" aria-label="Adpadz home">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-neon text-sm font-black text-black">A</span>
-          <span className="font-black">adpadz<span className="text-neon">.co</span></span>
-        </Link>
+        <AdpadzBrand compact />
         <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl hover:bg-white/[0.07] lg:hidden" aria-label="Close demo navigation" autoFocus={mobileOpen}><X className="h-5 w-5" /></button>
       </div>
       <div className="px-4 pb-3">

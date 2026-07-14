@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import AdpadzBrand from '../components/AdpadzBrand';
 import { AdpadzButton } from '../components/adpadz-ui';
 import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
 import './LandingPage.css';
@@ -64,10 +65,7 @@ export default function LandingPage() {
     <div className="premium-landing">
       <header className="premium-nav">
         <div className="premium-nav__inner">
-          <Link to="/" className="premium-brand" aria-label="Adpadz home">
-            <img src="/brand/adpadz-logo.png" alt="" />
-            <span>adpadz<span>.co</span></span>
-          </Link>
+          <AdpadzBrand />
           <nav aria-label="Main navigation">
             <a href="#journey">The journey</a>
             <a href="#for-everyone">How it works</a>
@@ -258,7 +256,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="premium-footer">
-        <Link to="/" className="premium-brand"><img src="/brand/adpadz-logo.png" alt="" /><span>adpadz<span>.co</span></span></Link>
+        <AdpadzBrand compact />
         <p>Helping local businesses grow. Helping communities thrive.</p>
         <div><Link to="/examples">Examples</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
       </footer>

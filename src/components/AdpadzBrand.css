@@ -1,0 +1,55 @@
+:root {
+  /* Shared logo controls: change these once to update every branded header. */
+  --adpadz-brand-image-width: 110px;
+  --adpadz-brand-image-height: 58px;
+  --adpadz-brand-text-size: 24px;
+  --adpadz-brand-gap: 8px;
+}
+
+.adpadz-brand-link {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--adpadz-brand-gap);
+  min-width: 0;
+  color: #fff;
+  text-decoration: none;
+}
+
+.adpadz-brand-link__image {
+  display: block;
+  width: var(--adpadz-brand-image-width);
+  height: var(--adpadz-brand-image-height);
+  max-width: none;
+  flex: 0 0 auto;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.adpadz-brand-link__wordmark {
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: var(--adpadz-brand-text-size);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.adpadz-brand-link__wordmark > span { color: #b6ff00; }
+.adpadz-brand-link--on-light { color: #090b08; }
+
+.adpadz-brand-link--compact {
+  --adpadz-brand-image-width: 70px;
+  --adpadz-brand-image-height: 38px;
+  --adpadz-brand-text-size: 15px;
+  --adpadz-brand-gap: 5px;
+}
+
+@media (max-width: 700px) {
+  .adpadz-brand-link:not(.adpadz-brand-link--compact) {
+    --adpadz-brand-image-width: 78px;
+    --adpadz-brand-image-height: 44px;
+    --adpadz-brand-text-size: 17px;
+    --adpadz-brand-gap: 5px;
+  }
+}
