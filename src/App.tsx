@@ -17,6 +17,7 @@ const BusinessLayout = lazy(() => import('./components/layout/BusinessLayout'));
 const BizDashboard = lazy(() => import('./pages/business/Dashboard'));
 const BizCreateAd = lazy(() => import('./pages/business/CreateAd'));
 const BizCampaigns = lazy(() => import('./pages/business/Campaigns'));
+const BizCommunityCards = lazy(() => import('./pages/business/CommunityCards'));
 const CampaignContentStudio = lazy(() => import('./pages/business/CampaignContentStudio'));
 const BizQRStudio = lazy(() => import('./pages/business/QRStudio'));
 const BizSmartCards = lazy(() => import('./pages/business/SmartCards'));
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="dashboard" element={<BizDashboard />} />
             <Route path="create-ad" element={<BizCreateAd />} />
             <Route path="campaigns" element={<BizCampaigns />} />
+            <Route path="community-cards" element={<BizCommunityCards />} />
             <Route path="campaigns/:campaignId/edit" element={<BizCreateAd />} />
             <Route path="campaigns/:campaignId/content" element={<CampaignContentStudio />} />
             <Route path="qr-studio" element={<BizQRStudio />} />
