@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { logAuthError } from '../../lib/authErrors';
+import { performSignOut } from '../../lib/authFlow';
 import type { Session } from '@supabase/supabase-js';
 import AdpadzBrand from '../AdpadzBrand';
 
@@ -103,11 +105,10 @@ export default function BusinessLayout({ session }: { session: Session }) {
     setSigningOut(true);
     setAuthMessage(null);
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await performSignOut(supabase.auth);
       navigate('/auth', { replace: true });
     } catch (signOutError) {
-      if (import.meta.env.DEV) console.error('[BusinessLayout] sign out failed', signOutError);
+      logAuthError('BusinessLayout.signOut', signOutError);
       setAuthMessage({ type: 'error', text: 'We could not sign you out. Check your connection and try again.' });
     } finally {
       setSigningOut(false);

@@ -1,15 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getSafeAuthDestination } from '../lib/authRedirect';
+import { getSafeAuthDestination, isRecoveryRequest } from '../lib/authRedirect';
+import { logAuthError, mapAuthError } from '../lib/authErrors';
+import {
+  createAuthSubmissionGuard,
+  getAuthCallbackUrl,
+  normalizeAuthEmail,
+  normalizeFullName,
+  performSignIn,
+  performSignup,
+  requestPasswordReset,
+  updateRecoveredPassword,
+} from '../lib/authFlow';
 
 type AuthMode = 'sign-in' | 'sign-up' | 'forgot' | 'recovery' | 'confirmation';
 
 function recoveryUrl() {
-  const query = new URLSearchParams(window.location.search);
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  return query.get('recovery') === '1' || hash.get('type') === 'recovery';
+  return isRecoveryRequest(window.location.search, window.location.hash);
 }
 
 function ConfirmationPending(props: {
@@ -37,15 +46,6 @@ function ConfirmationPending(props: {
   );
 }
 
-function friendlyError(message: string, fallback: string) {
-  if (/invalid login credentials/i.test(message)) return 'Check your email and password, then try again.';
-  if (/email not confirmed/i.test(message)) return 'Confirm your email before signing in. You can resend the email below.';
-  if (/rate limit|too many requests|security purposes/i.test(message)) return 'Please wait a moment before trying again.';
-  if (/expired|invalid.*token|otp/i.test(message)) return 'This link is invalid or expired. Request a new one and try again.';
-  if (/fetch|network/i.test(message)) return 'Check your connection and try again.';
-  return fallback;
-}
-
 export default function AuthPage() {
   const navigate = useNavigate();
   const authDestination = getSafeAuthDestination(window.location.search);
@@ -59,6 +59,8 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [existingAccount, setExistingAccount] = useState(false);
+  const submissionGuard = useRef(createAuthSubmissionGuard());
 
   const isSignUp = mode === 'sign-up';
   const isForgot = mode === 'forgot';
@@ -75,16 +77,27 @@ export default function AuthPage() {
     setMode(next);
     setError('');
     setMessage('');
+    setExistingAccount(false);
     setPassword('');
     setConfirmPassword('');
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!submissionGuard.current.acquire()) return;
     setError('');
     setMessage('');
+    setExistingAccount(false);
+    const normalizedEmail = normalizeAuthEmail(email);
+    if (!isRecovery) setEmail(normalizedEmail);
+    if (isSignUp && !normalizeFullName(fullName)) {
+      setError('Enter your full name to create an account.');
+      submissionGuard.current.release();
+      return;
+    }
     if (isRecovery && password !== confirmPassword) {
       setError('The passwords do not match. Please enter them again.');
+      submissionGuard.current.release();
       return;
     }
     setLoading(true);
@@ -94,77 +107,72 @@ export default function AuthPage() {
       else if (isRecovery) await updatePassword();
       else await signIn();
     } catch (requestError) {
-      if (import.meta.env.DEV) console.error('[AuthPage] authentication request failed', requestError);
-      const detail = requestError instanceof Error ? requestError.message : '';
-      setError(friendlyError(detail, 'We could not complete that request. Please try again.'));
+      logAuthError('AuthPage', requestError);
+      const mappedError = mapAuthError(requestError);
+      if (mappedError === 'An account already exists for this email.') setExistingAccount(true);
+      setError(mappedError);
     } finally {
       setLoading(false);
+      submissionGuard.current.release();
     }
   }
 
   async function signUp() {
-    const { data, error: authError } = await supabase.auth.signUp({
-      email: email.trim(),
+    const outcome = await performSignup(supabase.auth, {
+      email,
       password,
-      options: {
-        data: { full_name: fullName.trim() },
-        emailRedirectTo: `${window.location.origin}${authDestination}`,
-      },
+      fullName,
+      origin: window.location.origin,
+      destination: authDestination,
     });
-    if (authError) {
-      setError(friendlyError(authError.message, 'We could not create your account. Review your details and try again.'));
-    } else if (data.session) {
+    setEmail(outcome.email);
+    if (outcome.kind === 'existing') {
+      setExistingAccount(true);
+      setError('An account already exists for this email.');
+    } else if (outcome.kind === 'session') {
       navigate(authDestination, { replace: true });
     } else {
-      setConfirmationEmail(email.trim());
+      setConfirmationEmail(outcome.email);
       setMode('confirmation');
       setPassword('');
     }
   }
 
   async function signIn() {
-    const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (!authError) {
+    try {
+      await performSignIn(supabase.auth, email, password);
       navigate(authDestination, { replace: true });
-      return;
+    } catch (authError) {
+      if (/email not confirmed/i.test(authError instanceof Error ? authError.message : '')) {
+        const normalizedEmail = normalizeAuthEmail(email);
+        setConfirmationEmail(normalizedEmail);
+        setMode('confirmation');
+      }
+      throw authError;
     }
-    if (/email not confirmed/i.test(authError.message)) {
-      setConfirmationEmail(email.trim());
-      setMode('confirmation');
-    }
-    setError(friendlyError(authError.message, 'We could not sign you in. Please try again.'));
   }
 
   async function requestReset() {
-    const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/app/business/dashboard?recovery=1`,
-    });
-    if (authError) {
-      setError(friendlyError(authError.message, 'We could not send the reset email. Please try again.'));
-    } else {
-      setMessage(`If an account exists for ${email.trim()}, a reset link is on its way.`);
-    }
+    const normalizedEmail = await requestPasswordReset(supabase.auth, email, window.location.origin);
+    setEmail(normalizedEmail);
+    setMessage(`If an account exists for ${normalizedEmail}, a reset link is on its way.`);
   }
 
   async function updatePassword() {
-    const { error: authError } = await supabase.auth.updateUser({ password });
-    if (authError) {
-      setError(friendlyError(authError.message, 'We could not update your password. The recovery link may have expired.'));
-    } else {
-      navigate('/app/business/dashboard', { replace: true });
-    }
+    await updateRecoveredPassword(supabase.auth, password);
+    navigate('/app/business/dashboard', { replace: true });
   }
-
   async function resendConfirmation() {
     setLoading(true);
     setError('');
     setMessage('');
     try {
-      const { error: authError } = await supabase.auth.resend({ type: 'signup', email: confirmationEmail, options: { emailRedirectTo: `${window.location.origin}${authDestination}` } });
-      if (authError) setError(friendlyError(authError.message, 'We could not resend the confirmation email. Please try again.'));
+      const { error: authError } = await supabase.auth.resend({ type: 'signup', email: confirmationEmail, options: { emailRedirectTo: getAuthCallbackUrl(window.location.origin, authDestination) } });
+      if (authError) throw authError;
       else setMessage(`A new confirmation email was sent to ${confirmationEmail}.`);
-    } catch {
-      setError('We could not resend the confirmation email. Check your connection and try again.');
+    } catch (requestError) {
+      logAuthError('AuthPage.resend', requestError);
+      setError(mapAuthError(requestError));
     } finally {
       setLoading(false);
     }
@@ -207,7 +215,15 @@ export default function AuthPage() {
           </p>
 
           {error && (
-            <div role="alert" className="mb-5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+            <div role="alert" className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+              <p>{error}</p>
+              {existingAccount && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button type="button" onClick={() => changeMode('sign-in')} className="font-bold text-neon hover:underline">Sign in</button>
+                  <button type="button" onClick={() => changeMode('forgot')} className="font-bold text-neon hover:underline">Reset password</button>
+                </div>
+              )}
+            </div>
           )}
           {message && <div role="status" className="mb-5 p-3 rounded-xl bg-neon/10 border border-neon/20 text-neon text-sm">{message}</div>}
 

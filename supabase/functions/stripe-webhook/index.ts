@@ -1,5 +1,5 @@
 /// <reference lib="deno.ns" />
-import { createClient } from 'npm:@supabase/supabase-js';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js';
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return new Response('Use POST.', { status: 405 });
@@ -22,7 +22,7 @@ Deno.serve(async (request) => {
   } catch (error) { console.error('Stripe webhook error', error); return new Response('Webhook processing failed.', { status: 500 }); }
 });
 type StripeEvent = { id: string; type: string; data: { object: Record<string, unknown> } };
-async function syncSubscription(admin: any, subscription: Record<string, unknown>) {
+async function syncSubscription(admin: SupabaseClient, subscription: Record<string, unknown>) {
   const customerId = String(subscription.customer || '');
   if (!customerId) return;
   const { data: customer } = await admin.from('billing_customers').select('owner_user_id').eq('stripe_customer_id', customerId).maybeSingle();
@@ -32,7 +32,9 @@ async function syncSubscription(admin: any, subscription: Record<string, unknown
   const status = normalizeStatus(String(subscription.status || 'inactive'));
   await admin.from('billing_subscriptions').upsert({ owner_user_id: customer.owner_user_id, stripe_customer_id: customerId, stripe_subscription_id: String(subscription.id || ''), stripe_price_id: typeof price?.id === 'string' ? price.id : null, plan_key: 'founding', status, cancel_at_period_end: subscription.cancel_at_period_end === true, current_period_end: unixToIso(subscription.current_period_end) });
 }
-async function syncSubscriptionById(_admin: any, _id: string) {
+async function syncSubscriptionById(admin: SupabaseClient, id: string) {
+  void admin;
+  void id;
   // The subscription.created/updated event is the authoritative event and will
   // normally arrive with Checkout completion. This avoids trusting browser data.
 }

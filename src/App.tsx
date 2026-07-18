@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
-import { getSafeAuthDestination } from './lib/authRedirect';
+import { getSafeAuthDestination, isRecoveryRequest } from './lib/authRedirect';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const DemoShowcase = lazy(() => import('./pages/DemoShowcase'));
@@ -81,7 +81,16 @@ export default function App() {
           <Route path="/demo/workspace" element={<DemoWorkspace />} />
           <Route path="/privacy" element={<LegalPage />} />
           <Route path="/terms" element={<LegalPage />} />
-          <Route path="/auth" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <Navigate to={getSafeAuthDestination(window.location.search)} replace /> : <AuthPage />} />
+          <Route
+            path="/auth"
+            element={
+              !isSupabaseConfigured
+                ? <MissingSupabaseConfig />
+                : session && !isRecoveryRequest(window.location.search, window.location.hash)
+                  ? <Navigate to={getSafeAuthDestination(window.location.search)} replace />
+                  : <AuthPage />
+            }
+          />
 
           <Route path="/admin/login" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminLogin session={session} />} />
           <Route path="/admin/access-denied" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminAccessDenied session={session} />} />

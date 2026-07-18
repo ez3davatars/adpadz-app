@@ -1,5 +1,5 @@
 /// <reference lib="deno.ns" />
-import { createClient } from 'npm:@supabase/supabase-js';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,7 +48,7 @@ async function authenticatedUser(request: Request, url: string, anon: string) {
   if (error || !data.user) throw new Error('Sign in before starting checkout.');
   return data.user;
 }
-async function ensureCustomer(admin: any, config: Config, ownerUserId: string, email?: string) {
+async function ensureCustomer(admin: SupabaseClient, config: Config, ownerUserId: string, email?: string) {
   const { data: existing, error } = await admin.from('billing_customers').select('stripe_customer_id').eq('owner_user_id', ownerUserId).maybeSingle();
   if (error) throw new Error('Could not load billing customer.');
   if (existing?.stripe_customer_id) return existing.stripe_customer_id;
