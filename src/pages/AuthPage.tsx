@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getSafeAuthDestination } from '../lib/authRedirect';
 
 type AuthMode = 'sign-in' | 'sign-up' | 'forgot' | 'recovery' | 'confirmation';
 
@@ -47,6 +48,7 @@ function friendlyError(message: string, fallback: string) {
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const authDestination = getSafeAuthDestination(window.location.search);
   const [mode, setMode] = useState<AuthMode>(() => recoveryUrl() ? 'recovery' : 'sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -106,13 +108,13 @@ export default function AuthPage() {
       password,
       options: {
         data: { full_name: fullName.trim() },
-        emailRedirectTo: `${window.location.origin}/app/business/dashboard`,
+        emailRedirectTo: `${window.location.origin}${authDestination}`,
       },
     });
     if (authError) {
       setError(friendlyError(authError.message, 'We could not create your account. Review your details and try again.'));
     } else if (data.session) {
-      navigate('/app/business/dashboard', { replace: true });
+      navigate(authDestination, { replace: true });
     } else {
       setConfirmationEmail(email.trim());
       setMode('confirmation');
@@ -123,7 +125,7 @@ export default function AuthPage() {
   async function signIn() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (!authError) {
-      navigate('/app/business/dashboard', { replace: true });
+      navigate(authDestination, { replace: true });
       return;
     }
     if (/email not confirmed/i.test(authError.message)) {
@@ -158,7 +160,7 @@ export default function AuthPage() {
     setError('');
     setMessage('');
     try {
-      const { error: authError } = await supabase.auth.resend({ type: 'signup', email: confirmationEmail, options: { emailRedirectTo: `${window.location.origin}/app/business/dashboard` } });
+      const { error: authError } = await supabase.auth.resend({ type: 'signup', email: confirmationEmail, options: { emailRedirectTo: `${window.location.origin}${authDestination}` } });
       if (authError) setError(friendlyError(authError.message, 'We could not resend the confirmation email. Please try again.'));
       else setMessage(`A new confirmation email was sent to ${confirmationEmail}.`);
     } catch {

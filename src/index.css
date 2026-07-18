@@ -92,14 +92,17 @@
     background: rgba(182, 255, 0, 0.4);
   }
 
-  input, select, textarea {
+  input,
+  select,
+  textarea {
     font-family: inherit;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold rounded-full transition-all duration-200 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold
+      rounded-full transition-all duration-200 active:scale-95;
     background: var(--color-neon);
     color: var(--bg-base);
     box-shadow: var(--glow-button);
@@ -115,7 +118,8 @@
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold rounded-full transition-all duration-200 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-semibold
+      rounded-full transition-all duration-200 active:scale-95;
     border: 1px solid var(--border-neon);
     color: var(--color-neon);
     background: transparent;
@@ -125,7 +129,8 @@
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-medium rounded-lg transition-all duration-200;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-medium
+      rounded-lg transition-all duration-200;
     color: var(--text-secondary);
   }
   .btn-ghost:hover {
@@ -151,7 +156,9 @@
   }
 
   .input-field {
-    @apply w-full px-4 py-3 rounded-xl text-white placeholder:text-[var(--text-muted)] transition-colors duration-200 outline-none;
+    @apply w-full px-4 py-3 rounded-xl text-white
+      placeholder:text-[var(--text-muted)] transition-colors duration-200
+      outline-none;
     background: var(--bg-input);
     border: 1px solid var(--border-default);
   }
@@ -179,7 +186,8 @@
   }
 
   .badge {
-    @apply inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full;
+    @apply inline-flex items-center gap-1 px-3 py-1 text-xs font-medium
+      rounded-full;
   }
   .badge-active {
     background: rgba(182, 255, 0, 0.12);
@@ -200,10 +208,18 @@
 }
 
 @layer utilities {
-  .safe-top { padding-top: var(--safe-top); }
-  .safe-bottom { padding-bottom: var(--safe-bottom); }
-  .safe-left { padding-left: var(--safe-left); }
-  .safe-right { padding-right: var(--safe-right); }
+  .safe-top {
+    padding-top: var(--safe-top);
+  }
+  .safe-bottom {
+    padding-bottom: var(--safe-bottom);
+  }
+  .safe-left {
+    padding-left: var(--safe-left);
+  }
+  .safe-right {
+    padding-right: var(--safe-right);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -217,5 +233,58 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .community-mailer-print,
+  .community-mailer-print * {
+    visibility: visible;
+  }
+
+  .community-mailer-print {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: white;
+  }
+
+  .community-mailer-print-controls {
+    display: none !important;
+  }
+
+  .community-mailer-production-guides {
+    display: none !important;
+  }
+
+  .community-mailer-print .community-mailer-canvas {
+    max-width: none;
+    break-after: page;
+    box-shadow: none;
+  }
+
+  .community-mailer-print .community-mailer-canvas[data-format="postcard_9x12"] {
+    width: 12in;
+  }
+
+  .community-mailer-print .community-mailer-production-sheet {
+    width: 12.25in;
+    max-width: none;
+    break-after: page;
+    box-shadow: none;
+  }
+
+  .community-mailer-print .community-mailer-production-sheet
+    .community-mailer-canvas[data-format="postcard_9x12"] {
+    width: 100%;
+    break-after: auto;
+  }
+
+  .community-mailer-print .community-mailer-canvas[data-format="community_card_6x11"] {
+    width: 11in;
   }
 }

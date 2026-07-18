@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
+import { getSafeAuthDestination } from './lib/authRedirect';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const DemoShowcase = lazy(() => import('./pages/DemoShowcase'));
@@ -17,7 +18,7 @@ const BusinessLayout = lazy(() => import('./components/layout/BusinessLayout'));
 const BizDashboard = lazy(() => import('./pages/business/Dashboard'));
 const BizCreateAd = lazy(() => import('./pages/business/CreateAd'));
 const BizCampaigns = lazy(() => import('./pages/business/Campaigns'));
-const BizCommunityCards = lazy(() => import('./pages/business/CommunityCards'));
+const BizCommunityCampaigns = lazy(() => import('./pages/business/CommunityCampaigns'));
 const CommunityCardPublic = lazy(() => import('./pages/CommunityCardPublic'));
 const CampaignContentStudio = lazy(() => import('./pages/business/CampaignContentStudio'));
 const BizQRStudio = lazy(() => import('./pages/business/QRStudio'));
@@ -35,6 +36,8 @@ const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminAccessDenied = lazy(() => import('./pages/admin/AdminAccessDenied'));
+const AdminCommunityMailers = lazy(() => import('./pages/admin/AdminCommunityMailers'));
+const AdminCommunityMailerDetail = lazy(() => import('./pages/admin/AdminCommunityMailerDetail'));
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -78,13 +81,16 @@ export default function App() {
           <Route path="/demo/workspace" element={<DemoWorkspace />} />
           <Route path="/privacy" element={<LegalPage />} />
           <Route path="/terms" element={<LegalPage />} />
-          <Route path="/auth" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <Navigate to="/app/business/dashboard" replace /> : <AuthPage />} />
+          <Route path="/auth" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <Navigate to={getSafeAuthDestination(window.location.search)} replace /> : <AuthPage />} />
 
           <Route path="/admin/login" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminLogin session={session} />} />
           <Route path="/admin/access-denied" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminAccessDenied session={session} />} />
           <Route path="/admin" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminGuard session={session} />}>
             <Route element={<AdminLayout />}>
               <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="community-mailers" element={<AdminCommunityMailers />} />
+              <Route path="community-mailers/:mailerId" element={<AdminCommunityMailerDetail />} />
+              <Route path="community-mailers/:mailerId/placements" element={<AdminCommunityMailerDetail />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
           </Route>
@@ -101,7 +107,8 @@ export default function App() {
             <Route path="dashboard" element={<BizDashboard />} />
             <Route path="create-ad" element={<BizCreateAd />} />
             <Route path="campaigns" element={<BizCampaigns />} />
-            <Route path="community-cards" element={<BizCommunityCards />} />
+            <Route path="community-cards" element={<Navigate to="../community-campaigns" replace />} />
+            <Route path="community-campaigns" element={<BizCommunityCampaigns />} />
             <Route path="campaigns/:campaignId/edit" element={<BizCreateAd />} />
             <Route path="campaigns/:campaignId/content" element={<CampaignContentStudio />} />
             <Route path="qr-studio" element={<BizQRStudio />} />

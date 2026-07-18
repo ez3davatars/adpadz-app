@@ -51,7 +51,7 @@ const adminNavGroups: AdminNavGroup[] = [
     label: 'Campaign Operations',
     items: [
       { label: 'Campaigns', icon: Megaphone },
-      { label: 'Community Mailers', icon: Mail },
+      { label: 'Community Mailers', icon: Mail, to: '/admin/community-mailers' },
       { label: 'Placements', icon: MapPin },
       { label: 'Creative Queue', icon: Image },
     ],
