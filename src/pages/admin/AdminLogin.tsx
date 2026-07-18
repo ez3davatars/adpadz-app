@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import AdpadzBrand from '../../components/AdpadzBrand';
 import { AdpadzButton } from '../../components/adpadz-ui';
 import { decideAdminRoute, getAdminAccess } from '../../lib/admin/adminAuth';
+import { isAuthRateLimitError, logAuthError, mapAuthError } from '../../lib/authErrors';
+import {
+  AUTH_RATE_LIMIT_COOLDOWN_MS,
+  createAuthSubmissionGuard,
+  performSignIn,
+  requestPasswordReset,
+  updateRecoveredPassword,
+} from '../../lib/authFlow';
 import { supabase } from '../../lib/supabase';
 import '../../components/admin/MissionControl.css';
 
@@ -20,14 +28,6 @@ function isRecoveryUrl(): boolean {
   return query.get('recovery') === '1' || hash.get('type') === 'recovery';
 }
 
-function friendlyAuthError(message: string): string {
-  if (/invalid login credentials/i.test(message)) return 'Check your email and password, then try again.';
-  if (/email not confirmed/i.test(message)) return 'Confirm your email before signing in.';
-  if (/rate limit|too many requests|security purposes/i.test(message)) return 'Please wait a moment before trying again.';
-  if (/expired|invalid.*token|otp/i.test(message)) return 'This recovery link is invalid or expired. Request a new one.';
-  if (/fetch|network/i.test(message)) return 'Check your connection and try again.';
-  return 'Mission Control could not complete that request. Please try again.';
-}
 
 export default function AdminLogin({ session }: AdminLoginProps) {
   const navigate = useNavigate();
@@ -40,12 +40,31 @@ export default function AdminLogin({ session }: AdminLoginProps) {
   const [checkingSession, setCheckingSession] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const submissionGuard = useRef(createAuthSubmissionGuard());
+  const mountedRef = useRef(false);
+  const activeRequestIdRef = useRef(0);
 
   useEffect(() => {
+    const guard = submissionGuard.current;
+    mountedRef.current = true;
     const previousTitle = document.title;
     document.title = 'Mission Control Sign In · Adpadz';
-    return () => { document.title = previousTitle; };
+    return () => {
+      mountedRef.current = false;
+      activeRequestIdRef.current += 1;
+      guard.release();
+      document.title = previousTitle;
+    };
   }, []);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      if (mountedRef.current) setCooldownSeconds(Math.ceil(submissionGuard.current.remainingCooldownMs() / 1_000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
@@ -72,6 +91,7 @@ export default function AdminLogin({ session }: AdminLoginProps) {
   }, [mode, navigate, session]);
 
   function changeMode(nextMode: LoginMode) {
+    if (submissionGuard.current.isActive()) return;
     setMode(nextMode);
     setError('');
     setMessage('');
@@ -91,37 +111,50 @@ export default function AdminLogin({ session }: AdminLoginProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (cooldownSeconds > 0 || !submissionGuard.current.acquire()) return;
+
+    const requestId = ++activeRequestIdRef.current;
+    const normalizedEmail = email.trim().toLowerCase();
+    setEmail(normalizedEmail);
     setError('');
     setMessage('');
 
     if (mode === 'recovery' && password !== confirmation) {
       setError('The passwords do not match. Enter them again.');
+      setPassword('');
+      setConfirmation('');
+      submissionGuard.current.release();
       return;
     }
 
     setLoading(true);
     try {
       if (mode === 'forgot') {
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/admin/login?recovery=1`,
-        });
-        if (resetError) throw resetError;
-        setMessage(`If an account exists for ${email.trim()}, a secure reset link is on its way.`);
+        const resetEmail = await requestPasswordReset(supabase.auth, normalizedEmail, window.location.origin, '/admin/login?recovery=1');
+        if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
+        setMessage(`If an account exists for ${resetEmail}, a secure reset link is on its way.`);
       } else if (mode === 'recovery') {
-        const { error: updateError } = await supabase.auth.updateUser({ password });
-        if (updateError) throw updateError;
+        await updateRecoveredPassword(supabase.auth, password);
+        if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
         await routeAfterAuthentication();
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (signInError) throw signInError;
+        await performSignIn(supabase.auth, normalizedEmail, password);
+        if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
         await routeAfterAuthentication();
       }
     } catch (requestError) {
-      if (import.meta.env.DEV) console.error('[Mission Control] authentication request failed', requestError);
-      const detail = requestError instanceof Error ? requestError.message : '';
-      setError(friendlyAuthError(detail));
+      if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
+      logAuthError('Mission Control', requestError);
+      if (isAuthRateLimitError(requestError)) {
+        submissionGuard.current.startCooldown(AUTH_RATE_LIMIT_COOLDOWN_MS);
+        setCooldownSeconds(Math.ceil(AUTH_RATE_LIMIT_COOLDOWN_MS / 1_000));
+      }
+      setPassword('');
+      setConfirmation('');
+      setError(mapAuthError(requestError));
     } finally {
-      setLoading(false);
+      submissionGuard.current.release();
+      if (mountedRef.current && activeRequestIdRef.current === requestId) setLoading(false);
     }
   }
 
@@ -215,17 +248,18 @@ export default function AdminLogin({ session }: AdminLoginProps) {
 
             {!forgot && !recovery ? (
               <div className="text-right">
-                <button type="button" onClick={() => changeMode('forgot')} className="min-h-11 text-xs font-bold text-neon hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon">Forgot password?</button>
+                <button type="button" disabled={loading} onClick={() => changeMode('forgot')} className="min-h-11 text-xs font-bold text-neon hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon">Forgot password?</button>
               </div>
             ) : null}
 
-            <AdpadzButton type="submit" fullWidth size="lg" disabled={loading}>
-              {loading ? 'Working…' : recovery ? 'Update password' : forgot ? 'Send recovery link' : 'Sign in securely'}
+            <AdpadzButton type="submit" fullWidth size="lg" disabled={loading || cooldownSeconds > 0}>
+              {loading ? 'Working…' : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : recovery ? 'Update password' : forgot ? 'Send recovery link' : 'Sign in securely'}
             </AdpadzButton>
           </form>
+          {cooldownSeconds > 0 ? <p role="status" aria-live="polite" className="mt-3 text-center text-xs text-amber-300">Authentication is paused for {cooldownSeconds} second{cooldownSeconds === 1 ? '' : 's'}.</p> : null}
 
           {forgot || recovery ? (
-            <button type="button" onClick={() => changeMode('sign-in')} className="mt-5 min-h-11 w-full text-sm font-semibold text-neon hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon">Back to administrator sign in</button>
+            <button type="button" disabled={loading} onClick={() => changeMode('sign-in')} className="mt-5 min-h-11 w-full text-sm font-semibold text-neon hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon">Back to administrator sign in</button>
           ) : null}
           <p className="mt-6 text-center text-xs leading-5 text-[var(--text-muted)]">Access is limited to active administrator accounts. There is no public registration for Mission Control.</p>
         </div>

@@ -13,6 +13,9 @@ export type SignupOutcome =
   | { kind: 'confirmation'; email: string }
   | { kind: 'existing'; email: string };
 
+export const AUTH_SUBMISSION_DEBOUNCE_MS = 1_000;
+export const AUTH_RATE_LIMIT_COOLDOWN_MS = 30_000;
+
 export function normalizeAuthEmail(email: string) { return email.trim().toLowerCase(); }
 export function normalizeFullName(name: string) { return name.trim(); }
 
@@ -40,9 +43,9 @@ export async function performSignIn(auth: AuthClient, emailInput: string, passwo
   return { ...data, email };
 }
 
-export async function requestPasswordReset(auth: AuthClient, emailInput: string, origin: string) {
+export async function requestPasswordReset(auth: AuthClient, emailInput: string, origin: string, recoveryPath = '/auth?recovery=1') {
   const email = normalizeAuthEmail(emailInput);
-  const { error } = await auth.resetPasswordForEmail(email, { redirectTo: new URL('/auth?recovery=1', origin).toString() });
+  const { error } = await auth.resetPasswordForEmail(email, { redirectTo: new URL(recoveryPath, origin).toString() });
   if (error) throw error;
   return email;
 }
@@ -57,7 +60,34 @@ export async function performSignOut(auth: AuthClient) {
   if (error) throw error;
 }
 
-export function createAuthSubmissionGuard() {
+export function createAuthSubmissionGuard(options: {
+  now?: () => number;
+  minimumIntervalMs?: number;
+} = {}) {
+  const now = options.now ?? Date.now;
+  const minimumIntervalMs = options.minimumIntervalMs ?? AUTH_SUBMISSION_DEBOUNCE_MS;
   let active = false;
-  return { acquire() { if (active) return false; active = true; return true; }, release() { active = false; } };
+  let blockedUntil = 0;
+
+  return {
+    acquire() {
+      const timestamp = now();
+      if (active || timestamp < blockedUntil) return false;
+      active = true;
+      blockedUntil = timestamp + minimumIntervalMs;
+      return true;
+    },
+    release() {
+      active = false;
+    },
+    startCooldown(durationMs = AUTH_RATE_LIMIT_COOLDOWN_MS) {
+      blockedUntil = Math.max(blockedUntil, now() + durationMs);
+    },
+    remainingCooldownMs() {
+      return Math.max(0, blockedUntil - now());
+    },
+    isActive() {
+      return active;
+    },
+  };
 }

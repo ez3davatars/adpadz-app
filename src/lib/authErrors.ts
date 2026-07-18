@@ -3,6 +3,18 @@ export const DEFAULT_AUTH_ERROR =
 
 export type AuthErrorLike = { code?: string; message?: string; status?: number };
 
+function authErrorCode(error: unknown) {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as AuthErrorLike).code ?? '').toLowerCase()
+    : '';
+}
+
+function authErrorStatus(error: unknown) {
+  return error && typeof error === 'object' && 'status' in error
+    ? Number((error as AuthErrorLike).status)
+    : 0;
+}
+
 function authErrorText(error: unknown) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'message' in error) return String((error as AuthErrorLike).message ?? '');
@@ -10,21 +22,30 @@ function authErrorText(error: unknown) {
 }
 
 export function mapAuthError(error: unknown): string {
-  const code = error && typeof error === 'object' && 'code' in error ? String((error as AuthErrorLike).code ?? '') : '';
+  const code = authErrorCode(error);
   const detail = `${code} ${authErrorText(error)}`.toLowerCase();
   if (/invalid login credentials|invalid_credentials/.test(detail)) return 'Check your email and password, then try again.';
-  if (/already registered|already exists|user_already_exists|identity_already_exists/.test(detail)) return 'An account already exists for this email.';
+  if (/already registered|already exists|user_already_exists|email_exists|identity_already_exists/.test(detail)) return 'An account already exists for this email.';
   if (/signup.*disabled|signups?.*(disabled|not allowed)|signup_disabled/.test(detail)) return 'New account signup is currently unavailable. Please contact Adpadz support.';
   if (/email not confirmed|email_not_confirmed/.test(detail)) return 'Confirm your email before signing in. You can resend the email below.';
   if (/weak password|password.*(weak|short|characters)|weak_password/.test(detail)) return 'Choose a stronger password with at least 8 characters, including a number and a letter.';
   if (/invalid email|email.*invalid|validation_failed/.test(detail)) return 'Enter a valid email address and try again.';
-  if (/rate limit|too many requests|security purposes|over_email_send_rate_limit/.test(detail)) return 'Too many attempts were made. Please wait a few minutes before trying again.';
+  if (isAuthRateLimitError(error)) return 'Too many attempts were sent. Please wait a moment before trying again.';
   if (/expired.*(token|link)|token.*expired|refresh_token_not_found/.test(detail)) return 'This link has expired. Request a new reset link and try again.';
   if (/invalid.*(otp|token)|otp.*invalid|otp_expired/.test(detail)) return 'This link is invalid or expired. Request a new one and try again.';
   if (/database error saving new user|unexpected_failure|database.*user/.test(detail)) return 'We could not finish creating your account. Please try again or contact Adpadz support.';
   if (/email.*(delivery|send|smtp)|error sending|email_provider_disabled/.test(detail)) return 'We could not deliver the email. Please try again shortly or contact Adpadz support.';
   if (/failed to fetch|network|load failed|fetch_error/.test(detail)) return 'Check your connection and try again.';
   return DEFAULT_AUTH_ERROR;
+}
+
+export function isAuthRateLimitError(error: unknown) {
+  const code = authErrorCode(error);
+  const detail = `${code} ${authErrorText(error)}`.toLowerCase();
+  return authErrorStatus(error) === 429
+    || code === 'over_request_rate_limit'
+    || code === 'over_email_send_rate_limit'
+    || /rate limit|too many requests|security purposes/.test(detail);
 }
 
 export function logAuthError(scope: string, error: unknown) {

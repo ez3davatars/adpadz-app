@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getSafeAuthDestination, isRecoveryRequest } from '../lib/authRedirect';
-import { logAuthError, mapAuthError } from '../lib/authErrors';
+import { isAuthRateLimitError, logAuthError, mapAuthError } from '../lib/authErrors';
 import {
+  AUTH_RATE_LIMIT_COOLDOWN_MS,
   createAuthSubmissionGuard,
   getAuthCallbackUrl,
   normalizeAuthEmail,
@@ -26,10 +27,11 @@ function ConfirmationPending(props: {
   error: string;
   message: string;
   loading: boolean;
+  cooldownSeconds: number;
   onResend: () => void;
   onChangeEmail: () => void;
 }) {
-  const { email, error, message, loading, onResend, onChangeEmail } = props;
+  const { email, error, message, loading, cooldownSeconds, onResend, onChangeEmail } = props;
   return (
     <main className="flex min-h-screen items-center justify-center p-6" style={{ background: 'var(--bg-base)' }}>
       <section aria-labelledby="confirm-heading" className="w-full max-w-md text-center">
@@ -38,8 +40,8 @@ function ConfirmationPending(props: {
         <p className="mt-2 text-sm text-[var(--text-muted)]">We sent a confirmation link to <strong>{email}</strong>. Open it to activate your account.</p>
         {error && <p role="alert" className="mt-5 text-sm text-red-400">{error}</p>}
         {message && <p role="status" className="mt-5 text-sm text-neon">{message}</p>}
-        <button type="button" onClick={onResend} disabled={loading} className="btn-primary mt-6 w-full py-3.5 text-sm">{loading ? 'Sending...' : 'Resend confirmation email'}</button>
-        <button type="button" onClick={onChangeEmail} className="mt-4 text-sm text-neon hover:underline">Use a different email</button>
+        <button type="button" onClick={onResend} disabled={loading || cooldownSeconds > 0} className="btn-primary mt-6 w-full py-3.5 text-sm">{loading ? 'Sending...' : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : 'Resend confirmation email'}</button>
+        <button type="button" disabled={loading} onClick={onChangeEmail} className="mt-4 text-sm text-neon hover:underline">Use a different email</button>
         <p className="mt-4 text-xs text-[var(--text-muted)]">Check your spam folder if it does not arrive.</p>
       </section>
     </main>
@@ -60,20 +62,44 @@ export default function AuthPage() {
   const [message, setMessage] = useState('');
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [existingAccount, setExistingAccount] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const submissionGuard = useRef(createAuthSubmissionGuard());
+  const mountedRef = useRef(false);
+  const activeRequestIdRef = useRef(0);
 
   const isSignUp = mode === 'sign-up';
   const isForgot = mode === 'forgot';
   const isRecovery = mode === 'recovery';
 
   useEffect(() => {
+    const guard = submissionGuard.current;
+    mountedRef.current = true;
     const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
-      if (event === 'PASSWORD_RECOVERY') setMode('recovery');
+      if (mountedRef.current && event === 'PASSWORD_RECOVERY') setMode('recovery');
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      mountedRef.current = false;
+      activeRequestIdRef.current += 1;
+      guard.release();
+      subscription.unsubscribe();
+    };
   }, []);
 
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      if (!mountedRef.current) return;
+      setCooldownSeconds(Math.ceil(submissionGuard.current.remainingCooldownMs() / 1_000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  function isCurrentRequest(requestId: number) {
+    return mountedRef.current && activeRequestIdRef.current === requestId;
+  }
+
   function changeMode(next: AuthMode) {
+    if (submissionGuard.current.isActive()) return;
     setMode(next);
     setError('');
     setMessage('');
@@ -82,104 +108,119 @@ export default function AuthPage() {
     setConfirmPassword('');
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!submissionGuard.current.acquire()) return;
+    if (cooldownSeconds > 0 || !submissionGuard.current.acquire()) return;
+
+    const requestId = ++activeRequestIdRef.current;
     setError('');
     setMessage('');
     setExistingAccount(false);
+
     const normalizedEmail = normalizeAuthEmail(email);
+    const normalizedName = normalizeFullName(fullName);
     if (!isRecovery) setEmail(normalizedEmail);
-    if (isSignUp && !normalizeFullName(fullName)) {
+    if (isSignUp && !normalizedName) {
       setError('Enter your full name to create an account.');
       submissionGuard.current.release();
       return;
     }
     if (isRecovery && password !== confirmPassword) {
       setError('The passwords do not match. Please enter them again.');
+      setPassword('');
+      setConfirmPassword('');
       submissionGuard.current.release();
       return;
     }
+
     setLoading(true);
     try {
-      if (isSignUp) await signUp();
-      else if (isForgot) await requestReset();
-      else if (isRecovery) await updatePassword();
-      else await signIn();
+      if (isSignUp) {
+        const outcome = await performSignup(supabase.auth, {
+          email: normalizedEmail,
+          password,
+          fullName: normalizedName,
+          origin: window.location.origin,
+          destination: authDestination,
+        });
+        if (!isCurrentRequest(requestId)) return;
+        setEmail(outcome.email);
+        if (outcome.kind === 'existing') {
+          setExistingAccount(true);
+          setError('An account already exists for this email.');
+          setPassword('');
+        } else if (outcome.kind === 'session') {
+          navigate(authDestination, { replace: true });
+        } else {
+          setConfirmationEmail(outcome.email);
+          setMode('confirmation');
+          setPassword('');
+        }
+      } else if (isForgot) {
+        const resetEmail = await requestPasswordReset(supabase.auth, normalizedEmail, window.location.origin);
+        if (!isCurrentRequest(requestId)) return;
+        setEmail(resetEmail);
+        setMessage(`If an account exists for ${resetEmail}, a reset link is on its way.`);
+      } else if (isRecovery) {
+        await updateRecoveredPassword(supabase.auth, password);
+        if (!isCurrentRequest(requestId)) return;
+        navigate('/app/business/dashboard', { replace: true });
+      } else {
+        await performSignIn(supabase.auth, normalizedEmail, password);
+        if (!isCurrentRequest(requestId)) return;
+        navigate(authDestination, { replace: true });
+      }
     } catch (requestError) {
+      if (!isCurrentRequest(requestId)) return;
       logAuthError('AuthPage', requestError);
       const mappedError = mapAuthError(requestError);
       if (mappedError === 'An account already exists for this email.') setExistingAccount(true);
-      setError(mappedError);
-    } finally {
-      setLoading(false);
-      submissionGuard.current.release();
-    }
-  }
-
-  async function signUp() {
-    const outcome = await performSignup(supabase.auth, {
-      email,
-      password,
-      fullName,
-      origin: window.location.origin,
-      destination: authDestination,
-    });
-    setEmail(outcome.email);
-    if (outcome.kind === 'existing') {
-      setExistingAccount(true);
-      setError('An account already exists for this email.');
-    } else if (outcome.kind === 'session') {
-      navigate(authDestination, { replace: true });
-    } else {
-      setConfirmationEmail(outcome.email);
-      setMode('confirmation');
-      setPassword('');
-    }
-  }
-
-  async function signIn() {
-    try {
-      await performSignIn(supabase.auth, email, password);
-      navigate(authDestination, { replace: true });
-    } catch (authError) {
-      if (/email not confirmed/i.test(authError instanceof Error ? authError.message : '')) {
-        const normalizedEmail = normalizeAuthEmail(email);
+      if (mappedError === 'Confirm your email before signing in. You can resend the email below.') {
         setConfirmationEmail(normalizedEmail);
         setMode('confirmation');
       }
-      throw authError;
+      if (isAuthRateLimitError(requestError)) {
+        submissionGuard.current.startCooldown(AUTH_RATE_LIMIT_COOLDOWN_MS);
+        setCooldownSeconds(Math.ceil(AUTH_RATE_LIMIT_COOLDOWN_MS / 1_000));
+      }
+      setPassword('');
+      setConfirmPassword('');
+      setError(mappedError);
+    } finally {
+      submissionGuard.current.release();
+      if (isCurrentRequest(requestId)) setLoading(false);
     }
   }
-
-  async function requestReset() {
-    const normalizedEmail = await requestPasswordReset(supabase.auth, email, window.location.origin);
-    setEmail(normalizedEmail);
-    setMessage(`If an account exists for ${normalizedEmail}, a reset link is on its way.`);
-  }
-
-  async function updatePassword() {
-    await updateRecoveredPassword(supabase.auth, password);
-    navigate('/app/business/dashboard', { replace: true });
-  }
   async function resendConfirmation() {
+    if (cooldownSeconds > 0 || !submissionGuard.current.acquire()) return;
+    const requestId = ++activeRequestIdRef.current;
     setLoading(true);
     setError('');
     setMessage('');
     try {
-      const { error: authError } = await supabase.auth.resend({ type: 'signup', email: confirmationEmail, options: { emailRedirectTo: getAuthCallbackUrl(window.location.origin, authDestination) } });
+      const { error: authError } = await supabase.auth.resend({
+        type: 'signup',
+        email: confirmationEmail,
+        options: { emailRedirectTo: getAuthCallbackUrl(window.location.origin, authDestination) },
+      });
       if (authError) throw authError;
-      else setMessage(`A new confirmation email was sent to ${confirmationEmail}.`);
+      if (isCurrentRequest(requestId)) setMessage(`A new confirmation email was sent to ${confirmationEmail}.`);
     } catch (requestError) {
+      if (!isCurrentRequest(requestId)) return;
       logAuthError('AuthPage.resend', requestError);
+      if (isAuthRateLimitError(requestError)) {
+        submissionGuard.current.startCooldown(AUTH_RATE_LIMIT_COOLDOWN_MS);
+        setCooldownSeconds(Math.ceil(AUTH_RATE_LIMIT_COOLDOWN_MS / 1_000));
+      }
       setError(mapAuthError(requestError));
     } finally {
-      setLoading(false);
+      submissionGuard.current.release();
+      if (isCurrentRequest(requestId)) setLoading(false);
     }
   }
 
   if (mode === 'confirmation') {
-    return <ConfirmationPending email={confirmationEmail} error={error} message={message} loading={loading} onResend={() => void resendConfirmation()} onChangeEmail={() => changeMode('sign-up')} />;
+    return <ConfirmationPending email={confirmationEmail} error={error} message={message} loading={loading} cooldownSeconds={cooldownSeconds} onResend={() => void resendConfirmation()} onChangeEmail={() => changeMode('sign-up')} />;
   }
 
   return (
@@ -219,15 +260,15 @@ export default function AuthPage() {
               <p>{error}</p>
               {existingAccount && (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  <button type="button" onClick={() => changeMode('sign-in')} className="font-bold text-neon hover:underline">Sign in</button>
-                  <button type="button" onClick={() => changeMode('forgot')} className="font-bold text-neon hover:underline">Reset password</button>
+                  <button type="button" disabled={loading} onClick={() => changeMode('sign-in')} className="font-bold text-neon hover:underline">Sign in</button>
+                  <button type="button" disabled={loading} onClick={() => changeMode('forgot')} className="font-bold text-neon hover:underline">Reset password</button>
                 </div>
               )}
             </div>
           )}
           {message && <div role="status" className="mb-5 p-3 rounded-xl bg-neon/10 border border-neon/20 text-neon text-sm">{message}</div>}
 
-          <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading}>
+          <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading} data-auth-form>
             {isSignUp && (
               <div>
                 <label htmlFor="auth-name" className="text-xs font-medium text-[var(--text-secondary)] mb-1.5 block">Full name</label>
@@ -278,27 +319,30 @@ export default function AuthPage() {
               </div>
             )}
 
-            {mode === 'sign-in' && <div className="text-right"><button type="button" onClick={() => changeMode('forgot')} className="text-xs font-medium text-neon hover:underline">Forgot password?</button></div>}
+            {mode === 'sign-in' && <div className="text-right"><button type="button" disabled={loading} onClick={() => changeMode('forgot')} className="text-xs font-medium text-neon hover:underline">Forgot password?</button></div>}
 
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 text-sm">
+            <button type="submit" disabled={loading || cooldownSeconds > 0} className="btn-primary w-full py-3.5 text-sm">
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                   {isSignUp ? 'Creating account...' : isForgot ? 'Sending reset link...' : isRecovery ? 'Updating password...' : 'Signing in...'}
                 </span>
+              ) : cooldownSeconds > 0 ? (
+                `Try again in ${cooldownSeconds}s`
               ) : (
                 isSignUp ? 'Create Account' : isForgot ? 'Send reset link' : isRecovery ? 'Update password' : 'Sign In'
               )}
             </button>
           </form>
+          {cooldownSeconds > 0 && <p role="status" aria-live="polite" className="mt-3 text-center text-xs text-amber-300">Authentication is paused for {cooldownSeconds} second{cooldownSeconds === 1 ? '' : 's'}.</p>}
 
           {isForgot || isRecovery ? (
-            <p className="mt-5 text-center text-sm"><button type="button" onClick={() => changeMode('sign-in')} className="text-neon hover:underline font-medium">Back to sign in</button></p>
+            <p className="mt-5 text-center text-sm"><button type="button" disabled={loading} onClick={() => changeMode('sign-in')} className="text-neon hover:underline font-medium">Back to sign in</button></p>
           ) : (
             <>
               <p className="mt-5 text-center text-sm text-[var(--text-muted)]">
                 {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button type="button" onClick={() => changeMode(isSignUp ? 'sign-in' : 'sign-up')} className="text-neon hover:underline font-medium">{isSignUp ? 'Sign in' : 'Sign up'}</button>
+                <button type="button" disabled={loading} onClick={() => changeMode(isSignUp ? 'sign-in' : 'sign-up')} className="text-neon hover:underline font-medium">{isSignUp ? 'Sign in' : 'Sign up'}</button>
               </p>
               <div className="my-5 flex items-center gap-3" aria-hidden="true"><span className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--text-muted)]">or explore first</span><span className="h-px flex-1 bg-white/10" /></div>
               <Link to="/demo/workspace" className="flex min-h-11 w-full items-center justify-center rounded-full border border-neon/30 bg-neon/[0.07] px-4 text-sm font-black text-neon transition hover:bg-neon/[0.12]">

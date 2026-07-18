@@ -75,6 +75,12 @@ describe('authentication flow', () => {
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('owner@example.com', { redirectTo: 'https://adpadz.co/auth?recovery=1' });
   });
 
+  it('supports a separate Mission Control recovery callback', async () => {
+    const auth = authClient();
+    await requestPasswordReset(auth, ' ADMIN@Example.com ', 'https://adpadz.co', '/admin/login?recovery=1');
+    expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('admin@example.com', { redirectTo: 'https://adpadz.co/admin/login?recovery=1' });
+  });
+
   it('updates a recovered password', async () => {
     const auth = authClient();
     await updateRecoveredPassword(auth, 'NewStrongPass9!');
@@ -86,11 +92,30 @@ describe('authentication flow', () => {
     await performSignOut(auth);
     expect(auth.signOut).toHaveBeenCalledOnce();
   });
-  it('blocks duplicate submissions until the first finishes', () => {
-    const guard = createAuthSubmissionGuard();
+  it('blocks in-flight and rapid repeat submissions, then allows a later attempt', () => {
+    let now = 1_000;
+    const guard = createAuthSubmissionGuard({ now: () => now, minimumIntervalMs: 1_000 });
     expect(guard.acquire()).toBe(true);
     expect(guard.acquire()).toBe(false);
     guard.release();
+    expect(guard.acquire()).toBe(false);
+    now = 2_000;
     expect(guard.acquire()).toBe(true);
+  });
+
+  it('holds a rate-limit cooldown and permits login after it expires', async () => {
+    let now = 10_000;
+    const guard = createAuthSubmissionGuard({ now: () => now, minimumIntervalMs: 0 });
+    expect(guard.acquire()).toBe(true);
+    guard.startCooldown(30_000);
+    guard.release();
+    expect(guard.acquire()).toBe(false);
+    expect(guard.remainingCooldownMs()).toBe(30_000);
+
+    now += 30_000;
+    expect(guard.acquire()).toBe(true);
+    const auth = authClient();
+    await expect(performSignIn(auth, 'owner@example.com', 'StrongPass9!')).resolves.toEqual(expect.objectContaining({ email: 'owner@example.com' }));
+    expect(auth.signInWithPassword).toHaveBeenCalledOnce();
   });
 });
