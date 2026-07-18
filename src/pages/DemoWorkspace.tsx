@@ -52,6 +52,9 @@ import {
   AdpadzSection,
 } from '../components/adpadz-ui';
 import CircularPadQR from '../components/qr/CircularPadQR';
+import DemoBusinessSelector from '../components/demo/DemoBusinessSelector';
+import DemoAuditPanel from '../components/demo/DemoAuditPanel';
+import DemoCommunityMailerProduction from '../components/demo/DemoCommunityMailerProduction';
 import {
   DEMO_CAMPAIGN_FORMATS,
   DEMO_CAMPAIGN_OUTPUTS,
@@ -60,6 +63,7 @@ import {
   demoWorkspaceActions,
   demoWorkspaceReducer,
   loadDemoWorkspaceState,
+  loadLastDemoBusinessSlug,
   saveDemoWorkspaceState,
   type DemoCampaign,
   type DemoCampaignFormat,
@@ -70,8 +74,8 @@ import {
   type DemoWorkspaceAction,
   type DemoWorkspaceState,
 } from '../lib/demoWorkspace';
-
-type DemoView = 'overview' | 'campaigns' | 'customer' | 'qr' | 'leads' | 'analytics';
+import { DEMO_BUSINESS_PRESETS, getDemoBusinessPreset, type DemoBusinessPreset } from '../lib/demoPresets';
+import { parseDemoRoute, type DemoView } from '../lib/demoRouting';
 
 type DemoNavItem = {
   view: DemoView;
@@ -97,12 +101,6 @@ const tourSteps: Array<{ view: DemoView; eyebrow: string; title: string; descrip
   { view: 'analytics', eyebrow: 'Connected analytics', title: 'Close the loop with measurable results.', description: 'Views, scans, reveals, bookings, and leads stay connected to the campaign that created them.' },
 ];
 
-const services = [
-  { name: 'Design Direction Session', detail: 'A focused in-home or virtual session with a prioritized design plan.', duration: '75 min session' },
-  { name: 'Patio & Outdoor Kitchen Concept', detail: 'A complete concept with layout, material direction, gathering zones, and project priorities.', duration: '120 min session' },
-  { name: 'Backyard Possibility Walkthrough', detail: 'A practical site review with high-impact outdoor recommendations in priority order.', duration: '60 min walkthrough' },
-];
-
 const customerExperienceOutputs: readonly DemoCampaignOutput[] = ['smart_card', 'interactive_ad', 'qr_landing'];
 
 function hasCustomerExperience(campaign: DemoCampaign): boolean {
@@ -113,27 +111,37 @@ function isCustomerReady(campaign: DemoCampaign): boolean {
   return campaign.status === 'active' && hasCustomerExperience(campaign);
 }
 
-function parseView(value: string | null): DemoView {
-  return navItems.some(item => item.view === value) ? value as DemoView : 'overview';
-}
-
 export default function DemoWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [state, dispatch] = useReducer(demoWorkspaceReducer, undefined, () => loadDemoWorkspaceState());
+  const route = parseDemoRoute(searchParams);
+  const selectedBusinessSlug = route.businessSlug ?? loadLastDemoBusinessSlug();
+
+  if (!selectedBusinessSlug) {
+    return <DemoBusinessSelector onSelect={businessSlug => setSearchParams({ business: businessSlug, view: 'overview' })} />;
+  }
+
+  return <BusinessDemoWorkspace key={selectedBusinessSlug} businessSlug={selectedBusinessSlug} />;
+}
+
+function BusinessDemoWorkspace({ businessSlug }: { businessSlug: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [state, dispatch] = useReducer(demoWorkspaceReducer, businessSlug, slug => loadDemoWorkspaceState(undefined, slug));
+  const preset = getDemoBusinessPreset(state.business.slug) ?? DEMO_BUSINESS_PRESETS[0];
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const requestedCampaignId = searchParams.get('campaign');
   const selectedCampaignId = requestedCampaignId && state.campaigns.some(campaign => campaign.id === requestedCampaignId)
     ? requestedCampaignId
     : state.campaigns.find(campaign => campaign.status === 'active')?.id ?? state.campaigns[0].id;
   const [tourStep, setTourStep] = useState<number | null>(() => {
-    const requestedView = parseView(searchParams.get('view'));
+    const requestedView = parseDemoRoute(searchParams).view;
     const index = tourSteps.findIndex(step => step.view === requestedView);
     return index >= 0 ? index : 0;
   });
   const [notice, setNotice] = useState('Welcome to the guided demo. Everything here is fictional sample data.');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const view = parseView(searchParams.get('view'));
+  const route = parseDemoRoute(searchParams);
+  const view = route.view;
 
   useEffect(() => {
     saveDemoWorkspaceState(state);
@@ -146,14 +154,14 @@ export default function DemoWorkspace() {
     const meta = existing ?? document.createElement('meta');
     meta.name = 'robots';
     meta.content = 'noindex,nofollow';
-    document.title = 'Adpadz Guided Demo | River City Outdoor Living';
+    document.title = `Adpadz Guided Demo | ${state.business.name}`;
     if (!existing) document.head.appendChild(meta);
     return () => {
       document.title = previousTitle;
       if (!existing) meta.remove();
       else existing.content = previous ?? '';
     };
-  }, []);
+  }, [state.business.name]);
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
@@ -180,7 +188,10 @@ export default function DemoWorkspace() {
       const matchingStep = tourSteps.findIndex(step => step.view === nextView);
       if (matchingStep >= 0) setTourStep(matchingStep);
     }
-    setSearchParams(campaignId ? { view: nextView, campaign: campaignId } : { view: nextView });
+    const nextParams: Record<string, string> = { business: state.business.slug, view: nextView };
+    if (campaignId) nextParams.campaign = campaignId;
+    if (route.audit) nextParams.audit = '1';
+    setSearchParams(nextParams);
     setMobileNavOpen(false);
   }
 
@@ -207,7 +218,7 @@ export default function DemoWorkspace() {
   function resetWorkspace() {
     dispatch(demoWorkspaceActions.reset());
     setTourStep(0);
-    goToView('overview', 'demo-campaign-summer-patio');
+    goToView('overview', state.campaigns.find(campaign => campaign.status === 'active')?.id ?? state.campaigns[0].id);
     setNotice('Demo restored to the original fictional sample workspace.');
   }
 
@@ -218,7 +229,7 @@ export default function DemoWorkspace() {
   return (
     <div className="min-h-screen bg-[var(--bg-base)] text-white">
       <a href="#demo-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-neon focus:px-4 focus:py-2 focus:text-sm focus:font-black focus:text-black">Skip to demo content</a>
-      <DemoSidebar view={view} mobileOpen={mobileNavOpen} onView={goToView} onRestartTour={restartTour} onClose={() => setMobileNavOpen(false)} />
+      <DemoSidebar businessName={state.business.name} businessTagline={state.business.tagline} businessSlug={state.business.slug} onBusiness={slug => setSearchParams({ business: slug, view: "overview" })} view={view} mobileOpen={mobileNavOpen} onView={goToView} onRestartTour={restartTour} onClose={() => setMobileNavOpen(false)} />
 
       <div className="min-h-screen lg:pl-64">
         <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[color-mix(in_srgb,var(--bg-base)_92%,transparent)] backdrop-blur-xl safe-top">
@@ -227,10 +238,11 @@ export default function DemoWorkspace() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <AdpadzBadge variant="local"><ShieldCheck className="h-3 w-3" /> Demo mode</AdpadzBadge>
-                <span className="truncate text-xs font-black">River City Outdoor Living</span>
+                <span className="truncate text-xs font-black">{state.business.name}</span>
               </div>
-              <p className="mt-1 hidden text-[10px] text-[var(--text-secondary)] sm:block">Fictional sample data · changes stay in this browser session</p>
+              <p className="mt-1 hidden text-[10px] text-[var(--text-secondary)] sm:block">Fictional sample data / progress is saved only in this browser</p>
             </div>
+            <label className="hidden sm:block"><span className="sr-only">Choose a business to experience</span><select value={state.business.slug} onChange={event => setSearchParams({ business: event.target.value, view: 'overview' })} className="min-h-10 max-w-52 rounded-full border border-white/10 bg-[var(--bg-input)] px-3 text-xs font-black text-white">{DEMO_BUSINESS_PRESETS.map(item => <option key={item.slug} value={item.slug}>{item.business.name}</option>)}</select></label>
             <button type="button" onClick={restartTour} className="hidden items-center gap-2 rounded-full px-3 py-2 text-xs font-black text-[var(--text-secondary)] hover:bg-white/[0.06] hover:text-white sm:inline-flex"><HelpCircle className="h-4 w-4" /> Restart tour</button>
             <button type="button" onClick={resetWorkspace} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-black hover:border-neon/35 hover:text-neon" aria-label="Reset demo workspace"><RefreshCcw className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Reset demo</span></button>
             <Link to="/examples" className="hidden min-h-10 items-center gap-2 rounded-full border border-white/10 px-3 text-xs font-black text-[var(--text-secondary)] hover:text-white md:inline-flex">Exit <ArrowRight className="h-3.5 w-3.5" /></Link>
@@ -245,10 +257,12 @@ export default function DemoWorkspace() {
         </div>
 
         <main id="demo-content" className={`mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 ${tourStep !== null ? 'pb-36 lg:pb-32' : 'pb-10'}`}>
-          {view === 'overview' && <OverviewView state={state} headingRef={headingRef} onView={goToView} />}
+          {route.audit && <DemoAuditPanel state={state} view={view} />}
+          {view === 'overview' && <OverviewView state={state} preset={preset} dispatch={dispatch} headingRef={headingRef} onView={goToView} announce={announce} />}
+          {view === 'campaigns' && <DemoCommunityMailerProduction />}
           {view === 'campaigns' && <CampaignsView state={state} dispatch={dispatch} headingRef={headingRef} announce={announce} onOpenCampaign={openCampaign} />}
-          {view === 'customer' && <CustomerView state={state} campaignId={selectedCampaignId} dispatch={dispatch} headingRef={headingRef} announce={announce} />}
-          {view === 'qr' && <QrView state={state} campaignId={selectedCampaignId} dispatch={dispatch} headingRef={headingRef} announce={announce} />}
+          {view === 'customer' && <CustomerView state={state} preset={preset} campaignId={selectedCampaignId} dispatch={dispatch} headingRef={headingRef} announce={announce} />}
+          {view === 'qr' && <QrView state={state} preset={preset} campaignId={selectedCampaignId} dispatch={dispatch} headingRef={headingRef} announce={announce} />}
           {view === 'leads' && <LeadsView state={state} dispatch={dispatch} headingRef={headingRef} announce={announce} />}
           {view === 'analytics' && <AnalyticsView state={state} headingRef={headingRef} />}
         </main>
@@ -266,7 +280,7 @@ export default function DemoWorkspace() {
   );
 }
 
-function DemoSidebar({ view, mobileOpen, onView, onRestartTour, onClose }: { view: DemoView; mobileOpen: boolean; onView: (view: DemoView) => void; onRestartTour: () => void; onClose: () => void }) {
+function DemoSidebar({ businessName, businessTagline, businessSlug, onBusiness, view, mobileOpen, onView, onRestartTour, onClose }: { businessName: string; businessTagline: string; businessSlug: string; onBusiness: (slug: string) => void; view: DemoView; mobileOpen: boolean; onView: (view: DemoView) => void; onRestartTour: () => void; onClose: () => void }) {
   function trapDialogFocus(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key !== 'Tab') return;
     const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
@@ -292,8 +306,8 @@ function DemoSidebar({ view, mobileOpen, onView, onRestartTour, onClose }: { vie
       <div className="px-4 pb-3">
         <div className="rounded-2xl border border-neon/20 bg-neon/[0.065] p-3">
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Fictional workspace</p>
-          <p className="mt-1 text-xs font-black">River City Outdoor Living</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-secondary)]">Thoughtful outdoor spaces, built for the way you live.</p>
+          <p className="mt-1 text-xs font-black">{businessName}</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-secondary)]">{businessTagline}</p><label className="mt-3 block text-[9px] font-black uppercase tracking-[0.14em] text-[var(--text-secondary)]">Choose a business to experience<select value={businessSlug} onChange={event => onBusiness(event.target.value)} className="mt-2 min-h-10 w-full rounded-xl border border-white/10 bg-[var(--bg-input)] px-2 text-[10px] font-bold normal-case tracking-normal text-white">{DEMO_BUSINESS_PRESETS.map(item => <option key={item.slug} value={item.slug}>{item.business.name}</option>)}</select></label>
         </div>
       </div>
       <nav aria-label="Demo workspace" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
@@ -362,11 +376,29 @@ function PageHeading({ headingRef, eyebrow, title, description, action }: { head
   );
 }
 
-function OverviewView({ state, headingRef, onView }: { state: DemoWorkspaceState; headingRef: React.RefObject<HTMLHeadingElement>; onView: (view: DemoView) => void }) {
+function OverviewView({ state, preset, dispatch, headingRef, onView, announce }: { state: DemoWorkspaceState; preset: DemoBusinessPreset; dispatch: Dispatch<DemoWorkspaceAction>; headingRef: React.RefObject<HTMLHeadingElement>; onView: (view: DemoView) => void; announce: (message: string) => void }) {
   const activeCampaign = state.campaigns.find(campaign => campaign.status === 'active') ?? state.campaigns[0];
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [tagline, setTagline] = useState(state.business.tagline);
+  function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    dispatch(demoWorkspaceActions.updateBusiness({ tagline }));
+    setEditingProfile(false);
+    announce('The fictional Business Profile story was updated across this business experience.');
+  }
   return (
     <>
-      <PageHeading headingRef={headingRef} eyebrow="Business Hub overview" title="River City demo workspace" description="This is the command center: permanent business information, campaigns, customer activity, and the clearest next action in one view." action={<AdpadzButton type="button" onClick={() => onView('campaigns')} size="sm"><Plus className="h-4 w-4" /> Create campaign</AdpadzButton>} />
+      <PageHeading headingRef={headingRef} eyebrow="Business Hub overview" title={`${state.business.name} workspace`} description="This is the command center: permanent business information, campaigns, customer activity, and the clearest next action in one view." action={<AdpadzButton type="button" onClick={() => onView('campaigns')} size="sm"><Plus className="h-4 w-4" /> Create campaign</AdpadzButton>} />
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4"><div><p className="text-xs font-black">Business Profile story</p><p className="mt-1 text-xs text-[var(--text-secondary)]">Update the permanent message and see it flow into the customer experience.</p></div><AdpadzButton type="button" variant="secondary" size="sm" onClick={() => setEditingProfile(value => !value)}>{editingProfile ? 'Close editor' : 'Edit profile story'}</AdpadzButton>{editingProfile && <form onSubmit={saveProfile} className="grid w-full gap-3 border-t border-white/[0.08] pt-4 sm:grid-cols-[1fr_auto]"><label className="text-xs font-black">Tagline<input value={tagline} onChange={event => setTagline(event.target.value)} required className="input-field mt-2 text-sm" /></label><AdpadzButton type="submit" className="self-end">Save profile story</AdpadzButton></form>}</div>
+
+      <AdpadzCard variant="glass" className="mb-6 border-white/[0.08] p-5 sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-3">
+          <div><p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: preset.accent }}>The challenge</p><p className="mt-2 text-sm leading-relaxed text-neutral-300">{preset.challenge}</p></div>
+          <div><p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: preset.accent }}>The Adpadz journey</p><p className="mt-2 text-sm leading-relaxed text-neutral-300">{preset.journey}</p></div>
+          <div><p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: preset.accent }}>What becomes measurable</p><p className="mt-2 text-sm leading-relaxed text-neutral-300">{preset.outcome}</p></div>
+        </div>
+      </AdpadzCard>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <AdpadzMetricCard icon={Eye} label="Profile views" value={formatNumber(state.metrics.profileViews)} detail="Sample Business Profile discovery" trend="18%" />
@@ -379,7 +411,7 @@ function OverviewView({ state, headingRef, onView }: { state: DemoWorkspaceState
       <div className="mt-6 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
         <AdpadzCard variant="featured" className="p-0">
           <div className="relative overflow-hidden">
-            <img src="/demo/river-city-hero.svg" alt="Fictional River City Outdoor Living patio project" className="h-60 w-full object-cover sm:h-72" />
+            <img src={preset.heroImage} alt={`Fictional ${state.business.name} campaign visual`} className="h-60 w-full object-cover sm:h-72" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-6">
               <div className="flex flex-wrap items-center gap-2"><AdpadzBadge variant="campaign">Featured campaign</AdpadzBadge><AdpadzBadge variant="status" className="capitalize">{activeCampaign.status}</AdpadzBadge></div>
@@ -411,7 +443,7 @@ function OverviewView({ state, headingRef, onView }: { state: DemoWorkspaceState
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <AdpadzCard variant="flat" className="p-5">
-          <div className="flex items-start justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Business foundation</p><h2 className="mt-1 text-lg font-black">{state.business.name}</h2><p className="mt-1 text-xs text-[var(--text-secondary)]">{state.business.tagline}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neon text-lg font-black text-black">R</span></div>
+          <div className="flex items-start justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Business foundation</p><h2 className="mt-1 text-lg font-black">{state.business.name}</h2><p className="mt-1 text-xs text-[var(--text-secondary)]">{state.business.tagline}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neon text-lg font-black text-black">{state.business.name.charAt(0)}</span></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <InfoRow icon={MapPin} label="Service area" value={state.business.location} />
             <InfoRow icon={Phone} label="Public phone" value={state.business.phone} />
@@ -436,7 +468,7 @@ function CampaignsView({ state, dispatch, headingRef, announce, onOpenCampaign }
   return (
     <>
       <PageHeading headingRef={headingRef} eyebrow="Campaign Engine" title="Campaigns" description="One campaign controls the offer, message, schedule, customer action, and every channel-ready output." action={<AdpadzButton type="button" onClick={() => setCreating(value => !value)} size="sm">{creating ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{creating ? 'Close studio' : 'Create sample campaign'}</AdpadzButton>} />
-      {creating && <CampaignCreateForm dispatch={dispatch} onCreated={() => { setCreating(false); announce('Sample campaign created and saved in this browser session.'); }} />}
+      {creating && <CampaignCreateForm businessName={state.business.name} dispatch={dispatch} onCreated={() => { setCreating(false); announce('Sample campaign created and saved in this browser session.'); }} />}
       <div className="mt-5 space-y-4">
         {state.campaigns.map(campaign => <CampaignRow key={campaign.id} campaign={campaign} dispatch={dispatch} announce={announce} onOpenCampaign={onOpenCampaign} />)}
       </div>
@@ -444,7 +476,7 @@ function CampaignsView({ state, dispatch, headingRef, announce, onOpenCampaign }
   );
 }
 
-function CampaignCreateForm({ dispatch, onCreated }: { dispatch: Dispatch<DemoWorkspaceAction>; onCreated: () => void }) {
+function CampaignCreateForm({ businessName, dispatch, onCreated }: { businessName: string; dispatch: Dispatch<DemoWorkspaceAction>; onCreated: () => void }) {
   const [title, setTitle] = useState('Neighborhood Backyard Weekend');
   const [offer, setOffer] = useState('Complimentary outdoor-living design sketch');
   const [format, setFormat] = useState<DemoCampaignFormat>('tap_reveal');
@@ -484,12 +516,12 @@ function CampaignCreateForm({ dispatch, onCreated }: { dispatch: Dispatch<DemoWo
           <p className="text-xs font-black">Campaign package preview</p>
           <p className="mt-1 text-[10px] text-[var(--text-secondary)]">One source becomes channel-ready copy without claiming it was externally published.</p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/[0.08] bg-black/25 p-4"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-neon">Social caption</p><p className="mt-3 text-xs font-black">{title}</p><p className="mt-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">{offer}. Plan your next outdoor project with River City.</p></div>
-            <div className="rounded-3xl border border-white/[0.08] bg-black/25 p-4"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-neon">Email subject</p><p className="mt-3 text-xs font-black">{offer} | River City Outdoor Living</p><p className="mt-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">Prepared from the same campaign message and action.</p></div>
+            <div className="rounded-3xl border border-white/[0.08] bg-black/25 p-4"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-neon">Social caption</p><p className="mt-3 text-xs font-black">{title}</p><p className="mt-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">{offer}. Discover the next step with {businessName}.</p></div>
+            <div className="rounded-3xl border border-white/[0.08] bg-black/25 p-4"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-neon">Email subject</p><p className="mt-3 text-xs font-black">{offer} | Local campaign preview</p><p className="mt-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">Prepared from the same campaign message and action.</p></div>
             <div className="rounded-3xl border border-white/[0.08] bg-black/25 p-4"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-neon">Flyer headline</p><p className="mt-3 text-xs font-black">{title}</p><p className="mt-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">Scan to reveal: {offer}</p></div>
           </div>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end"><p className="mr-auto self-center text-[10px] text-[var(--text-secondary)]">Demo only—nothing is published externally.</p><AdpadzButton type="submit" disabled={!title.trim() || !offer.trim() || outputs.length === 0}>Save sample campaign <ArrowRight className="h-4 w-4" /></AdpadzButton></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end"><p className="mr-auto self-center text-[10px] text-[var(--text-secondary)]">Demo only - nothing is published externally.</p><AdpadzButton type="submit" disabled={!title.trim() || !offer.trim() || outputs.length === 0}>Save sample campaign <ArrowRight className="h-4 w-4" /></AdpadzButton></div>
       </form>
     </AdpadzCard>
   );
@@ -498,9 +530,18 @@ function CampaignCreateForm({ dispatch, onCreated }: { dispatch: Dispatch<DemoWo
 function CampaignRow({ campaign, dispatch, announce, onOpenCampaign }: { campaign: DemoCampaign; dispatch: Dispatch<DemoWorkspaceAction>; announce: (message: string) => void; onOpenCampaign: (campaignId: string, view: 'customer' | 'qr') => void }) {
   const canPreview = hasCustomerExperience(campaign);
   const customerReady = isCustomerReady(campaign);
+  const [editing, setEditing] = useState(false);
+  const [headline, setHeadline] = useState(campaign.headline);
+  const [offerTitle, setOfferTitle] = useState(campaign.offer.title);
   function updateStatus(status: DemoCampaignStatus) {
     dispatch(demoWorkspaceActions.setCampaignStatus(campaign.id, status));
     announce(`${campaign.title} moved to ${formatOutput(status)} in this demo.`);
+  }
+  function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    dispatch(demoWorkspaceActions.updateCampaign(campaign.id, { headline, offerTitle }));
+    setEditing(false);
+    announce(`${campaign.title} was updated across its shared sample outputs.`);
   }
   return (
     <AdpadzCard as="article" variant="flat" className="p-5">
@@ -518,26 +559,35 @@ function CampaignRow({ campaign, dispatch, announce, onOpenCampaign }: { campaig
           <SmallStat value={campaign.metrics.leads} label="Leads" />
         </div>
         <div className="flex flex-wrap gap-2 lg:w-48 lg:flex-col">
+          <button type="button" onClick={() => setEditing(value => !value)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border border-white/10 px-3 text-[10px] font-black hover:border-neon/35 hover:text-neon"><Wand2 className="h-3.5 w-3.5" /> Edit story</button>
           <button type="button" onClick={() => onOpenCampaign(campaign.id, 'customer')} disabled={!canPreview} title={canPreview ? 'Open the customer experience preview' : 'Add a customer-facing output to preview'} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border border-white/10 px-3 text-[10px] font-black hover:border-neon/35 hover:text-neon disabled:cursor-not-allowed disabled:opacity-35"><Eye className="h-3.5 w-3.5" /> Preview</button>
           <button type="button" onClick={() => onOpenCampaign(campaign.id, 'qr')} disabled={!campaign.outputs.includes('qr_landing')} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border border-white/10 px-3 text-[10px] font-black hover:border-neon/35 hover:text-neon disabled:cursor-not-allowed disabled:opacity-35"><QrCode className="h-3.5 w-3.5" /> Use in QR</button>
           <label className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--text-secondary)]">Status<select value={campaign.status} onChange={event => updateStatus(event.target.value as DemoCampaignStatus)} className="mt-2 block min-h-10 w-full rounded-xl border border-white/10 bg-[var(--bg-input)] px-3 text-xs font-bold text-white outline-none focus:border-neon">{DEMO_CAMPAIGN_STATUSES.map(status => <option key={status} value={status}>{formatOutput(status)}</option>)}</select></label>
         </div>
       </div>
+      {editing && <form onSubmit={saveEdit} className="mt-5 grid gap-3 border-t border-white/[0.08] pt-5 sm:grid-cols-2"><label className="text-xs font-black">Campaign headline<input value={headline} onChange={event => setHeadline(event.target.value)} required className="input-field mt-2 text-sm" /></label><label className="text-xs font-black">Offer title<input value={offerTitle} onChange={event => setOfferTitle(event.target.value)} required className="input-field mt-2 text-sm" /></label><div className="flex gap-2 sm:col-span-2 sm:justify-end"><AdpadzButton type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</AdpadzButton><AdpadzButton type="submit">Save campaign story</AdpadzButton></div></form>}
     </AdpadzCard>
   );
 }
-
-function CustomerView({ state, campaignId, dispatch, headingRef, announce }: { state: DemoWorkspaceState; campaignId: string; dispatch: Dispatch<DemoWorkspaceAction>; headingRef: React.RefObject<HTMLHeadingElement>; announce: (message: string) => void }) {
+function CustomerView({ state, preset, campaignId, dispatch, headingRef, announce }: { state: DemoWorkspaceState; preset: DemoBusinessPreset; campaignId: string; dispatch: Dispatch<DemoWorkspaceAction>; headingRef: React.RefObject<HTMLHeadingElement>; announce: (message: string) => void }) {
   const campaign = state.campaigns.find(item => item.id === campaignId) ?? state.campaigns[0];
   const supportsCustomerExperience = hasCustomerExperience(campaign);
   const customerReady = isCustomerReady(campaign);
   const revealKey = `${campaign.id}:${campaign.offer.id}`;
   const revealed = state.revealedOfferIds.includes(revealKey);
+  const claimed = state.claimedOfferIds.includes(revealKey);
+  const profileViewRecorded = useRef(false);
   const [requestSent, setRequestSent] = useState(false);
 
   useEffect(() => {
     setRequestSent(false);
   }, [campaign.id]);
+
+  useEffect(() => {
+    if (profileViewRecorded.current) return;
+    profileViewRecorded.current = true;
+    dispatch(demoWorkspaceActions.recordProfileView());
+  }, [dispatch]);
 
   function reveal() {
     if (!customerReady) {
@@ -545,7 +595,13 @@ function CustomerView({ state, campaignId, dispatch, headingRef, announce }: { s
       return;
     }
     dispatch(demoWorkspaceActions.revealOffer(campaign.id, campaign.offer.id));
-    announce(revealed ? 'This sample offer is already revealed.' : 'Offer revealed—analytics updated for this demo session.');
+    announce(revealed ? 'This sample offer is already revealed.' : 'Offer revealed - analytics updated for this demo session.');
+  }
+
+  function claim() {
+    if (!revealed || claimed) return;
+    dispatch(demoWorkspaceActions.claimOffer(campaign.id, campaign.offer.id));
+    announce('Sample offer claim recorded. Offer Claims and Analytics now reflect the action.');
   }
 
   function submitRequest(event: FormEvent<HTMLFormElement>) {
@@ -585,7 +641,7 @@ function CustomerView({ state, campaignId, dispatch, headingRef, announce }: { s
 
         <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-[2.5rem] border border-white/10 bg-neutral-950 shadow-[0_34px_100px_rgba(0,0,0,0.58)]">
           <div className="relative h-72 overflow-hidden sm:h-80">
-            <img src="/demo/river-city-hero.svg" alt="Fictional premium outdoor living project" className="h-full w-full object-cover" />
+            <img src={preset.heroImage} alt={`Fictional ${state.business.name} customer experience`} className="h-full w-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/15 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
               <AdpadzBadge variant="local">Fictional sample business</AdpadzBadge>
@@ -610,23 +666,23 @@ function CustomerView({ state, campaignId, dispatch, headingRef, announce }: { s
                   <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">{campaign.offer.description}</p>
                   <button type="button" onClick={reveal} disabled={!customerReady} className={`mt-5 flex min-h-28 w-full items-center justify-center rounded-3xl border border-dashed text-center transition disabled:cursor-not-allowed ${!customerReady ? 'border-white/15 bg-black/20 text-[var(--text-secondary)]' : revealed ? 'border-neon bg-neon text-black' : 'border-neon/40 bg-black/30 text-neon hover:bg-neon/[0.08]'}`}>
                     {!customerReady ? <span><Eye className="mx-auto h-6 w-6" /><strong className="mt-2 block text-sm">Owner preview only</strong><span className="mt-1 block text-[10px]">{supportsCustomerExperience ? `Activate this ${campaign.status} campaign to test customer actions` : 'Add a customer-facing output to test this experience'}</span></span> : revealed ? <span><Check className="mx-auto h-6 w-6" /><strong className="mt-2 block text-lg">Offer unlocked</strong><span className="mt-1 block text-[10px] font-bold">{campaign.offer.title} is ready for this sample request</span></span> : <span><Sparkles className="mx-auto h-6 w-6" /><strong className="mt-2 block text-sm">Tap to reveal the customer offer</strong><span className="mt-1 block text-[10px] text-[var(--text-secondary)]">This action updates demo analytics</span></span>}
-                  </button>
+                  </button>{revealed && <AdpadzButton type="button" onClick={claim} disabled={claimed} fullWidth className="mt-3">{claimed ? "Offer claimed" : "Claim this sample offer"}</AdpadzButton>}
                 </div>
               </div>
             </section>
 
             <section>
               <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Services</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">{services.map(service => <div key={service.name} className="rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4"><Briefcase className="h-4 w-4 text-neon" /><h3 className="mt-3 text-sm font-black">{service.name}</h3><p className="mt-1 text-[10px] leading-relaxed text-[var(--text-secondary)]">{service.detail}</p><p className="mt-3 text-[9px] font-black uppercase tracking-[0.12em] text-neon">{service.duration}</p></div>)}</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">{preset.services.map(service => <div key={service.name} className="rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4"><Briefcase className="h-4 w-4 text-neon" /><h3 className="mt-3 text-sm font-black">{service.name}</h3><p className="mt-1 text-[10px] leading-relaxed text-[var(--text-secondary)]">{service.detail}</p><p className="mt-3 text-[9px] font-black uppercase tracking-[0.12em] text-neon">{service.duration}</p></div>)}</div>
             </section>
 
             <section>
               <div className="flex items-end justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Project transformation</p><h3 className="mt-1 text-xl font-black">Before & after</h3></div><AdpadzBadge variant="status">Sample imagery</AdpadzBadge></div>
-              <div className="mt-4 grid grid-cols-2 gap-2 overflow-hidden rounded-3xl"><figure className="relative"><img src="/demo/river-city-before.svg" alt="Fictional patio before redesign" className="aspect-[4/3] h-full w-full object-cover" /><figcaption className="absolute bottom-2 left-2 rounded-full bg-black/70 px-3 py-1 text-[9px] font-black">Before</figcaption></figure><figure className="relative"><img src="/demo/river-city-after.svg" alt="Fictional patio after redesign" className="aspect-[4/3] h-full w-full object-cover" /><figcaption className="absolute bottom-2 left-2 rounded-full bg-neon px-3 py-1 text-[9px] font-black text-black">After</figcaption></figure></div>
+              <div className="mt-4 grid grid-cols-2 gap-2 overflow-hidden rounded-3xl"><figure className="relative"><img src={preset.beforeImage} alt={`Fictional ${preset.industry} before view`} className="aspect-[4/3] h-full w-full object-cover" /><figcaption className="absolute bottom-2 left-2 rounded-full bg-black/70 px-3 py-1 text-[9px] font-black">Before</figcaption></figure><figure className="relative"><img src={preset.afterImage} alt={`Fictional ${preset.industry} after view`} className="aspect-[4/3] h-full w-full object-cover" /><figcaption className="absolute bottom-2 left-2 rounded-full bg-neon px-3 py-1 text-[9px] font-black text-black">After</figcaption></figure></div>
             </section>
 
             <section id="demo-request-form" className="scroll-mt-28 rounded-[2rem] border border-white/[0.08] bg-white/[0.035] p-5 sm:p-6">
-              <div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neon text-black"><CalendarCheck className="h-5 w-5" /></span><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Conversion action</p><h3 className="mt-1 text-xl font-black">{campaign.ctaLabel}</h3><p className="mt-1 text-[10px] text-[var(--text-secondary)]">Demo only—submitting creates a fictional lead in this browser session.</p></div></div>
+              <div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neon text-black"><CalendarCheck className="h-5 w-5" /></span><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Conversion action</p><h3 className="mt-1 text-xl font-black">{campaign.ctaLabel}</h3><p className="mt-1 text-[10px] text-[var(--text-secondary)]">Demo only - submitting creates a fictional lead in this browser session.</p></div></div>
               {requestSent ? <div role="status" className="mt-5 rounded-2xl border border-neon/30 bg-neon/[0.08] p-5 text-center"><UserRoundCheck className="mx-auto h-7 w-7 text-neon" /><p className="mt-3 text-sm font-black">Sample request captured</p><p className="mt-1 text-[10px] text-[var(--text-secondary)]">Open Leads or Analytics to see the result.</p></div> : <form onSubmit={submitRequest} className="mt-5 space-y-3"><div className="grid gap-3 sm:grid-cols-2"><label className="text-[10px] font-black">Name<input name="name" required defaultValue="Taylor Morgan" className="input-field mt-1.5 text-xs" /></label><label className="text-[10px] font-black">Email<input name="email" required type="email" defaultValue="taylor.morgan@example.com" className="input-field mt-1.5 text-xs" /></label></div><label className="block text-[10px] font-black">Project interest<textarea name="message" required defaultValue={`Interested in ${campaign.title}`} rows={3} className="input-field mt-1.5 resize-none text-xs" /></label><AdpadzButton type="submit" fullWidth disabled={!customerReady}>{customerReady ? 'Submit sample request' : 'Owner preview - activate to submit'} <ArrowRight className="h-4 w-4" /></AdpadzButton></form>}
             </section>
           </div>
@@ -636,9 +692,9 @@ function CustomerView({ state, campaignId, dispatch, headingRef, announce }: { s
   );
 }
 
-function QrView({ state, campaignId, dispatch, headingRef, announce }: { state: DemoWorkspaceState; campaignId: string; dispatch: Dispatch<DemoWorkspaceAction>; headingRef: React.RefObject<HTMLHeadingElement>; announce: (message: string) => void }) {
+function QrView({ state, preset, campaignId, dispatch, headingRef, announce }: { state: DemoWorkspaceState; preset: DemoBusinessPreset; campaignId: string; dispatch: Dispatch<DemoWorkspaceAction>; headingRef: React.RefObject<HTMLHeadingElement>; announce: (message: string) => void }) {
   const campaign = state.campaigns.find(item => item.id === campaignId) ?? state.campaigns[0];
-  const qrPath = `/demo/workspace?view=customer&campaign=${encodeURIComponent(campaign.id)}`;
+  const qrPath = `/demo/workspace?business=${encodeURIComponent(state.business.slug)}&view=customer&campaign=${encodeURIComponent(campaign.id)}`;
   const qrValue = typeof window === 'undefined' ? `https://adpadz.co${qrPath}` : `${window.location.origin}${qrPath}`;
   const canScan = campaign.status === 'active' && campaign.outputs.includes('qr_landing');
   function scan() {
@@ -650,15 +706,15 @@ function QrView({ state, campaignId, dispatch, headingRef, announce }: { state: 
       <PageHeading headingRef={headingRef} eyebrow="QR Studio" title="Turn offline attention into a measurable visit" description="This is a real scannable QR pointing to the selected customer campaign preview. The simulation demonstrates how Adpadz attributes a scan to that campaign." />
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <AdpadzCard variant="featured" className="p-5 sm:p-7">
-          <div className="mx-auto max-w-md rounded-[2rem] bg-[#f4f4f1] p-4 shadow-2xl"><CircularPadQR value={qrValue} title={`${campaign.title} sample Pad QR`} topText="River City Outdoor Living · Jacksonville" bottomText="Scan · Discover · Request a Design Visit" centerLabel="River City" shortLabel="adpadz.co/demo/workspace" accentColor="#8EDB39" size={1000} className="h-auto w-full" /></div>
+          <div className="mx-auto max-w-md rounded-[2rem] bg-[#f4f4f1] p-4 shadow-2xl"><CircularPadQR value={qrValue} title={`${campaign.title} sample Pad QR`} topText={`${state.business.name} / ${state.business.location}`} bottomText={`Scan / Discover / ${campaign.ctaLabel}`} centerLabel={state.business.name.split(" ").slice(0, 2).join(" ")} shortLabel="adpadz.co/demo/workspace" accentColor={preset.accent} size={1000} className="h-auto w-full" /></div>
           <AdpadzButton type="button" onClick={scan} disabled={!canScan} fullWidth className="mt-5"><ScanLine className="h-4 w-4" /> {canScan ? 'Simulate a QR scan' : 'Activate campaign to simulate scan'}</AdpadzButton>
-          <p className="mt-3 text-center text-[10px] text-[var(--text-secondary)]">Try it repeatedly—the sample scan count and activity update each time.</p>
+          <p className="mt-3 text-center text-[10px] text-[var(--text-secondary)]">Try it repeatedly - the sample scan count and activity update each time.</p>
         </AdpadzCard>
         <div className="space-y-5">
           <AdpadzCard variant="flat" className="p-5">
             <div className="flex items-center justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">Dynamic destination</p><h2 className="mt-1 text-lg font-black">{campaign.title}</h2></div><AdpadzBadge variant={campaign.status === 'active' ? 'local' : 'status'} className="capitalize">{campaign.status}</AdpadzBadge></div>
             <div className="mt-5 grid grid-cols-2 gap-3"><SmallStat value={state.metrics.qrScans} label="Sample scans" /><SmallStat value={campaign.metrics.qrScans} label="Campaign scans" /></div>
-            <div className="mt-5 space-y-3"><InfoRow icon={Target} label="Campaign" value={campaign.title} /><InfoRow icon={Building2} label="Business Hub" value={state.business.name} /><InfoRow icon={MousePointerClick} label="Destination" value="Selected customer campaign preview" /><InfoRow icon={TrendingUp} label="Attribution" value="QR · community mailer" /></div>
+            <div className="mt-5 space-y-3"><InfoRow icon={Target} label="Campaign" value={campaign.title} /><InfoRow icon={Building2} label="Business Hub" value={state.business.name} /><InfoRow icon={MousePointerClick} label="Destination" value="Selected customer campaign preview" /><InfoRow icon={TrendingUp} label="Attribution" value="QR / community mailer" /></div>
           </AdpadzCard>
           <AdpadzCard variant="glass" className="p-5">
             <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neon">What makes this valuable</p>
@@ -695,7 +751,7 @@ function LeadRow({ lead, onStatus }: { lead: DemoLead; onStatus: (status: DemoLe
     <AdpadzCard as="article" variant="flat" className="p-4 sm:p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neon/10 text-sm font-black text-neon">{lead.name.split(' ').map(part => part[0]).join('').slice(0, 2)}</span>
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-black">{lead.name}</h2><AdpadzBadge variant="status" className="capitalize">{lead.status}</AdpadzBadge><span className="text-[8px] font-black uppercase tracking-[0.12em] text-neon">Sample</span></div><p className="mt-1 text-[10px] text-[var(--text-secondary)]">{lead.email} · {lead.phone}</p><p className="mt-2 line-clamp-2 text-xs leading-relaxed text-neutral-300">{lead.message}</p></div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-black">{lead.name}</h2><AdpadzBadge variant="status" className="capitalize">{lead.status}</AdpadzBadge><span className="text-[8px] font-black uppercase tracking-[0.12em] text-neon">Sample</span></div><p className="mt-1 text-[10px] text-[var(--text-secondary)]">{lead.email} / {lead.phone}</p><p className="mt-2 line-clamp-2 text-xs leading-relaxed text-neutral-300">{lead.message}</p></div>
         <div className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--text-secondary)]"><p>{formatOutput(lead.source)}</p><p className="mt-1 normal-case tracking-normal">{formatDate(lead.createdAt)}</p></div>
         <label className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--text-secondary)]">Next step<select value={lead.status} onChange={event => onStatus(event.target.value as DemoLeadStatus)} className="mt-2 block min-h-10 rounded-xl border border-white/10 bg-[var(--bg-input)] px-3 text-xs font-bold capitalize text-white outline-none focus:border-neon">{DEMO_LEAD_STATUSES.map(status => <option key={status} value={status}>{formatOutput(status)}</option>)}</select></label>
       </div>
@@ -724,7 +780,7 @@ function AnalyticsView({ state, headingRef }: { state: DemoWorkspaceState; headi
           <div className="space-y-5" role="list" aria-label="Sample campaign performance">
             {state.campaigns.map(campaign => (
               <div key={campaign.id} role="listitem">
-                <div className="mb-2 flex items-end justify-between gap-4"><div><p className="text-xs font-black">{campaign.title}</p><p className="mt-1 text-[10px] text-[var(--text-secondary)]">{campaign.metrics.views} views · {campaign.metrics.offerReveals} reveals · {campaign.metrics.leads} leads</p></div><span className="text-sm font-black text-neon">{campaign.metrics.views > 0 ? Math.round((campaign.metrics.leads / campaign.metrics.views) * 100) : 0}%</span></div>
+                <div className="mb-2 flex items-end justify-between gap-4"><div><p className="text-xs font-black">{campaign.title}</p><p className="mt-1 text-[10px] text-[var(--text-secondary)]">{campaign.metrics.views} views / {campaign.metrics.offerReveals} reveals / {campaign.metrics.leads} leads</p></div><span className="text-sm font-black text-neon">{campaign.metrics.views > 0 ? Math.round((campaign.metrics.leads / campaign.metrics.views) * 100) : 0}%</span></div>
                 <div className="h-3 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-neon/40 to-neon" style={{ width: campaign.metrics.views > 0 ? `${Math.max(3, (campaign.metrics.views / maxViews) * 100)}%` : '0%' }} /></div>
               </div>
             ))}

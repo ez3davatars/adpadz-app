@@ -15,6 +15,9 @@ import {
   AdpadzSection,
 } from '../../components/adpadz-ui';
 import type { CampaignOutputRecord, CampaignRecord } from '../../lib/ads';
+import type { CampaignReadinessResult } from '../../lib/campaignReadiness';
+import { loadBusinessCampaignReadiness } from '../../lib/campaignReadinessData';
+import { CampaignReadinessSummary } from '../../components/campaign-readiness/CampaignReadinessSummary';
 
 type SmartCardSummary = {
   id: string;
@@ -31,6 +34,7 @@ type ContentStudioState = {
   campaign: CampaignRecord | null;
   outputs: CampaignOutputRecord[];
   smartCard: SmartCardSummary | null;
+  readiness: CampaignReadinessResult | null;
   loading: boolean;
   error: string | null;
 };
@@ -68,6 +72,7 @@ const initialState: ContentStudioState = {
   campaign: null,
   outputs: [],
   smartCard: null,
+  readiness: null,
   loading: true,
   error: null,
 };
@@ -119,8 +124,10 @@ export default function CampaignContentStudio() {
           smartCard = (card ?? null) as SmartCardSummary | null;
         }
 
+        const campaignRecord = campaign as CampaignRecord;
+        const readinessMap = await loadBusinessCampaignReadiness(userId, [campaignRecord], outputRows);
         if (!cancelled) {
-          setState({ campaign: campaign as CampaignRecord, outputs: outputRows, smartCard, loading: false, error: null });
+          setState({ campaign: campaignRecord, outputs: outputRows, smartCard, readiness: readinessMap.get(campaignRecord.id) ?? null, loading: false, error: null });
         }
       } catch (error) {
         if (!cancelled) {
@@ -137,7 +144,7 @@ export default function CampaignContentStudio() {
   const content = useMemo(() => campaign ? buildCampaignContent(campaign, state.smartCard) : null, [campaign, state.smartCard]);
   const outputsByType = useMemo(() => new Map(state.outputs.map(output => [output.output_type, output])), [state.outputs]);
   const copyOutputs = useMemo(() => campaign && content ? buildCopyOutputs(content) : [], [campaign, content]);
-  const readiness = useMemo(() => campaign && content ? buildReadiness(campaign, state.smartCard, outputsByType) : [], [campaign, content, outputsByType, state.smartCard]);
+  const readiness = useMemo(() => campaign && content ? buildPackageAvailability(campaign, state.smartCard, outputsByType) : [], [campaign, content, outputsByType, state.smartCard]);
   const packagePreviews = useMemo(() => campaign && content ? buildPackagePreviews(content, readiness, copyOutputs, outputsByType) : [], [campaign, content, copyOutputs, outputsByType, readiness]);
 
   async function handleCopy(key: string, value: string) {
@@ -172,6 +179,7 @@ export default function CampaignContentStudio() {
   return (
     <div className="space-y-8">
       <AdpadzButton href="/app/business/campaigns" variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Campaigns</AdpadzButton>
+      {state.readiness && <CampaignReadinessSummary result={state.readiness} />}
 
       <AdpadzCard variant="featured" className="p-8 sm:p-10 lg:p-12">
         <div className="grid gap-10 xl:grid-cols-[0.9fr_1.1fr] xl:items-center">
@@ -377,7 +385,7 @@ function buildCopyOutputs(content: ReturnType<typeof buildCampaignContent>): Cop
   ];
 }
 
-function buildReadiness(campaign: CampaignRecord, smartCard: SmartCardSummary | null, outputsByType: Map<string, CampaignOutputRecord>): ReadinessItem[] {
+function buildPackageAvailability(campaign: CampaignRecord, smartCard: SmartCardSummary | null, outputsByType: Map<string, CampaignOutputRecord>): ReadinessItem[] {
   const hasCoreContent = Boolean(clean(campaign.headline) || clean(campaign.offer_title) || clean(campaign.description));
   const smartCardOutput = outputsByType.get('smart_card');
   const interactiveOutput = outputsByType.get('interactive_ad');

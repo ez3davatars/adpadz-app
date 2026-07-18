@@ -1,30 +1,568 @@
 # ADPADZ ARCHITECTURE
 
-Version 1.0
+Status: Active
 
-## PURPOSE
-
-This document defines the core architecture of Adpadz.
-
-Before implementing any feature, modifying existing functionality, creating database tables, changing UI, or refactoring code, this document MUST be read and followed.
-
-The purpose is to prevent duplicate data models, inconsistent UI, and architectural drift.
+Owner: Product Architecture
 
 ---
 
-# CORE PRINCIPLE
+# Purpose
 
-Create once.
+This document defines the production architecture of Adpadz.
 
-Publish everywhere.
+It establishes ownership, data flow, system boundaries, and implementation rules.
 
-A business should never enter the same marketing information twice.
+Business philosophy belongs in ADPADZ_PRINCIPLES.md.
 
-Everything originates from one source of truth and is distributed automatically throughout the platform.
+Product direction belongs in ADPADZ_PRODUCT_VISION.md.
+
+This document defines how the platform is constructed.
 
 ---
 
-# PRODUCT HIERARCHY
+# Architectural Goal
+
+The architecture exists to support one philosophy:
+
+Create Once.
+
+Publish Everywhere.
+
+Businesses create one Campaign.
+
+Every destination references that Campaign.
+
+No duplication.
+
+No disconnected systems.
+
+---
+
+# Core Product Hierarchy
+
+Business
+
+↓
+
+Business Hub
+
+↓
+
+Campaign
+
+↓
+
+Campaign Engine
+
+↓
+
+Campaign Destinations
+
+↓
+
+Consumer Experience
+
+Everything flows in this direction.
+
+Data should never flow backward.
+
+---
+
+# Business Hub
+
+The Business Hub is the permanent home of every business.
+
+Business Hub owns:
+
+• business information
+
+• branding
+
+• locations
+
+• services
+
+• hours
+
+• gallery
+
+• videos
+
+• documents
+
+• booking settings
+
+• social links
+
+• reviews
+
+• lead settings
+
+• QR identities
+
+Business Hub owns permanent business assets.
+
+Campaigns reference Business Hub.
+
+Never duplicate permanent information.
+
+---
+
+# Campaign
+
+Campaigns represent temporary marketing initiatives.
+
+Examples:
+
+Holiday Sale
+
+Grand Opening
+
+Customer Appreciation
+
+Summer Promotion
+
+New Product
+
+Campaigns own:
+
+headline
+
+description
+
+offer
+
+CTA
+
+schedule
+
+campaign media
+
+analytics
+
+status
+
+Campaigns never own permanent business information.
+
+---
+
+# Campaign Engine
+
+Campaign Engine is the heart of Adpadz.
+
+Every marketing experience references Campaign Engine.
+
+Future marketing systems must extend Campaign Engine.
+
+Never bypass it.
+
+---
+
+# Campaign Destinations
+
+Campaign Destinations define where Campaigns appear.
+
+Examples:
+
+Community Mailer
+
+Business Hub
+
+Campaign Page
+
+QR Experience
+
+Consumer Discovery
+
+Adpadz TV
+
+Interactive Ads
+
+Future Social Publishing
+
+Future Email Marketing
+
+Future Mobile Notifications
+
+Adding a destination should never require redesigning Campaign Engine.
+
+Campaign Engine remains unchanged.
+
+Only new destination renderers are added.
+
+---
+
+# Community Mailer
+
+Community Mailers are campaign distribution.
+
+They reference Campaigns.
+
+They never own Campaign content.
+
+The Community Mailer Builder controls:
+
+Zones
+
+Layouts
+
+Placements
+
+Featured Sponsors
+
+Print Production
+
+Artwork Approval
+
+QR placement
+
+Community Mailers should remain independent from campaign creation.
+
+---
+
+# Consumer Discovery
+
+Consumer Discovery is the primary browsing experience.
+
+Consumers browse Campaigns.
+
+Never business listings.
+
+Never directories.
+
+Discovery references Campaigns.
+
+Discovery owns no campaign data.
+
+Possible discovery views include:
+
+Category
+
+Nearby
+
+Newest
+
+Featured
+
+Offers
+
+Search
+
+Future AI Recommendations
+
+---
+
+# Adpadz TV
+
+Adpadz TV is a Campaign renderer.
+
+It is not another campaign type.
+
+Every Campaign should be capable of rendering as:
+
+Static
+
+Animated
+
+Video
+
+Interactive
+
+Future media formats should extend this renderer.
+
+---
+
+# Smart Business Hub
+
+Business Hub displays:
+
+Business information
+
+Current Campaigns
+
+Past Campaigns
+
+Offers
+
+Media
+
+Booking
+
+Lead Capture
+
+Reviews
+
+Directions
+
+Hours
+
+Business Hub owns presentation.
+
+Campaign Engine owns promotions.
+
+---
+
+# Asset Library
+
+Every uploaded asset exists once.
+
+Examples:
+
+Logo
+
+Cover Image
+
+Gallery
+
+Video
+
+Commercial
+
+Brochure
+
+Menu
+
+Coupon
+
+Campaign Artwork
+
+Assets are referenced.
+
+Never duplicated.
+
+---
+
+# QR Studio
+
+QR Studio owns destinations.
+
+QR codes may point to:
+
+Campaign
+
+Business Hub
+
+Booking
+
+Offer
+
+Campaign Landing
+
+Future Experiences
+
+QR Studio never stores campaign content.
+
+---
+
+# Lead Manager
+
+Every meaningful interaction becomes an event.
+
+Examples:
+
+QR Scan
+
+Campaign View
+
+Offer Save
+
+Website Visit
+
+Phone Tap
+
+Booking
+
+Lead Form
+
+Directions
+
+Everything ultimately feeds Analytics.
+
+---
+
+# Analytics
+
+Analytics reference:
+
+Campaign
+
+Business
+
+Destination
+
+Consumer Action
+
+Analytics should never become business logic.
+
+Analytics observe.
+
+They do not control.
+
+---
+
+# Design System
+
+Every interface must be assembled from the Design System.
+
+Pages assemble Sections.
+
+Sections assemble Components.
+
+Components render Data.
+
+Never bypass this hierarchy.
+
+---
+
+# Section Library
+
+Reusable sections include:
+
+Hero
+
+Campaign
+
+Offer
+
+Gallery
+
+Video
+
+Booking
+
+Lead
+
+Reviews
+
+Before & After
+
+Testimonials
+
+Footer
+
+Pages compose sections.
+
+Sections compose components.
+
+---
+
+# Database Ownership
+
+Every piece of data has one owner.
+
+Permanent Business Data
+
+↓
+
+Business Hub
+
+Marketing
+
+↓
+
+Campaign
+
+Media
+
+↓
+
+Asset Library
+
+Consumer Actions
+
+↓
+
+Analytics
+
+Leads
+
+↓
+
+Lead Manager
+
+Never duplicate ownership.
+
+---
+
+# Security
+
+Every destination enforces its own permissions.
+
+Business Hub
+
+↓
+
+Business ownership
+
+Mission Control
+
+↓
+
+Administrative authorization
+
+Consumer Discovery
+
+↓
+
+Public-safe campaign data
+
+Community Mailer
+
+↓
+
+Campaign references only
+
+Authorization should remain server enforced.
+
+Never trust client state.
+
+---
+
+# Extending the Platform
+
+When adding a feature ask:
+
+Can Business Hub own this?
+
+Can Campaign Engine own this?
+
+Can Asset Library own this?
+
+Can Analytics observe this?
+
+If yes,
+
+extend the existing system.
+
+Never create parallel systems.
+
+---
+
+# Coding Rules
+
+Before creating:
+
+Table
+
+API
+
+Component
+
+Workflow
+
+Renderer
+
+Ask:
+
+Who owns this?
+
+If ownership is unclear,
+
+the feature is not ready.
+
+---
+
+# Long-Term Architecture
 
 Business
 
@@ -38,560 +576,36 @@ Campaign Engine
 
 ↓
 
-Outputs
+Campaign Destinations
 
 ↓
 
-Customer Experience
+Consumer Engagement
 
----
-
-# BUSINESS HUB
-
-The Business Hub stores permanent business information.
-
-Examples:
-
-Logo
-
-Cover Images
-
-Gallery
-
-Videos
-
-Services
-
-Business Information
-
-Smart Card
-
-Booking Settings
-
-Lead Settings
-
-QR Codes
-
-Reviews
-
-Documents
-
-Menus
-
-Brochures
-
-Social Links
-
-Business Hours
-
-These are long-lived assets.
-
-Campaigns reference these assets.
-
-They do not duplicate them.
-
----
-
-# CAMPAIGN ENGINE
-
-The Campaign Engine is the heart of Adpadz.
-
-Campaigns are the ONLY source of truth for promotions.
-
-Campaigns contain:
-
-Title
-
-Headline
-
-Description
-
-Offer
-
-CTA
-
-Media references
-
-Dates
-
-Status
+↓
 
 Analytics
 
-Campaigns NEVER duplicate business information.
-
-Campaigns reference Business Hub assets.
-
----
-
-# CAMPAIGN OUTPUTS
-
-Campaign Outputs determine where campaigns appear.
-
-Examples:
-
-Smart Card
-
-Interactive Ad
-
-Community Mailer
-
-QR Landing Page
-
-Facebook
-
-Instagram
-
-Email
-
-Flyer
-
-Homepage
-
-Future outputs may be added without changing Campaigns.
-
-One Campaign
-
 ↓
 
-Many Outputs
+Campaign Renewal
+
+Every new feature should strengthen this lifecycle.
+
+Never interrupt it.
 
 ---
 
-# SMART CARD
+# Final Rule
 
-A Smart Card is NOT the campaign.
+Architectures evolve.
 
-It is a business landing page.
+Principles do not.
 
-The Smart Card renders:
+If implementation conflicts with:
 
-Business information
+ADPADZ_PRINCIPLES.md
 
-Current campaigns
+the implementation should change.
 
-Offers
-
-Booking
-
-Lead forms
-
-Media
-
-Videos
-
-Services
-
-Testimonials
-
-Before & After
-
-Links
-
-Analytics
-
-The Smart Card should never become the source of truth for campaigns.
-
----
-
-# INTERACTIVE ADS
-
-Interactive Ads are Discovery.
-
-They drive engagement.
-
-Examples:
-
-Tap To Reveal
-
-Scratch Off
-
-Before & After
-
-Spin Wheel (future)
-
-Memory Match (future)
-
-Interactive Ads render Campaign content.
-
-They never own Campaign content.
-
----
-
-# COMMUNITY MAILERS
-
-Community Mailers are distribution.
-
-Mailers reference Campaigns.
-
-Mailers do not duplicate campaign information.
-
----
-
-# QR STUDIO
-
-QR codes point users toward:
-
-Campaigns
-
-Smart Cards
-
-Landing Pages
-
-Offers
-
-Booking
-
-Videos
-
-QR Studio stores destinations.
-
-It does not duplicate Campaign content.
-
----
-
-# LEADS
-
-Every interaction should ultimately create:
-
-Leads
-
-Bookings
-
-Offer Claims
-
-Calls
-
-Website Visits
-
-Analytics Events
-
-Everything feeds the Lead Manager.
-
----
-
-# ASSET LIBRARY
-
-Every uploaded asset exists only once.
-
-Assets include:
-
-Logo
-
-Cover Images
-
-Gallery
-
-Commercials
-
-Videos
-
-Documents
-
-PDFs
-
-Menus
-
-Brochures
-
-QR Codes
-
-Coupons
-
-Campaigns reference assets.
-
-Never upload the same item twice.
-
----
-
-# DESIGN SYSTEM
-
-All UI must come from the Adpadz Design System.
-
-Pages should not invent new components.
-
-Allowed UI building blocks:
-
-Buttons
-
-Cards
-
-Badges
-
-Pills
-
-Sections
-
-Action Bars
-
-Heroes
-
-Footers
-
-Coupon Cards
-
-Avatar
-
-Gradients
-
-If a component does not exist, create it inside the Design System.
-
-Do not build page-specific components unless absolutely necessary.
-
----
-
-# SECTION LIBRARY
-
-Pages should assemble reusable sections.
-
-Examples:
-
-HeroSection
-
-ActionSection
-
-OfferSection
-
-BookingSection
-
-LeadSection
-
-VideoSection
-
-GallerySection
-
-BeforeAfterSection
-
-TestimonialsSection
-
-LinksSection
-
-FooterSection
-
-Pages should compose sections.
-
-Sections compose UI components.
-
----
-
-# CUSTOMER JOURNEY
-
-Adpadz follows this sequence:
-
-Discovery
-
-↓
-
-Engagement
-
-↓
-
-Conversion
-
-↓
-
-Retention
-
-Discovery
-
-Interactive Ads
-
-Community Mailers
-
-QR Codes
-
-Engagement
-
-Smart Card
-
-Campaign
-
-Media
-
-Conversion
-
-Booking
-
-Offer Claim
-
-Lead Form
-
-Phone Call
-
-Retention
-
-Repeat Campaigns
-
-Future Notifications
-
-Saved Businesses
-
-Analytics
-
-Every feature should support one or more stages.
-
----
-
-# DATABASE OWNERSHIP
-
-Every new feature must belong to ONE owner only.
-
-Allowed owners:
-
-Business Hub
-
-Campaign
-
-Campaign Output
-
-Asset
-
-Lead
-
-Analytics
-
-Do not create duplicate storage.
-
-Never copy Campaign information into Smart Cards.
-
-Never duplicate Assets.
-
-Reference IDs whenever possible.
-
----
-
-# CODING RULES
-
-Before creating a table:
-
-Ask:
-
-"What owns this data?"
-
-Before creating UI:
-
-Ask:
-
-"What Design System component should render this?"
-
-Before creating a page:
-
-Ask:
-
-"What existing Sections can build this?"
-
-Never duplicate logic.
-
-Never duplicate UI.
-
-Never duplicate data.
-
----
-
-# ERROR HANDLING
-
-Every Supabase write must throw on error.
-
-No silent failures.
-
-Pattern:
-
-const { error } = ...
-
-if (error) throw new Error(error.message);
-
-After saving:
-
-Always reload the saved record from Supabase.
-
-Never assume local state is correct.
-
----
-
-# VISUAL DESIGN
-
-Adpadz should feel:
-
-Premium
-
-Modern
-
-Beautiful
-
-Minimal
-
-Interactive
-
-Confident
-
-Local
-
-Friendly
-
-Never feel:
-
-Busy
-
-Corporate
-
-Generic
-
-Template-based
-
-Dashboard-heavy
-
-Every page should feel like part of one application.
-
----
-
-# LONG-TERM VISION
-
-Business creates one Campaign.
-
-Campaign Engine automatically publishes to:
-
-Smart Card
-
-Interactive Ads
-
-Community Mailer
-
-QR Landing
-
-Social Media
-
-Email
-
-Flyers
-
-Future outputs
-
-Business enters information once.
-
-Adpadz distributes it everywhere.
-
----
-
-# INSTRUCTIONS FOR CODEX
-
-Before every implementation:
-
-1. Read this document.
-
-2. Follow it.
-
-3. Do not invent alternate architectures.
-
-4. Reuse existing Design System components.
-
-5. Reuse existing Section Library components.
-
-6. Reuse Business Hub assets.
-
-7. Reuse Campaign Engine data.
-
-8. Do not duplicate storage.
-
-9. Explain any architectural changes before implementing them.
-
-10. If a requested feature conflicts with this architecture, stop and explain why before making changes.
+Not the principles.

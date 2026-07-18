@@ -1,3 +1,5 @@
+import { DEMO_DEFAULT_BUSINESS_SLUG, createDemoPresetWorkspace, getDemoBusinessPreset } from './demoPresets';
+
 /**
  * Client-side sales demo state.
  *
@@ -5,8 +7,9 @@
  * be represented as a real customer, lead, campaign result, or testimonial.
  */
 
-export const DEMO_WORKSPACE_SCHEMA_VERSION = 2 as const;
-export const DEMO_WORKSPACE_STORAGE_KEY = 'adpadz-demo-workspace-v2';
+export const DEMO_WORKSPACE_SCHEMA_VERSION = 3 as const;
+export const DEMO_WORKSPACE_STORAGE_KEY = 'adpadz-demo-workspace-v3';
+export const DEMO_LAST_BUSINESS_STORAGE_KEY = 'adpadz-demo-last-business-v3';
 export const DEMO_SAMPLE_DATA_NOTICE = 'Fictional sample data for demonstrating Adpadz. No real customers or results are represented.';
 
 export const DEMO_CAMPAIGN_STATUSES = ['draft', 'scheduled', 'active', 'expired'] as const;
@@ -104,6 +107,10 @@ export type DemoActivityType =
   | 'campaign_status_changed'
   | 'qr_scan'
   | 'offer_reveal'
+  | 'offer_claim'
+  | 'profile_view'
+  | 'campaign_updated'
+  | 'business_updated'
   | 'lead_submitted'
   | 'lead_status_changed';
 
@@ -129,6 +136,8 @@ export type DemoWorkspaceState = {
   activity: DemoActivity[];
   /** Composite `campaignId:offerId` keys revealed during this demo session. */
   revealedOfferIds: string[];
+  /** Composite offer keys claimed during this business demo. */
+  claimedOfferIds: string[];
   /** Deterministic sequence used for client-created sample IDs. */
   sequence: number;
   updatedAt: string;
@@ -148,6 +157,10 @@ export type DemoCreateCampaignInput = {
   endDate?: string | null;
 };
 
+
+export type DemoUpdateCampaignInput = Partial<Omit<DemoCreateCampaignInput, 'title'>> & { title?: string };
+
+export type DemoUpdateBusinessInput = Partial<Pick<DemoBusiness, 'name' | 'tagline' | 'description' | 'location' | 'phone' | 'email' | 'website'>>;
 export type DemoSampleLeadInput = {
   name: string;
   email: string | null;
@@ -160,8 +173,12 @@ export type DemoSampleLeadInput = {
 export type DemoWorkspaceAction =
   | { type: 'campaign/create'; payload: DemoCreateCampaignInput }
   | { type: 'campaign/status'; campaignId: string; status: DemoCampaignStatus }
+  | { type: 'campaign/update'; campaignId: string; payload: DemoUpdateCampaignInput }
+  | { type: 'business/update'; payload: DemoUpdateBusinessInput }
   | { type: 'analytics/scan'; campaignId: string }
   | { type: 'offer/reveal'; campaignId: string; offerId: string }
+  | { type: 'offer/claim'; campaignId: string; offerId: string }
+  | { type: 'analytics/profile-view' }
   | { type: 'lead/submit-sample'; payload?: Partial<DemoSampleLeadInput> }
   | { type: 'lead/status'; leadId: string; status: DemoLeadStatus }
   | { type: 'workspace/reset' };
@@ -172,162 +189,34 @@ const INITIAL_UPDATED_AT = '2026-07-10T14:00:00.000Z';
 const MAX_ACTIVITY_ITEMS = 30;
 const CUSTOMER_EXPERIENCE_OUTPUTS: readonly DemoCampaignOutput[] = ['smart_card', 'interactive_ad', 'qr_landing'];
 
-const sampleLeadTemplates: DemoSampleLeadInput[] = [
-  {
-    name: 'Taylor Morgan',
-    email: 'taylor.morgan@example.com',
-    phone: '(904) 555-0184',
-    message: 'I would like a design consultation for a covered patio and outdoor kitchen.',
-    source: 'smart_card',
-    campaignId: 'demo-campaign-summer-patio',
-  },
-  {
-    name: 'Jordan Ellis',
-    email: 'jordan.ellis@example.com',
-    phone: '(904) 555-0127',
-    message: 'Can someone call me about the landscape-lighting concept featured in the QR offer?',
-    source: 'qr_campaign',
-    campaignId: 'demo-campaign-backyard-reveal',
-  },
-  {
-    name: 'Casey Bennett',
-    email: 'casey.bennett@example.com',
-    phone: '(904) 555-0162',
-    message: 'I am interested in a Saturday backyard planning appointment.',
-    source: 'booking_request',
-    campaignId: 'demo-campaign-backyard-reveal',
-  },
-];
-
-/** Returns a fresh copy of the fictional River City Outdoor Living workspace. */
-export function createInitialDemoWorkspaceState(): DemoWorkspaceState {
-  return {
-    schemaVersion: DEMO_WORKSPACE_SCHEMA_VERSION,
-    sampleData: true,
-    sampleDataNotice: DEMO_SAMPLE_DATA_NOTICE,
-    business: {
-      id: 'demo-business-river-city-outdoor-living',
-      isSample: true,
-      name: 'River City Outdoor Living',
-      slug: 'river-city-outdoor-living-demo',
-      tagline: 'Thoughtful outdoor spaces, built for the way you live.',
-      description: 'A fictional Jacksonville design-and-build company used to demonstrate the complete Adpadz customer journey.',
-      location: 'Jacksonville, Florida',
-      phone: '(904) 555-0148',
-      email: 'hello@rivercityoutdoor.example',
-      website: 'https://adpadz.co/examples',
-      profilePublished: true,
-    },
-    campaigns: [
-      {
-        id: 'demo-campaign-summer-patio',
-        isSample: true,
-        title: 'Summer Patio Transformation',
-        headline: 'Turn the patio you have into the retreat you want',
-        description: 'A premium seasonal campaign connecting a visual reveal, consultation offer, QR experience, social copy, email, and print-ready flyer.',
-        offer: {
-          id: 'demo-offer-design-consultation',
-          title: 'Complimentary outdoor design consultation',
-          description: 'Includes a 30-minute discovery call and a personalized project inspiration board.',
-        },
-        ctaLabel: 'Plan My Outdoor Space',
-        status: 'active',
-        format: 'tap_reveal',
-        outputs: ['smart_card', 'interactive_ad', 'qr_landing', 'community_mailer', 'facebook', 'instagram', 'email', 'flyer'],
-        startDate: '2026-06-15T12:00:00.000Z',
-        endDate: '2026-09-15T23:59:59.000Z',
-        createdAt: '2026-06-02T15:30:00.000Z',
-        updatedAt: '2026-07-10T13:40:00.000Z',
-        metrics: { views: 842, qrScans: 104, offerReveals: 231, leads: 15 },
-      },
-      {
-        id: 'demo-campaign-backyard-reveal',
-        isSample: true,
-        title: 'Backyard Before & After',
-        headline: 'Slide from overlooked yard to unforgettable gathering space',
-        description: 'An interactive before-and-after story showcasing design quality while driving qualified consultation requests.',
-        offer: {
-          id: 'demo-offer-lighting-upgrade',
-          title: 'Complimentary landscape-lighting concept',
-          description: 'Available with a qualifying patio or outdoor-kitchen design agreement.',
-        },
-        ctaLabel: 'See What Is Possible',
-        status: 'active',
-        format: 'before_after',
-        outputs: ['smart_card', 'interactive_ad', 'qr_landing', 'facebook', 'instagram', 'email'],
-        startDate: '2026-07-01T12:00:00.000Z',
-        endDate: '2026-10-01T23:59:59.000Z',
-        createdAt: '2026-06-21T16:15:00.000Z',
-        updatedAt: '2026-07-10T13:25:00.000Z',
-        metrics: { views: 611, qrScans: 60, offerReveals: 148, leads: 8 },
-      },
-      {
-        id: 'demo-campaign-firelight',
-        isSample: true,
-        title: 'Firelight Season Preview',
-        headline: 'Scratch to uncover a warmer way to gather',
-        description: 'A scheduled autumn campaign prepared once for interactive, QR, mailer, social, email, and flyer distribution.',
-        offer: {
-          id: 'demo-offer-fire-pit-plan',
-          title: 'Free fire-feature planning session',
-          description: 'Explore placement, fuel, finish, seating, and safety options with a project designer.',
-        },
-        ctaLabel: 'Reserve a Planning Session',
-        status: 'scheduled',
-        format: 'scratch',
-        outputs: ['smart_card', 'interactive_ad', 'qr_landing', 'community_mailer', 'facebook', 'instagram', 'email', 'flyer'],
-        startDate: '2026-09-01T12:00:00.000Z',
-        endDate: '2026-11-30T23:59:59.000Z',
-        createdAt: '2026-07-02T14:45:00.000Z',
-        updatedAt: '2026-07-10T12:55:00.000Z',
-        metrics: { views: 0, qrScans: 0, offerReveals: 0, leads: 0 },
-      },
-    ],
-    leads: [
-      sampleLead('demo-lead-avery', 'Avery Monroe', 'avery.monroe@example.com', '(904) 555-0109', 'Interested in an outdoor kitchen consultation next week.', 'booking_request', 'demo-campaign-summer-patio', 'new', '2026-07-10T13:42:00.000Z'),
-      sampleLead('demo-lead-morgan', 'Morgan Lee', 'morgan.lee@example.com', '(904) 555-0191', 'The before-and-after project is close to what we want for our yard.', 'interactive_campaign', 'demo-campaign-backyard-reveal', 'qualified', '2026-07-10T12:18:00.000Z'),
-      sampleLead('demo-lead-riley', 'Riley Chen', 'riley.chen@example.com', '(904) 555-0173', 'Please send details about the complimentary design consultation.', 'qr_campaign', 'demo-campaign-summer-patio', 'contacted', '2026-07-09T19:24:00.000Z'),
-      sampleLead('demo-lead-cameron', 'Cameron Hayes', 'cameron.hayes@example.com', '(904) 555-0136', 'Looking for a paver patio and landscape lighting estimate.', 'smart_card', 'demo-campaign-backyard-reveal', 'new', '2026-07-09T15:36:00.000Z'),
-      sampleLead('demo-lead-quinn', 'Quinn Parker', 'quinn.parker@example.com', '(904) 555-0115', 'We booked our discovery call and are ready for the next step.', 'booking_request', 'demo-campaign-summer-patio', 'closed', '2026-07-08T17:05:00.000Z'),
-    ],
-    metrics: {
-      profileViews: 2389,
-      campaignViews: 1453,
-      qrScans: 186,
-      offerReveals: 379,
-      leads: 27,
-      bookings: 22,
-      offerClaims: 45,
-    },
-    activity: [
-      sampleActivity('demo-activity-1', 'lead_submitted', 'New consultation request', 'Avery Monroe requested an outdoor kitchen consultation.', '2026-07-10T13:42:00.000Z', 'demo-campaign-summer-patio', 'demo-lead-avery'),
-      sampleActivity('demo-activity-2', 'qr_scan', 'Campaign QR scanned', 'Summer Patio Transformation opened from a neighborhood mailer.', '2026-07-10T13:36:00.000Z', 'demo-campaign-summer-patio', null),
-      sampleActivity('demo-activity-3', 'offer_reveal', 'Offer revealed', 'A visitor unlocked the complimentary design consultation.', '2026-07-10T13:31:00.000Z', 'demo-campaign-summer-patio', null),
-      sampleActivity('demo-activity-4', 'lead_status_changed', 'Lead qualified', 'Morgan Lee moved from contacted to qualified.', '2026-07-10T12:48:00.000Z', 'demo-campaign-backyard-reveal', 'demo-lead-morgan'),
-      sampleActivity('demo-activity-5', 'qr_scan', 'Campaign QR scanned', 'Backyard Before & After opened from a printed leave-behind.', '2026-07-10T12:34:00.000Z', 'demo-campaign-backyard-reveal', null),
-    ],
-    revealedOfferIds: [],
-    sequence: 100,
-    updatedAt: INITIAL_UPDATED_AT,
-  };
+/** Returns a fresh fictional workspace. River City remains the default flagship. */
+export function createInitialDemoWorkspaceState(businessSlug = DEMO_DEFAULT_BUSINESS_SLUG): DemoWorkspaceState {
+  return createDemoPresetWorkspace(businessSlug);
 }
-
 export function demoWorkspaceReducer(state: DemoWorkspaceState, action: DemoWorkspaceAction): DemoWorkspaceState {
   switch (action.type) {
     case 'campaign/create':
       return createCampaign(state, action.payload);
     case 'campaign/status':
       return setCampaignStatus(state, action.campaignId, action.status);
+    case 'campaign/update':
+      return updateCampaign(state, action.campaignId, action.payload);
+    case 'business/update':
+      return updateBusiness(state, action.payload);
     case 'analytics/scan':
       return simulateScan(state, action.campaignId);
     case 'offer/reveal':
       return revealOffer(state, action.campaignId, action.offerId);
+    case 'offer/claim':
+      return claimOffer(state, action.campaignId, action.offerId);
+    case 'analytics/profile-view':
+      return recordProfileView(state);
     case 'lead/submit-sample':
       return submitSampleLead(state, action.payload);
     case 'lead/status':
       return setLeadStatus(state, action.leadId, action.status);
     case 'workspace/reset':
-      return createInitialDemoWorkspaceState();
+      return createInitialDemoWorkspaceState(state.business.slug);
     default:
       return state;
   }
@@ -336,8 +225,12 @@ export function demoWorkspaceReducer(state: DemoWorkspaceState, action: DemoWork
 export const demoWorkspaceActions = {
   createCampaign: (payload: DemoCreateCampaignInput): DemoWorkspaceAction => ({ type: 'campaign/create', payload }),
   setCampaignStatus: (campaignId: string, status: DemoCampaignStatus): DemoWorkspaceAction => ({ type: 'campaign/status', campaignId, status }),
+  updateCampaign: (campaignId: string, payload: DemoUpdateCampaignInput): DemoWorkspaceAction => ({ type: 'campaign/update', campaignId, payload }),
+  updateBusiness: (payload: DemoUpdateBusinessInput): DemoWorkspaceAction => ({ type: 'business/update', payload }),
   simulateScan: (campaignId: string): DemoWorkspaceAction => ({ type: 'analytics/scan', campaignId }),
   revealOffer: (campaignId: string, offerId: string): DemoWorkspaceAction => ({ type: 'offer/reveal', campaignId, offerId }),
+  claimOffer: (campaignId: string, offerId: string): DemoWorkspaceAction => ({ type: 'offer/claim', campaignId, offerId }),
+  recordProfileView: (): DemoWorkspaceAction => ({ type: 'analytics/profile-view' }),
   submitSampleLead: (payload?: Partial<DemoSampleLeadInput>): DemoWorkspaceAction => ({ type: 'lead/submit-sample', payload }),
   setLeadStatus: (leadId: string, status: DemoLeadStatus): DemoWorkspaceAction => ({ type: 'lead/status', leadId, status }),
   reset: (): DemoWorkspaceAction => ({ type: 'workspace/reset' }),
@@ -358,35 +251,57 @@ export function deserializeDemoWorkspaceState(serialized: string | null | undefi
   }
 }
 
-/** Loads a valid demo snapshot or returns a fresh fictional sample workspace. */
-export function loadDemoWorkspaceState(storage: DemoWorkspaceStorage | null = getSessionStorage()): DemoWorkspaceState {
-  if (!storage) return createInitialDemoWorkspaceState();
+export function getDemoWorkspaceStorageKey(businessSlug: string): string {
+  return `${DEMO_WORKSPACE_STORAGE_KEY}:${businessSlug}`;
+}
+
+/** Loads a valid business-scoped demo snapshot or returns its fresh fictional story. */
+export function loadDemoWorkspaceState(
+  storage: DemoWorkspaceStorage | null = getLocalStorage(),
+  businessSlug = DEMO_DEFAULT_BUSINESS_SLUG,
+): DemoWorkspaceState {
+  const safeSlug = getDemoBusinessPreset(businessSlug)?.slug ?? DEMO_DEFAULT_BUSINESS_SLUG;
+  if (!storage) return createInitialDemoWorkspaceState(safeSlug);
   try {
-    return deserializeDemoWorkspaceState(storage.getItem(DEMO_WORKSPACE_STORAGE_KEY))
-      ?? createInitialDemoWorkspaceState();
+    return deserializeDemoWorkspaceState(storage.getItem(getDemoWorkspaceStorageKey(safeSlug)))
+      ?? createInitialDemoWorkspaceState(safeSlug);
   } catch {
-    return createInitialDemoWorkspaceState();
+    return createInitialDemoWorkspaceState(safeSlug);
   }
 }
 
 export function saveDemoWorkspaceState(
   state: DemoWorkspaceState,
-  storage: DemoWorkspaceStorage | null = getSessionStorage(),
+  storage: DemoWorkspaceStorage | null = getLocalStorage(),
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(DEMO_WORKSPACE_STORAGE_KEY, serializeDemoWorkspaceState(state));
+    storage.setItem(getDemoWorkspaceStorageKey(state.business.slug), serializeDemoWorkspaceState(state));
+    storage.setItem(DEMO_LAST_BUSINESS_STORAGE_KEY, state.business.slug);
   } catch {
-    // A blocked or full session store must not break the self-contained demo.
+    // A blocked or full local store must not break the self-contained demo.
   }
 }
 
-export function clearDemoWorkspaceState(storage: DemoWorkspaceStorage | null = getSessionStorage()): void {
+export function clearDemoWorkspaceState(
+  storage: DemoWorkspaceStorage | null = getLocalStorage(),
+  businessSlug = DEMO_DEFAULT_BUSINESS_SLUG,
+): void {
   if (!storage) return;
   try {
-    storage.removeItem(DEMO_WORKSPACE_STORAGE_KEY);
+    storage.removeItem(getDemoWorkspaceStorageKey(businessSlug));
   } catch {
-    // A blocked session store is equivalent to an already-cleared demo.
+    // A blocked local store is equivalent to an already-cleared demo.
+  }
+}
+
+export function loadLastDemoBusinessSlug(storage: DemoWorkspaceStorage | null = getLocalStorage()): string | null {
+  if (!storage) return null;
+  try {
+    const slug = storage.getItem(DEMO_LAST_BUSINESS_STORAGE_KEY);
+    return getDemoBusinessPreset(slug)?.slug ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -442,6 +357,68 @@ function createCampaign(state: DemoWorkspaceState, input: DemoCreateCampaignInpu
   });
 }
 
+function updateCampaign(state: DemoWorkspaceState, campaignId: string, input: DemoUpdateCampaignInput): DemoWorkspaceState {
+  const campaign = state.campaigns.find(item => item.id === campaignId);
+  if (!campaign) return state;
+  const change = nextChange(state);
+  const outputs = input.outputs === undefined ? campaign.outputs : normalizeOutputs(input.outputs);
+  const updated: DemoCampaign = {
+    ...campaign,
+    title: input.title?.trim() || campaign.title,
+    headline: input.headline?.trim() || campaign.headline,
+    description: input.description?.trim() || campaign.description,
+    offer: {
+      ...campaign.offer,
+      title: input.offerTitle?.trim() || campaign.offer.title,
+      description: input.offerDescription?.trim() || campaign.offer.description,
+    },
+    ctaLabel: input.ctaLabel?.trim() || campaign.ctaLabel,
+    status: input.status ?? campaign.status,
+    format: input.format ?? campaign.format,
+    outputs,
+    startDate: input.startDate === undefined ? campaign.startDate : input.startDate,
+    endDate: input.endDate === undefined ? campaign.endDate : input.endDate,
+    updatedAt: change.occurredAt,
+  };
+  return withActivity({
+    ...state,
+    campaigns: state.campaigns.map(item => item.id === campaignId ? updated : item),
+    sequence: change.sequence,
+    updatedAt: change.occurredAt,
+  }, {
+    id: change.activityId,
+    isSample: true,
+    type: 'campaign_updated',
+    title: 'Campaign updated',
+    detail: `${updated.title} now powers every enabled sample output.`,
+    occurredAt: change.occurredAt,
+    campaignId,
+    leadId: null,
+  });
+}
+
+function updateBusiness(state: DemoWorkspaceState, input: DemoUpdateBusinessInput): DemoWorkspaceState {
+  const normalized = Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]),
+  ) as DemoUpdateBusinessInput;
+  if (!Object.values(normalized).some(Boolean)) return state;
+  const change = nextChange(state);
+  return withActivity({
+    ...state,
+    business: { ...state.business, ...normalized },
+    sequence: change.sequence,
+    updatedAt: change.occurredAt,
+  }, {
+    id: change.activityId,
+    isSample: true,
+    type: 'business_updated',
+    title: 'Business profile updated',
+    detail: `${normalized.name || state.business.name} now appears across the shared demo experience.`,
+    occurredAt: change.occurredAt,
+    campaignId: null,
+    leadId: null,
+  });
+}
 function setCampaignStatus(state: DemoWorkspaceState, campaignId: string, status: DemoCampaignStatus): DemoWorkspaceState {
   const campaign = state.campaigns.find(item => item.id === campaignId);
   if (!campaign || campaign.status === status) return state;
@@ -513,8 +490,57 @@ function revealOffer(state: DemoWorkspaceState, campaignId: string, offerId: str
   });
 }
 
+function claimOffer(state: DemoWorkspaceState, campaignId: string, offerId: string): DemoWorkspaceState {
+  const campaign = state.campaigns.find(item => item.id === campaignId && item.offer.id === offerId);
+  const claimKey = `${campaignId}:${offerId}`;
+  if (!campaign || !isCampaignCustomerReady(campaign) || state.claimedOfferIds.includes(claimKey)) return state;
+  const change = nextChange(state);
+  return withActivity({
+    ...state,
+    metrics: { ...state.metrics, offerClaims: state.metrics.offerClaims + 1 },
+    claimedOfferIds: [...state.claimedOfferIds, claimKey],
+    sequence: change.sequence,
+    updatedAt: change.occurredAt,
+  }, {
+    id: change.activityId,
+    isSample: true,
+    type: 'offer_claim',
+    title: 'Sample offer claimed',
+    detail: `${campaign.offer.title} moved from interest to a measurable customer action.`,
+    occurredAt: change.occurredAt,
+    campaignId,
+    leadId: null,
+  });
+}
+
+function recordProfileView(state: DemoWorkspaceState): DemoWorkspaceState {
+  const change = nextChange(state);
+  return withActivity({
+    ...state,
+    metrics: { ...state.metrics, profileViews: state.metrics.profileViews + 1 },
+    sequence: change.sequence,
+    updatedAt: change.occurredAt,
+  }, {
+    id: change.activityId,
+    isSample: true,
+    type: 'profile_view',
+    title: 'Business Profile viewed',
+    detail: `${state.business.name} received a measurable sample profile visit.`,
+    occurredAt: change.occurredAt,
+    campaignId: null,
+    leadId: null,
+  });
+}
 function submitSampleLead(state: DemoWorkspaceState, input?: Partial<DemoSampleLeadInput>): DemoWorkspaceState {
-  const template = sampleLeadTemplates[state.sequence % sampleLeadTemplates.length];
+  const firstCampaign = state.campaigns.find(item => item.status === 'active') ?? state.campaigns[0];
+  const template: DemoSampleLeadInput = {
+    name: 'Demo Visitor',
+    email: 'visitor@example.com',
+    phone: state.business.phone,
+    message: `Interested in ${firstCampaign?.title ?? state.business.name}.`,
+    source: 'smart_card',
+    campaignId: firstCampaign?.id ?? null,
+  };
   const requestedCampaignId = input?.campaignId === null ? null : input?.campaignId ?? template.campaignId;
   const campaign = requestedCampaignId
     ? state.campaigns.find(item => item.id === requestedCampaignId) ?? null
@@ -597,32 +623,6 @@ function setLeadStatus(state: DemoWorkspaceState, leadId: string, status: DemoLe
   });
 }
 
-function sampleLead(
-  id: string,
-  name: string,
-  email: string,
-  phone: string,
-  message: string,
-  source: DemoLeadSource,
-  campaignId: string,
-  status: DemoLeadStatus,
-  createdAt: string,
-): DemoLead {
-  return { id, isSample: true, name, email, phone, message, source, campaignId, status, createdAt, updatedAt: createdAt };
-}
-
-function sampleActivity(
-  id: string,
-  type: DemoActivityType,
-  title: string,
-  detail: string,
-  occurredAt: string,
-  campaignId: string | null,
-  leadId: string | null,
-): DemoActivity {
-  return { id, isSample: true, type, title, detail, occurredAt, campaignId, leadId };
-}
-
 function nextChange(state: DemoWorkspaceState): { sequence: number; occurredAt: string; activityId: string } {
   const sequence = state.sequence + 1;
   const currentTime = Date.parse(state.updatedAt);
@@ -644,10 +644,10 @@ function normalizeContact(value: string | null): string | null {
   return normalized || null;
 }
 
-function getSessionStorage(): DemoWorkspaceStorage | null {
+function getLocalStorage(): DemoWorkspaceStorage | null {
   if (typeof window === 'undefined') return null;
   try {
-    return window.sessionStorage;
+    return window.localStorage;
   } catch {
     return null;
   }
@@ -668,6 +668,8 @@ function isDemoWorkspaceState(value: unknown): value is DemoWorkspaceState {
     && value.activity.every(isDemoActivity)
     && Array.isArray(value.revealedOfferIds)
     && value.revealedOfferIds.every(item => typeof item === 'string')
+    && Array.isArray(value.claimedOfferIds)
+    && value.claimedOfferIds.every(item => typeof item === 'string')
     && isNonNegativeInteger(value.sequence)
     && typeof value.updatedAt === 'string';
 }
@@ -716,7 +718,7 @@ function isDemoMetrics(value: unknown): value is DemoWorkspaceMetrics {
 }
 
 function isDemoActivity(value: unknown): value is DemoActivity {
-  const activityTypes: DemoActivityType[] = ['campaign_created', 'campaign_status_changed', 'qr_scan', 'offer_reveal', 'lead_submitted', 'lead_status_changed'];
+  const activityTypes: DemoActivityType[] = ['campaign_created', 'campaign_status_changed', 'campaign_updated', 'business_updated', 'qr_scan', 'profile_view', 'offer_reveal', 'offer_claim', 'lead_submitted', 'lead_status_changed'];
   return isRecord(value)
     && value.isSample === true
     && ['id', 'title', 'detail', 'occurredAt'].every(key => typeof value[key] === 'string')

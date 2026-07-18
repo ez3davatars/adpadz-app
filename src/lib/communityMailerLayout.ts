@@ -2,13 +2,13 @@ import {
   EDDM_CENTER_BAND_HEIGHT_PERCENT,
   EDDM_CENTER_BAND_TOP_PERCENT,
 } from "./communityCards";
+import { COMMUNITY_MAILER_GEOMETRY } from "./communityMailerProductionContracts";
 import type {
   CommunityCardFormat,
   CommunityCardRecord,
   CommunityCardSide,
   CommunityCardSlotStatus,
 } from "./communityCards";
-
 export type CommunityMailerMode =
   | "admin-edit"
   | "business-review"
@@ -61,6 +61,7 @@ export type LayoutPlacement = {
   created_at?: string;
   updated_at?: string;
   business_id?: string | null;
+  campaign_id?: string | null;
   business_name?: string | null;
   creative_asset_id?: string | null;
   creative_asset_url?: string | null;
@@ -161,18 +162,19 @@ export type PlacementLibraryItem = {
   categoryExclusivity: boolean;
 };
 export const MAILER_ASPECT_RATIOS = {
-  postcard_9x12: 12 / 9,
-  community_card_6x11: 11 / 6,
+  postcard_9x12: COMMUNITY_MAILER_GEOMETRY.postcard_9x12.finishedWidthInches / COMMUNITY_MAILER_GEOMETRY.postcard_9x12.finishedHeightInches,
+  community_card_6x11: COMMUNITY_MAILER_GEOMETRY.community_card_6x11.finishedWidthInches / COMMUNITY_MAILER_GEOMETRY.community_card_6x11.finishedHeightInches,
 } as const;
 
+const productionGeometry9x12 = COMMUNITY_MAILER_GEOMETRY.postcard_9x12;
 export const EDDM_12X9_GEOMETRY = {
-  dpi: 300,
-  bleedWidthInches: 12.25,
-  bleedHeightInches: 9.25,
-  trimWidthInches: 12,
-  trimHeightInches: 9,
-  bleedInsetInches: 0.125,
-  safeInsetFromTrimInches: 0.125,
+  dpi: productionGeometry9x12.dpi,
+  bleedWidthInches: productionGeometry9x12.bleedWidthInches,
+  bleedHeightInches: productionGeometry9x12.bleedHeightInches,
+  trimWidthInches: productionGeometry9x12.finishedWidthInches,
+  trimHeightInches: productionGeometry9x12.finishedHeightInches,
+  bleedInsetInches: (productionGeometry9x12.bleedWidthInches - productionGeometry9x12.finishedWidthInches) / 2,
+  safeInsetFromTrimInches: productionGeometry9x12.safeInsetInches,
 } as const;
 
 export const EDDM_12X9_PERCENTAGES = {

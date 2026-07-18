@@ -5,6 +5,7 @@ import type {
   AdminMailerDetail,
   AdminPlacement,
 } from "../../lib/admin/communityMailers";
+import { assignAdminMailerCampaign } from "../../lib/admin/communityMailers";
 
 export default function PlacementEditorDrawer({
   placement,
@@ -21,6 +22,7 @@ export default function PlacementEditorDrawer({
     placement_tier: placement.placement_tier,
     status: placement.status,
     business_id: placement.business_id || "",
+    campaign_id: placement.campaign_id || "",
     creative_asset_id: placement.creative_asset_id || "",
     qr_link_id: placement.qr_link_id || "",
     price_cents: String(placement.price_cents),
@@ -54,6 +56,10 @@ export default function PlacementEditorDrawer({
     placement.ad_image_url;
   async function submit() {
     setSaving(true);
+    if (value.campaign_id && value.campaign_id !== placement.campaign_id) {
+      const assignment = await assignAdminMailerCampaign(placement.id, value.campaign_id);
+      if (assignment.error) throw assignment.error;
+    }
     await onSave({
       ...value,
       price_cents: Number(value.price_cents),
@@ -118,7 +124,22 @@ export default function PlacementEditorDrawer({
           Prospect creation is not available in Mission Control Phase 1.
         </small>
       </Field>
-      <Field label="Creative asset">
+      <Field label="Assigned Campaign">
+        <select
+          className="input-field"
+          value={value.campaign_id}
+          disabled={placement.is_locked || detail.mailer.layout_locked}
+          onChange={(event) => setValue((v) => ({ ...v, campaign_id: event.target.value }))}
+        >
+          <option value="">No Campaign assigned</option>
+          {detail.campaigns.filter((campaign) => campaign.business_id === value.business_id).map((campaign) => (
+            <option key={campaign.id} value={campaign.id}>{campaign.title} · {campaign.status}</option>
+          ))}
+        </select>
+        <small className="mt-1 block text-[var(--text-muted)]">
+          Campaign assignment is revision-bound and cannot change after production lock.
+        </small>
+      </Field>      <Field label="Creative asset">
         <select
           className="input-field"
           value={value.creative_asset_id}

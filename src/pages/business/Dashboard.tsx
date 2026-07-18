@@ -4,6 +4,9 @@ import { BadgePercent, CalendarDays, Image, Loader2, Plus, QrCode, Sparkles, Use
 import { supabase } from '../../lib/supabase';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzMetricCard, AdpadzSection } from '../../components/adpadz-ui';
 import type { CampaignRecord } from '../../lib/ads';
+import { loadBusinessCampaignReadiness } from '../../lib/campaignReadinessData';
+import type { CampaignReadinessResult } from '../../lib/campaignReadiness';
+import { CampaignReadinessBadge } from '../../components/campaign-readiness/CampaignReadinessSummary';
 
 type SmartCardSummary = { id: string; business_name: string; slug: string; is_published: boolean; updated_at: string | null };
 type LeadSummary = { id: string; lead_type: string | null; status: string; created_at: string; metadata?: Record<string, unknown> | null };
@@ -14,6 +17,7 @@ type DashboardState = {
   businessName: string;
   smartCards: SmartCardSummary[];
   campaigns: CampaignRecord[];
+  readiness: Map<string, CampaignReadinessResult>;
   leads: LeadSummary[];
   qrLinks: QrSummary[];
   assetsCount: number;
@@ -26,6 +30,7 @@ const initialState: DashboardState = {
   businessName: 'Business Hub',
   smartCards: [],
   campaigns: [],
+  readiness: new Map(),
   leads: [],
   qrLinks: [],
   assetsCount: 0,
@@ -69,12 +74,15 @@ export default function BizDashboard() {
           ? await supabase.from('business_card_events').select('id', { count: 'exact', head: true }).in('business_card_id', cardIds).eq('event_type', 'offer_claim')
           : { count: 0, error: null };
         if (offerClaimResult.error) throw new Error(offerClaimResult.error.message);
+        const campaignRows = (campaignsResult.data ?? []) as CampaignRecord[];
+        const readiness = await loadBusinessCampaignReadiness(userId, campaignRows);
 
         if (!cancelled) {
           setState({
             businessName: businessResult.data?.name || smartCards[0]?.business_name || 'Business Hub',
             smartCards,
-            campaigns: (campaignsResult.data ?? []) as CampaignRecord[],
+            campaigns: campaignRows,
+            readiness,
             leads: (leadsResult.data ?? []) as LeadSummary[],
             qrLinks: (qrResult.data ?? []) as QrSummary[],
             assetsCount: assetsResult.count ?? 0,
@@ -100,7 +108,7 @@ export default function BizDashboard() {
   const activeCampaigns = state.campaigns.filter(campaign => campaign.status === 'active');
   const upcomingCampaigns = state.campaigns.filter(campaign => campaign.status === 'scheduled' || (campaign.start_date && new Date(campaign.start_date) > new Date()));
   const qrScans = state.qrLinks.reduce((sum, link) => sum + (link.scan_count ?? 0), 0);
-  const recentCampaigns = state.campaigns.slice(0, 5);
+  const recentCampaigns = [...state.campaigns].sort((a, b) => (state.readiness.get(a.id)?.completionPercent ?? 100) - (state.readiness.get(b.id)?.completionPercent ?? 100)).slice(0, 5);
   const recentLeads = state.leads.slice(0, 5);
 
   const quickActions = useMemo(() => [
@@ -127,7 +135,7 @@ export default function BizDashboard() {
       <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">What's active</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <AdpadzMetricCard icon={Sparkles} label="Business Profiles" value={String(state.smartCards.length)} detail={`${state.smartCards.filter(card => card.is_published).length} published`} />
-        <AdpadzMetricCard icon={CalendarDays} label="Campaigns" value={String(state.campaigns.length)} detail={`${activeCampaigns.length} active · ${upcomingCampaigns.length} upcoming`} />
+        <AdpadzMetricCard icon={CalendarDays} label="Campaigns" value={String(state.campaigns.length)} detail={`${activeCampaigns.length} active Â· ${upcomingCampaigns.length} upcoming`} />
         <AdpadzMetricCard icon={QrCode} label="QR Scans" value={String(qrScans)} detail={`${state.qrLinks.filter(link => link.status === 'active').length} active QR links`} />
         <AdpadzMetricCard icon={Image} label="Assets" value={String(state.assetsCount)} detail="Active reusable Business Hub assets" />
       </div>
@@ -148,7 +156,7 @@ export default function BizDashboard() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <AdpadzSection eyebrow="Campaign Engine" title="Recent campaigns" description="Campaigns are the single source of truth for promotions.">
-          <div className="space-y-3">{recentCampaigns.length > 0 ? recentCampaigns.map(campaign => <CampaignRow key={campaign.id} campaign={campaign} />) : <EmptyLine text="No campaigns yet. Create one campaign and publish it everywhere." />}</div>
+          <div className="space-y-3">{recentCampaigns.length > 0 ? recentCampaigns.map(campaign => <CampaignRow key={campaign.id} campaign={campaign} readiness={state.readiness.get(campaign.id)} />) : <EmptyLine text="No campaigns yet. Create one campaign and publish it everywhere." />}</div>
         </AdpadzSection>
         <AdpadzSection eyebrow="Customers" title="Recent leads" description="The latest forms and booking requests that need follow-up.">
           <div className="space-y-3">{recentLeads.length > 0 ? recentLeads.map(lead => <LeadRow key={lead.id} lead={lead} />) : <EmptyLine text="No leads yet. Published forms and booking requests will appear here." />}</div>
@@ -158,8 +166,8 @@ export default function BizDashboard() {
   );
 }
 
-function CampaignRow({ campaign }: { campaign: CampaignRecord }) {
-  return <Link to={`/app/business/campaigns/${campaign.id}/edit`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 hover:border-neon/40"><div className="min-w-0"><p className="truncate text-sm font-black">{campaign.title}</p><p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatCampaignWindow(campaign)}</p></div><AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge></Link>;
+function CampaignRow({ campaign, readiness }: { campaign: CampaignRecord; readiness?: CampaignReadinessResult }) {
+  return <Link to={readiness?.nextAction?.destination ?? `/app/business/campaigns/${campaign.id}/edit`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 hover:border-neon/40"><div className="min-w-0"><p className="truncate text-sm font-black">{campaign.title}</p><p className="mt-0.5 text-xs text-[var(--text-muted)]">{readiness?.nextAction?.reason ?? formatCampaignWindow(campaign)}</p></div><div className="shrink-0 text-right">{readiness ? <><CampaignReadinessBadge result={readiness} /><p className="mt-1 text-[10px] font-black text-neon">{readiness.completionPercent}% complete</p></> : <AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge>}</div></Link>;
 }
 
 function LeadRow({ lead }: { lead: LeadSummary }) {
@@ -173,5 +181,5 @@ function EmptyLine({ text }: { text: string }) {
 function formatCampaignWindow(campaign: CampaignRecord): string {
   const start = campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : 'No start date';
   const end = campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : 'No end date';
-  return `${start} – ${end}`;
+  return `${start} â€“ ${end}`;
 }

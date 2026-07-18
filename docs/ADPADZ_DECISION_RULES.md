@@ -1,104 +1,234 @@
 # ADPADZ DECISION RULES
 
-Version 1.0
+Status: Active
 
-## PURPOSE
-
-This document defines the engineering, product, UX, and architectural decision rules for Adpadz.
-
-It exists to prevent inconsistent implementations, duplicate systems, unnecessary complexity, and architectural drift.
-
-Before making ANY implementation decision, AI must consult this document.
-
-If a requested implementation conflicts with these rules, stop and explain the conflict before writing code.
+Owner: CEO Office
 
 ---
 
-# FIRST PRINCIPLE
+# Purpose
 
-Every decision must increase value for one or more of:
+This document governs every product, engineering, UX, architectural, and business decision made within Adpadz.
 
-Businesses
+Before implementing any feature, changing existing functionality, creating a database table, designing UI, or introducing a new workflow, consult these rules.
 
-Consumers
-
-Sales Partners
-
-Adpadz
-
-If a feature provides no meaningful value to one of these groups,
-
-do not build it.
+If a proposal conflicts with any rule in this document, stop implementation and resolve the conflict before continuing.
 
 ---
 
-# SIMPLICITY WINS
+# Rule 1
 
-Whenever multiple solutions exist,
+## Highest ROI Wins
 
-prefer the simplest architecture that satisfies the requirements.
+Every decision begins with one question:
 
-Never build complexity for hypothetical future needs.
+> Is this the highest ROI use of our time?
 
-Future-ready is good.
+If another task creates more business value, customer value, or launch progress, do that first.
 
-Over-engineered is not.
+Engineering time is our scarcest resource.
 
----
-
-# CREATE ONCE
-
-Businesses should enter information one time.
-
-The system should reuse that information everywhere.
-
-Never ask businesses to duplicate work.
+Protect it.
 
 ---
 
-# SINGLE SOURCE OF TRUTH
+# Rule 2
 
-Every piece of data has ONE owner.
+## Revenue Before Convenience
 
-Examples:
+Features that help launch or operate Community Mailers take priority over features that simply make the platform nicer to use.
 
-Business information
+If a feature directly helps:
 
-↓
+• sell campaigns
+
+• build campaigns
+
+• approve campaigns
+
+• distribute campaigns
+
+• renew campaigns
+
+It moves to the front of the roadmap.
+
+---
+
+# Rule 3
+
+## Every Feature Must Strengthen Campaigns
+
+Campaigns are the center of Adpadz.
+
+Every feature should improve one or more of:
+
+Campaign creation
+
+Campaign distribution
+
+Campaign discovery
+
+Campaign management
+
+Campaign measurement
+
+Campaign renewal
+
+If it doesn't strengthen Campaigns, reconsider whether it belongs.
+
+---
+
+# Rule 4
+
+## Extend Before Creating
+
+Before introducing:
+
+Table
+
+Component
+
+Workflow
+
+API
+
+Page
+
+Dashboard
+
+Renderer
+
+Ask:
+
+Can an existing system do this?
+
+Extend existing systems whenever possible.
+
+Avoid parallel implementations.
+
+---
+
+# Rule 5
+
+## Every Campaign Becomes More Valuable After Printing
+
+Traditional advertising loses value after delivery.
+
+Adpadz campaigns should continue producing exposure through:
+
+Consumer Discovery
 
 Business Hub
 
-Campaign information
+QR
 
-↓
+Campaign Pages
 
-Campaign Engine
+Adpadz TV
 
-Assets
+Future destinations
 
-↓
-
-Asset Library
-
-Leads
-
-↓
-
-Lead Manager
-
-Analytics
-
-↓
-
-Analytics System
-
-Never duplicate ownership.
+Every feature should increase campaign lifespan.
 
 ---
 
-# NEVER DUPLICATE DATA
+# Rule 6
 
-Never copy:
+## The Community Mailer Is the Acquisition Engine
+
+The Community Mailer exists to:
+
+Acquire businesses
+
+Acquire consumers
+
+Generate revenue
+
+Drive QR engagement
+
+Increase neighborhood density
+
+It is not merely a print product.
+
+When evaluating new features, ask:
+
+Does this improve the Community Mailer as an acquisition engine?
+
+---
+
+# Rule 7
+
+## Exposure Before Guaranteed Results
+
+Adpadz measures campaign activity.
+
+Businesses measure business outcomes.
+
+Adpadz may report:
+
+QR scans
+
+Campaign views
+
+Offer saves
+
+Profile visits
+
+Phone taps
+
+Website visits
+
+Time active
+
+Never imply guaranteed sales or ROI.
+
+---
+
+# Rule 8
+
+## One Campaign. Many Destinations.
+
+Businesses create one Campaign.
+
+Everything else references that Campaign.
+
+Never require businesses to recreate content because it appears somewhere else.
+
+Every new destination should extend Campaign Engine.
+
+---
+
+# Rule 9
+
+## Permanent Information Lives in Business Hub
+
+Business Hub owns:
+
+Business information
+
+Branding
+
+Hours
+
+Locations
+
+Services
+
+Media
+
+Reviews
+
+Campaigns reference Business Hub.
+
+Never duplicate permanent information.
+
+---
+
+# Rule 10
+
+## Campaigns Own Marketing
+
+Campaigns own:
 
 Offers
 
@@ -106,201 +236,193 @@ Headlines
 
 Descriptions
 
+CTA
+
+Schedules
+
+Campaign Media
+
+Temporary promotions
+
+Marketing belongs nowhere else.
+
+---
+
+# Rule 11
+
+## Assets Exist Once
+
+Logos
+
 Videos
 
 Images
 
-Booking information
+Brochures
 
-Business information
+Menus
 
-Instead,
+Commercials
 
-reference existing objects.
+Coupons
 
----
+Documents
 
-# REUSE BEFORE BUILD
+Upload once.
 
-Before creating:
-
-Table
-
-Component
-
-Section
-
-Page
-
-API
-
-Ask:
-
-Does this already exist?
-
-If yes,
-
-reuse it.
-
-Never create duplicate functionality.
+Reference everywhere.
 
 ---
 
-# PAGE RULE
+# Rule 12
 
-Pages assemble Sections.
+## Consumer Discovery Is Campaign-First
 
-Pages do not own UI.
+Consumers should discover campaigns.
 
-Sections assemble Design System components.
+Not business listings.
 
-Components should never know about pages.
+Not directories.
 
----
-
-# DESIGN RULE
-
-Never create custom buttons.
-
-Never create custom cards.
-
-Never invent spacing.
-
-Never invent typography.
-
-Never invent shadows.
-
-Always use the Adpadz Design System.
+The campaign is the primary discovery object throughout the platform.
 
 ---
 
-# BUSINESS HUB RULE
+# Rule 13
 
-Permanent information belongs in Business Hub.
+## Business Value First
+
+Every feature should increase value for businesses by reducing:
+
+Time
+
+Cost
+
+Complexity
+
+Repeated work
+
+If the feature creates more work than value, redesign it.
+
+---
+
+# Rule 14
+
+## Consumer Experience Must Feel Effortless
+
+Consumers should always know:
+
+What am I looking at?
+
+What can I discover next?
+
+Avoid overwhelming interfaces.
+
+Avoid unnecessary clicks.
+
+---
+
+# Rule 15
+
+## Premium Over Feature Quantity
+
+Never add features simply because competitors have them.
+
+Prefer fewer, higher-quality experiences over larger feature lists.
+
+Premium experiences create differentiation.
+
+---
+
+# Rule 16
+
+## Simplicity Is a Competitive Advantage
+
+The simplest architecture that satisfies the requirement is usually correct.
+
+Avoid solving hypothetical future problems.
+
+Build for today's validated roadmap.
+
+---
+
+# Rule 17
+
+## Reuse the Design System
+
+Never invent:
+
+Buttons
+
+Cards
+
+Spacing
+
+Typography
+
+Shadows
+
+Components
+
+Extend the Design System before introducing new UI patterns.
+
+---
+
+# Rule 18
+
+## Every Feature Needs an Owner
+
+Before implementation ask:
+
+Who owns this?
+
+Business Hub
+
+Campaign Engine
+
+Mission Control
+
+Asset Library
+
+Lead Manager
+
+Analytics
+
+If ownership is unclear, stop.
+
+---
+
+# Rule 19
+
+## Measure Everything That Matters
+
+Every meaningful interaction should become an event.
 
 Examples:
-
-Logo
-
-Gallery
-
-Videos
-
-Services
-
-Business Info
-
-Booking
-
-Reviews
-
-Never store permanent information inside Campaigns.
-
----
-
-# CAMPAIGN RULE
-
-Temporary marketing belongs in Campaigns.
-
-Examples:
-
-Holiday Sale
-
-Grand Opening
-
-New Product
-
-Summer Promotion
-
-Campaigns should never permanently store business information.
-
----
-
-# SMART CARD RULE
-
-Smart Cards display.
-
-They do not own.
-
-Smart Cards render Business Hub + Campaign Engine.
-
-Never duplicate campaign information inside Smart Cards.
-
----
-
-# INTERACTIVE AD RULE
-
-Interactive Ads exist for engagement.
-
-They should always point users toward Campaigns.
-
-They are not the final destination.
-
----
-
-# COMMUNITY MAILER RULE
-
-Community Mailers distribute Campaigns.
-
-Never build standalone mailer content disconnected from Campaigns.
-
----
-
-# QR RULE
-
-QR Codes connect physical marketing with digital experiences.
-
-Never point QR codes to static pages when a Campaign experience exists.
-
----
-
-# ASSET RULE
-
-Every uploaded asset exists once.
-
-Never upload duplicates.
-
-Campaigns reference assets.
-
-Smart Cards reference assets.
-
-Mailers reference assets.
-
----
-
-# LEAD RULE
-
-Every meaningful interaction should be measurable.
-
-Examples:
-
-Booking
-
-Lead Form
-
-Offer Claim
-
-Call
-
-Directions
 
 QR Scan
 
-Interactive Ad
-
-Video
-
 Campaign View
 
-Everything should contribute to business insight.
+Offer Save
+
+Phone Tap
+
+Booking
+
+Lead
+
+Website Visit
+
+Directions
+
+Analytics should inform businesses without overwhelming them.
 
 ---
 
-# AI RULE
+# Rule 20
 
-AI assists.
-
-AI never replaces the business owner.
+## AI Assists
 
 AI should:
 
@@ -310,210 +432,121 @@ Improve quality
 
 Increase consistency
 
-Never remove business control.
+Generate creative ideas
+
+AI should never replace business ownership or decision-making.
 
 ---
 
-# USER EXPERIENCE RULE
+# Rule 21
 
-Every page answers:
+## Mobile Is Mandatory
 
-What am I looking at?
+Every workflow must work beautifully on mobile.
 
-What should I do next?
+Desktop enhancements are welcome.
 
-Only one primary CTA per screen.
-
-Never overwhelm users.
+Mobile support is not optional.
 
 ---
 
-# DASHBOARD RULE
+# Rule 22
 
-Dashboards should answer:
-
-What needs attention?
-
-What should I do today?
-
-What is performing well?
-
-Avoid meaningless statistics.
-
----
-
-# PERFORMANCE RULE
-
-Always prefer:
-
-Fast loading
-
-Reusable queries
-
-Small components
-
-Lazy loading when appropriate
-
-Never sacrifice responsiveness for unnecessary effects.
-
----
-
-# MOBILE RULE
-
-Every feature must work beautifully on mobile.
-
-Desktop enhancements are optional.
-
-Mobile usability is mandatory.
-
----
-
-# ERROR RULE
+## Fail Loudly
 
 Never fail silently.
 
-Every failed write:
+Every failed write must:
 
-Throws
+Throw
 
-Logs
+Log
 
-Displays a friendly message
+Display a helpful message
 
-Never pretend a save succeeded.
+After successful writes:
 
-Always reload saved data from Supabase after successful writes.
+Reload from Supabase.
 
----
-
-# DATABASE RULE
-
-Before creating a table ask:
-
-Can an existing table own this?
-
-Before creating a relationship ask:
-
-Does this duplicate another relationship?
-
-Database growth should be intentional.
+Never assume local state is authoritative.
 
 ---
 
-# COMPONENT RULE
+# Rule 23
 
-Never create one-off UI.
+## Neighborhood Density Is the Moat
 
-If a component will likely be reused,
+The long-term value of Adpadz is created by neighborhood density.
 
-add it to the Design System.
+Every campaign should increase:
 
----
+Business participation
 
-# FEATURE RULE
+Consumer participation
 
-Every new feature must answer:
+Campaign quality
 
-Who owns this data?
+Marketplace value
 
-Which section renders it?
-
-Which Design System components render it?
-
-What Campaign value does it provide?
-
-If those answers are unclear,
-
-the feature is not ready.
+Protect this advantage.
 
 ---
 
-# CAMPAIGN RULE
+# Rule 24
 
-Every future marketing capability should integrate with Campaign Engine.
+## Launch Before Expansion
 
-Examples:
+Do not build future systems until they support a proven business.
 
-Interactive Ads
+Launch.
 
-Mailers
+Learn.
 
-QR
+Improve.
 
-Smart Cards
+Expand.
 
-Social
-
-Email
-
-Flyers
-
-Never bypass Campaign Engine.
+Repeat.
 
 ---
 
-# FUTURE RULE
+# Rule 25
 
-When adding a feature,
+## CEO Test
 
-prefer extending existing systems instead of creating new ones.
+Before beginning implementation ask:
 
-Ask:
+Does this move Adpadz closer to launching and repeating successful Community Mailers?
 
-Can Campaign Engine do this?
+If the answer is no…
 
-Can Business Hub do this?
-
-Can Asset Library do this?
-
-If yes,
-
-extend.
-
-Do not duplicate.
+It should not be the next feature.
 
 ---
 
-# CODEX IMPLEMENTATION RULES
+# Required Reading Order
 
-Before every implementation:
+Before any significant implementation, review:
 
-Read:
+1. ADPADZ_PRINCIPLES.md
+2. ADPADZ_PRODUCT_VISION.md
+3. ADPADZ_ARCHITECTURE.md
+4. ADPADZ_DESIGN_SYSTEM.md
+5. ADPADZ_DECISION_RULES.md
+6. System-specific documentation
 
-ADPADZ_PRODUCT_VISION.md
+If documents appear to conflict:
 
-ADPADZ_ARCHITECTURE.md
-
-ADPADZ_DESIGN_SYSTEM.md
-
-ADPADZ_DECISION_RULES.md
-
-Follow all four together.
-
-If implementation conflicts with any document,
-
-stop.
+Stop.
 
 Explain the conflict.
 
-Do not continue until resolved.
+Resolve it before writing code.
 
 ---
 
-# FINAL PRINCIPLE
+# Final Principle
 
-Every decision should move Adpadz closer to one goal:
+Every line of code should strengthen one mission:
 
-Create one campaign.
-
-Publish it everywhere.
-
-Manage everything from one place.
-
-If a decision strengthens that philosophy,
-
-it is probably the correct decision.
-
-If it weakens that philosophy,
-
-choose another solution.
+**Help local businesses create one campaign, publish it everywhere, and continuously increase its value through the Adpadz local advertising network.**

@@ -32,6 +32,8 @@ export type AdminMailerSummary = {
 };
 export type AdminPlacement = LayoutPlacement & {
   business_id: string | null;
+  campaign_id: string | null;
+  campaign_assigned_at?: string | null;
   business_name: string | null;
   creative_asset_id: string | null;
   creative_asset_title: string | null;
@@ -69,7 +71,15 @@ export type AdminMailerRecord = Omit<CommunityCardRecord, "owner_id"> & {
   consumer_headline: string | null;
   discovery_qr_link_id: string | null;
   discovery_qr_destination_url?: string | null;
+  postal_area_confirmed: boolean;
+  printer_specs_confirmed: boolean;
+  color_profile_confirmed: boolean;
+  preflight_fingerprint: string | null;
+  preflight_layout_revision: number | null;
+  production_version: number;
 };
+export type AdminMailerCampaign = { id: string; business_id: string; title: string; status: string; updated_at: string };
+export type AdminMailerProduction = { current_preflight_run_id: string | null; snapshots: Array<{ placement_id: string; layout_revision: number; campaign_id: string; fingerprint: string; snapshot: Record<string, unknown> }>; qr_associations: Array<Record<string, unknown>>; exports: Array<Record<string, unknown>> };
 export type AdminMailerDetail = {
   mailer: AdminMailerRecord;
   placements: AdminPlacement[];
@@ -78,14 +88,20 @@ export type AdminMailerDetail = {
     {
       id: string;
       business_id: string | null;
+  campaign_id: string | null;
+  campaign_assigned_at?: string | null;
       title: string;
       url: string | null;
     }
   >;
+  campaigns: AdminMailerCampaign[];
+  production: AdminMailerProduction;
   qr_links: Array<
     {
       id: string;
       business_id: string | null;
+  campaign_id: string | null;
+  campaign_assigned_at?: string | null;
       title: string;
       destination_url: string;
     }
@@ -123,8 +139,15 @@ export type BusinessCommunityCampaign = {
 };
 export const getAdminMailers = () =>
   supabase.rpc("get_admin_community_mailers");
-export const getAdminMailer = (id: string) =>
-  supabase.rpc("get_admin_community_mailer", { p_mailer_id: id });
+export const getAdminMailer = async (id: string) => {
+  const [detail, campaigns, production] = await Promise.all([
+    supabase.rpc("get_admin_community_mailer", { p_mailer_id: id }),
+    supabase.rpc("get_admin_community_mailer_campaigns", { p_mailer_id: id }),
+    supabase.rpc("get_admin_community_mailer_production", { p_mailer_id: id }),
+  ]);
+  const error = detail.error || campaigns.error || production.error;
+  return { data: error ? null : { ...(detail.data as object), campaigns: campaigns.data || [], production: production.data || { current_preflight_run_id: null, snapshots: [], qr_associations: [], exports: [] } }, error };
+};
 export const createAdminMailer = (
   input: {
     title: string;
@@ -195,6 +218,43 @@ export const applyAdminMailerTemplate = (
     p_top_pattern: topPattern,
     p_bottom_pattern: bottomPattern,
   });
+export const confirmAdminMailerPreflight = (mailerId: string, confirmation: string, confirmed: boolean) =>
+  supabase.rpc("confirm_admin_community_mailer_preflight", {
+    p_mailer_id: mailerId, p_confirmation: confirmation, p_confirmed: confirmed,
+  });
+export const recordAdminMailerPreflight = (
+  mailerId: string,
+  result: {
+    fingerprint: string;
+    passed: boolean;
+    blockingCount: number;
+    warningCount: number;
+    checks: unknown[];
+  },
+) => supabase.rpc("record_admin_community_mailer_preflight", {
+  p_mailer_id: mailerId,
+  p_fingerprint: result.fingerprint,
+  p_passed: result.passed,
+  p_blocking_count: result.blockingCount,
+  p_warning_count: result.warningCount,
+  p_checks: result.checks,
+});
+export const transitionAdminMailerProduction = (
+  mailerId: string,
+  status: string,
+) => supabase.rpc("transition_admin_community_mailer_production", {
+  p_mailer_id: mailerId,
+  p_to_status: status,
+  p_details: {},
+});export const assignAdminMailerCampaign = (placementId: string, campaignId: string, overrideReason?: string) =>
+  supabase.rpc("assign_admin_community_mailer_campaign", { p_placement_id: placementId, p_campaign_id: campaignId, p_override_reason: overrideReason || null });
+export const createAdminMailerSnapshots = (mailerId: string) =>
+  supabase.rpc("create_admin_community_mailer_snapshots", { p_mailer_id: mailerId });
+export const finalizeAdminMailerCandidate = (input: { mailerId: string; preflightRunId: string; storagePrefix: string; manifest: Record<string, unknown>; checksum: string; generatorVersion: string }) =>
+  supabase.rpc("finalize_admin_community_mailer_candidate", { p_mailer_id: input.mailerId, p_preflight_run_id: input.preflightRunId, p_storage_prefix: input.storagePrefix, p_manifest: input.manifest, p_checksum: input.checksum, p_generator_version: input.generatorVersion });
+export const certifyAdminMailerCandidate = (exportId: string, metadata: Record<string, unknown>) =>
+  supabase.rpc("certify_admin_community_mailer_candidate", { p_export_id: exportId, p_metadata: metadata });export const getBusinessCommunityMailerAssignments = () =>
+  supabase.rpc("get_business_community_mailer_assignments");
 export const getBusinessCommunityCampaigns = () =>
   supabase.rpc("get_business_community_campaigns");
 export const mailerNeedsAttention = (

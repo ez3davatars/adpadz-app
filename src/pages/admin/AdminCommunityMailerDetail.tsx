@@ -20,12 +20,17 @@ import CommunityMailerToolbar, {
 } from "../../components/community-mailer/CommunityMailerToolbar";
 import CommunityMailerSettingsDrawer from "../../components/community-mailer/CommunityMailerSettingsDrawer";
 import PlacementEditorDrawer from "../../components/community-mailer/PlacementEditorDrawer";
+import CommunityMailerProductionPanel from "../../components/community-mailer/CommunityMailerProductionPanel";
+import CommunityMailerCandidatePanel from "../../components/community-mailer/CommunityMailerCandidatePanel";
 import { formatCurrency } from "../../lib/communityCards";
 import {
   type AdminMailerDetail,
   type AdminPlacement,
   applyAdminMailerTemplate,
+  confirmAdminMailerPreflight,
   getAdminMailer,
+  recordAdminMailerPreflight,
+  transitionAdminMailerProduction,
   updateAdminMailer,
   updateAdminPlacement,
 } from "../../lib/admin/communityMailers";
@@ -242,7 +247,17 @@ export default function AdminCommunityMailerDetail() {
       await load();
     }
   }
-  async function toggleLayoutLock() {
+  async function toggleSales() {
+    if (!data || !mailerId) return;
+    if (data.mailer.status === "draft" && !data.mailer.sales_open) {
+      const transition = await transitionAdminMailerProduction(mailerId, "selling");
+      if (transition.error) {
+        setError(transition.error.message);
+        return;
+      }
+    }
+    await saveMailer({ sales_open: !data.mailer.sales_open });
+  }  async function toggleLayoutLock() {
     if (!data) return;
     await saveMailer({ layout_locked: !data.mailer.layout_locked });
   }
@@ -315,13 +330,7 @@ export default function AdminCommunityMailerDetail() {
             <>
               <AdpadzButton
                 variant="secondary"
-                onClick={() =>
-                  void saveMailer({
-                    sales_open: !mailer.sales_open,
-                    ...(mailer.status === "draft" && !mailer.sales_open
-                      ? { status: "selling" }
-                      : {}),
-                  })}
+                onClick={() => void toggleSales()}
               >
                 {mailer.sales_open ? "Close sales" : "Open sales"}
               </AdpadzButton>
@@ -432,14 +441,53 @@ export default function AdminCommunityMailerDetail() {
               />
             )
             : (
-              <CampaignSummary
-                issues={issues}
-                placements={draft}
-                onSelect={(placement) => {
-                  setSelectedId(placement.id);
-                  setSide(placement.side);
-                }}
-              />
+              <div className="space-y-6">
+                <CommunityMailerProductionPanel
+                  input={{
+                    mailerId: mailer.id,
+                    format: mailer.format,
+                    mailingDate: mailer.mailing_date,
+                    layoutRevision: mailer.layout_revision,
+                    layoutLocked: mailer.layout_locked,
+                    placements: draft,
+                    manual: {
+                      postalAreaConfirmed: mailer.postal_area_confirmed ?? false,
+                      printerSpecsConfirmed: mailer.printer_specs_confirmed ?? false,
+                      colorProfileConfirmed: mailer.color_profile_confirmed ?? false,
+                    },
+                  }}
+                  onConfirm={(key, value) => {
+                    const column = {
+                      postalAreaConfirmed: "postal_area_confirmed",
+                      printerSpecsConfirmed: "printer_specs_confirmed",
+                      colorProfileConfirmed: "color_profile_confirmed",
+                    }[key];
+                    void confirmAdminMailerPreflight(mailer.id, column, value).then(async (response) => {
+                      if (response.error) setError(response.error.message);
+                      else await load();
+                    });
+                  }}
+                  onRecord={(result) => {
+                    void recordAdminMailerPreflight(mailer.id, result).then(async (response) => {
+                      if (response.error) setError(response.error.message);
+                      else await load();
+                    });
+                  }}                  onSelectPlacement={(placementId) => {
+                    const placement = draft.find((item) => item.id === placementId);
+                    setSelectedId(placementId);
+                    if (placement) setSide(placement.side);
+                  }}
+                />
+                <CommunityMailerCandidatePanel detail={data} onReload={load} />
+                <CampaignSummary
+                  issues={issues}
+                  placements={draft}
+                  onSelect={(placement) => {
+                    setSelectedId(placement.id);
+                    setSide(placement.side);
+                  }}
+                />
+              </div>
             )}
         </AdpadzCard>
       </section>

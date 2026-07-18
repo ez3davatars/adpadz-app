@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarDays, Eye, Layers3, Loader2, Pause, Pencil, Play, Plus, RadioTower, Search } from 'lucide-react';
+import { Archive, CalendarDays, Eye, Layers3, Loader2, Pause, Pencil, Play, Plus, RadioTower, Search, Share2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzMetricCard, AdpadzSection } from '../../components/adpadz-ui';
 import type { CampaignOutputRecord, CampaignRecord } from '../../lib/ads';
+import { loadBusinessCampaignReadiness } from '../../lib/campaignReadinessData';
+import type { CampaignReadinessResult } from '../../lib/campaignReadiness';
+import { CampaignReadinessBadge } from '../../components/campaign-readiness/CampaignReadinessSummary';
 
 type CampaignState = {
   campaigns: CampaignRecord[];
   outputs: CampaignOutputRecord[];
+  readiness: Map<string, CampaignReadinessResult>;
   loading: boolean;
   error: string | null;
 };
 
-const initialState: CampaignState = { campaigns: [], outputs: [], loading: true, error: null };
+const initialState: CampaignState = { campaigns: [], outputs: [], readiness: new Map(), loading: true, error: null };
 const statuses = ['all', 'active', 'draft', 'scheduled', 'expired'] as const;
 
 export default function BizCampaigns() {
@@ -43,7 +47,9 @@ export default function BizCampaigns() {
         ? await supabase.from('campaign_outputs').select('*').in('campaign_id', ids).order('sort_order', { ascending: true })
         : { data: [], error: null };
       if (outputResult.error) throw new Error(outputResult.error.message);
-      if (!isCancelled()) setState({ campaigns: campaignRows, outputs: (outputResult.data ?? []) as CampaignOutputRecord[], loading: false, error: null });
+      const outputRows = (outputResult.data ?? []) as CampaignOutputRecord[];
+      const readiness = await loadBusinessCampaignReadiness(userId, campaignRows, outputRows);
+      if (!isCancelled()) setState({ campaigns: campaignRows, outputs: outputRows, readiness, loading: false, error: null });
     } catch (loadError) {
       if (!isCancelled()) setState(current => ({ ...current, loading: false, error: loadError instanceof Error ? loadError.message : 'Could not load campaigns.' }));
     }
@@ -123,6 +129,7 @@ export default function BizCampaigns() {
               key={campaign.id}
               campaign={campaign}
               outputs={state.outputs.filter(output => output.campaign_id === campaign.id)}
+              readiness={state.readiness.get(campaign.id)}
               updating={updatingId === campaign.id}
               onStatus={nextStatus => void updateStatus(campaign, nextStatus)}
             />
@@ -133,7 +140,7 @@ export default function BizCampaigns() {
   );
 }
 
-function CampaignCard({ campaign, outputs, updating, onStatus }: { campaign: CampaignRecord; outputs: CampaignOutputRecord[]; updating: boolean; onStatus: (status: 'active' | 'draft' | 'expired') => void }) {
+function CampaignCard({ campaign, outputs, readiness, updating, onStatus }: { campaign: CampaignRecord; outputs: CampaignOutputRecord[]; readiness?: CampaignReadinessResult; updating: boolean; onStatus: (status: 'active' | 'draft' | 'expired') => void }) {
   const interactive = outputs.some(output => output.output_type === 'interactive_ad' && output.enabled);
   const isLive = campaign.status === 'active' || campaign.status === 'scheduled';
   return (
@@ -142,17 +149,19 @@ function CampaignCard({ campaign, outputs, updating, onStatus }: { campaign: Cam
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-black">{campaign.title}</h2>
-            <AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge>
+            <AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge>{readiness && <><CampaignReadinessBadge result={readiness} /><span className="text-xs font-black text-neon">{readiness.completionPercent}% complete</span></>}
           </div>
           {campaign.headline && <p className="mt-1 text-sm text-[var(--text-secondary)]">{campaign.headline}</p>}
-          <p className="mt-2 text-xs text-[var(--text-muted)]">{formatDate(campaign.start_date)} – {formatDate(campaign.end_date)}</p>
+          <p className="mt-2 text-xs text-[var(--text-muted)]">{formatDate(campaign.start_date)} â€“ {formatDate(campaign.end_date)}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {outputs.length > 0 ? outputs.map(output => <AdpadzBadge key={`${output.campaign_id}-${output.output_type}`} variant="campaign" className={output.enabled ? '' : 'opacity-45'}>{formatOutput(output.output_type)}</AdpadzBadge>) : <AdpadzBadge variant="status">No outputs</AdpadzBadge>}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 xl:justify-end">
+        <div className="flex flex-wrap gap-2 xl:max-w-sm xl:justify-end">
+          {readiness?.nextAction && <AdpadzButton href={readiness.nextAction.destination} size="sm">{readiness.nextAction.label}</AdpadzButton>}
           <AdpadzButton href={`/app/business/campaigns/${campaign.id}/edit`} variant="secondary" size="sm"><Pencil className="h-3.5 w-3.5" /> Edit</AdpadzButton>
           <AdpadzButton href={`/app/business/campaigns/${campaign.id}/content`} variant="secondary" size="sm">Package</AdpadzButton>
+          <AdpadzButton href={`/app/business/campaigns/${campaign.id}/distribution`} variant="secondary" size="sm"><Share2 className="h-3.5 w-3.5" /> Distribution</AdpadzButton>
           {interactive && isLive && <AdpadzButton href={`/ad/${campaign.id}`} target="_blank" rel="noreferrer" variant="ghost" size="sm"><Eye className="h-3.5 w-3.5" /> Preview</AdpadzButton>}
           {campaign.status === 'active'
             ? <AdpadzButton type="button" onClick={() => onStatus('draft')} disabled={updating} variant="ghost" size="sm">{updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />} Pause</AdpadzButton>

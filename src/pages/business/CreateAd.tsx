@@ -8,6 +8,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { SMART_CARD_CAMPAIGN_SECTIONS, type CampaignOutputRecord, type CampaignRecord } from '../../lib/ads';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzSection } from '../../components/adpadz-ui';
+import { evaluateCampaignReadiness } from '../../lib/campaignReadiness';
+import { CampaignReadinessSummary } from '../../components/campaign-readiness/CampaignReadinessSummary';
 
 type AdType = 'tap_reveal' | 'scratch' | 'before_after';
 type CampaignStatus = 'draft' | 'active' | 'scheduled' | 'expired';
@@ -20,6 +22,10 @@ type SmartCardChoice = {
   slug: string;
   is_published: boolean;
   cover_image_url: string | null;
+  logo_url: string | null;
+  website: string | null;
+  phone: string | null;
+  address: string | null;
 };
 
 type AssetChoice = {
@@ -33,6 +39,12 @@ type AssetChoice = {
 
 type BusinessHubChoice = {
   id: string;
+  name: string;
+  category: string | null;
+  service_area: string | null;
+  address: string | null;
+  website: string | null;
+  phone: string | null;
   active: boolean;
 };
 
@@ -106,9 +118,9 @@ export default function BizCreateAd() {
         if (!userId) throw new Error('Sign in to open Campaign Studio.');
 
         const [cardResult, assetResult, businessResult] = await Promise.all([
-          supabase.from('business_cards').select('id,business_id,business_name,slug,is_published,cover_image_url').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
+          supabase.from('business_cards').select('id,business_id,business_name,slug,is_published,cover_image_url,logo_url,website,phone,address').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
           supabase.from('business_marketing_assets').select('id,title,asset_type,file_url,external_url,thumbnail_url').eq('owner_id', userId).eq('is_active', true).order('updated_at', { ascending: false }),
-          supabase.from('businesses').select('id,active').eq('owner_user_id', userId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+          supabase.from('businesses').select('id,name,category,service_area,address,website,phone,active').eq('owner_user_id', userId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
         ]);
         if (cardResult.error) throw new Error(cardResult.error.message);
         if (assetResult.error) throw new Error(assetResult.error.message);
@@ -177,7 +189,14 @@ export default function BizCreateAd() {
   const selectedAsset = useMemo(() => assets.find(asset => asset.id === primaryAssetId) ?? null, [assets, primaryAssetId]);
   const selectedCard = useMemo(() => smartCards.find(card => card.id === selectedSmartCardId) ?? null, [selectedSmartCardId, smartCards]);
   const previewImage = selectedAsset?.file_url || selectedAsset?.thumbnail_url || selectedAsset?.external_url || selectedCard?.cover_image_url || null;
-  const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
+const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
+  const liveReadiness = useMemo(() => evaluateCampaignReadiness({
+    campaign: { id: campaignId || 'new-campaign', owner_id: 'current-owner', title: campaignName, headline, description, offer_title: offerTitle, offer_description: offerDescription, cta_label: ctaLabel, cta_url: ctaUrl, status, start_date: startDate || null, end_date: endDate || null, primary_image_id: primaryAssetId || null },
+    business: { name: businessHub?.name || selectedCard?.business_name, logoUrl: selectedCard?.logo_url, category: businessHub?.category, location: businessHub?.service_area || businessHub?.address || selectedCard?.address, website: businessHub?.website || selectedCard?.website, phone: businessHub?.phone || selectedCard?.phone, profilePublished: selectedCard?.is_published ?? false, active: businessHub?.active ?? false },
+    campaignImageUrl: previewImage,
+    outputs: outputOptions.filter(option => outputs[option.value]).map((option, index) => ({ campaign_id: campaignId || 'new-campaign', output_type: option.value, enabled: true, sort_order: index })),
+    qr: null,
+  }), [businessHub, campaignId, campaignName, ctaLabel, ctaUrl, description, endDate, headline, offerDescription, offerTitle, outputs, previewImage, primaryAssetId, selectedCard, startDate, status]);
 
   function updateOutput(type: OutputType) {
     setOutputs(current => ({ ...current, [type]: !current[type] }));
@@ -306,6 +325,8 @@ export default function BizCreateAd() {
 
       {error && <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-4 text-sm font-bold text-red-100" role="alert">{error}</AdpadzCard>}
 
+      <CampaignReadinessSummary result={liveReadiness} />
+
       <div className="grid grid-cols-4 gap-2" aria-label="Campaign Studio progress">
         {['Format', 'Campaign', 'Outputs', 'Review'].map((label, index) => (
           <button key={label} type="button" onClick={() => index + 1 < step && setStep(index + 1)} className="text-left" aria-current={step === index + 1 ? 'step' : undefined}>
@@ -341,7 +362,7 @@ export default function BizCreateAd() {
             <Field label="Description" className="mt-4"><textarea value={description} onChange={event => setDescription(event.target.value)} className="input-field resize-y" rows={4} placeholder="Explain why this campaign matters to local customers." maxLength={500} /></Field>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Offer title"><input value={offerTitle} onChange={event => setOfferTitle(event.target.value)} className="input-field" placeholder="20% off your first visit" /></Field>
-              <Field label="Offer details"><input value={offerDescription} onChange={event => setOfferDescription(event.target.value)} className="input-field" placeholder="New customers · weekdays only" /></Field>
+              <Field label="Offer details"><input value={offerDescription} onChange={event => setOfferDescription(event.target.value)} className="input-field" placeholder="New customers Â· weekdays only" /></Field>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="CTA label"><input value={ctaLabel} onChange={event => setCtaLabel(event.target.value)} className="input-field" /></Field>
@@ -360,7 +381,7 @@ export default function BizCreateAd() {
               <Field label="Primary Business Hub asset">
                 <select value={primaryAssetId} onChange={event => setPrimaryAssetId(event.target.value)} className="input-field">
                   <option value="">Use Business Profile cover</option>
-                  {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.title} · {asset.asset_type}</option>)}
+                  {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.title} Â· {asset.asset_type}</option>)}
                 </select>
               </Field>
               <Field label="Tone">
@@ -393,7 +414,7 @@ export default function BizCreateAd() {
                 <Field label="Business Profile">
                   <select value={selectedSmartCardId} onChange={event => setSelectedSmartCardId(event.target.value)} className="input-field">
                     <option value="">Choose a Business Profile</option>
-                    {smartCards.map(card => <option key={card.id} value={card.id}>{card.business_name} · {card.is_published ? 'Published' : 'Draft'}</option>)}
+                    {smartCards.map(card => <option key={card.id} value={card.id}>{card.business_name} Â· {card.is_published ? 'Published' : 'Draft'}</option>)}
                   </select>
                 </Field>
                 <Field label="Profile section">

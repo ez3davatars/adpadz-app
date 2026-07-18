@@ -25,7 +25,6 @@ export default function CommunityMailerSettingsDrawer({
     household_count: mailer.household_count == null
       ? ""
       : String(mailer.household_count),
-    status: mailer.status,
     consumer_headline: mailer.consumer_headline || "",
     discovery_qr_link_id: mailer.discovery_qr_link_id || "",
   };
@@ -75,7 +74,6 @@ export default function CommunityMailerSettingsDrawer({
         household_count: value.household_count === ""
           ? null
           : Number(value.household_count),
-        status: value.status,
         consumer_headline: value.consumer_headline,
         discovery_qr_link_id: value.discovery_qr_link_id || null,
       });
@@ -157,24 +155,11 @@ export default function CommunityMailerSettingsDrawer({
               />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Campaign status">
-              <select
-                className="input-field"
-                value={value.status}
-                onChange={(event) =>
-                  change("status", event.target.value as typeof value.status)}
-              >
-                {["draft", "selling", "proof", "approved", "mailed", "archived"]
-                  .map((status) => <option key={status}>{status}</option>)}
-              </select>
-            </Field>
-            <Field label="Format">
+          <Field label="Format">
               <div className="input-field flex items-center text-sm text-[var(--text-muted)]">
                 {formatCommunityCardFormat(mailer.format)}
               </div>
             </Field>
-          </div>
           <Field label="Consumer headline">
             <input
               className="input-field"
@@ -216,7 +201,6 @@ type SettingsDraft = {
   zone_name: string;
   mailing_date: string;
   household_count: string;
-  status: AdminMailerDetail["mailer"]["status"];
   consumer_headline: string;
   discovery_qr_link_id: string;
 };

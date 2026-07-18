@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import AdpadzBrand from '../components/AdpadzBrand';
 import { createInitialDemoWorkspaceState } from '../lib/demoWorkspace';
+import { DEMO_BUSINESS_PRESETS } from '../lib/demoPresets';
+import { buildDemoRoute } from '../lib/demoRouting';
 import './DemoShowcase.css';
 
 const showcaseWorkspace = createInitialDemoWorkspaceState();
@@ -36,7 +38,7 @@ const campaignDateFormatter = new Intl.DateTimeFormat('en-US', {
 
 const showcaseCampaignDates = [showcaseCampaign.startDate, showcaseCampaign.endDate]
   .map(date => date ? campaignDateFormatter.format(new Date(date)) : 'Open')
-  .join(' — ');
+  .join(' - ');
 
 const caseFileChannels = [
   { icon: Smartphone, label: 'Business Profile' },
@@ -221,7 +223,7 @@ export default function DemoShowcase() {
                 <div className='examples-response-status'><span /> New lead received</div>
                 <p className='examples-case-zone__label'>Customer signal</p>
                 <h2>{showcaseLead.name}</h2>
-                <p className='examples-response-message'>“{showcaseLead.message}”</p>
+                <p className='examples-response-message'>&quot;{showcaseLead.message}&quot;</p>
 
                 <div className='examples-response-events'>
                   <span><HeartHandshake /> Design visit requested</span>
@@ -236,7 +238,7 @@ export default function DemoShowcase() {
             </div>
 
             <div className='examples-case-file__footer'>
-              <p>Illustrative case data — no real business or customer results.</p>
+              <p>Illustrative case data - no real business or customer results.</p>
               <Link to='/demo/workspace?view=customer' className='examples-case-link'>Enter as a customer <ArrowRight /></Link>
             </div>
           </div>
@@ -260,7 +262,7 @@ export default function DemoShowcase() {
             <p className='examples-kicker'><span /> THREE PERSPECTIVES</p>
             <div>
               <h2>Walk the campaign like an exhibit.</h2>
-              <p>Move through the owner’s workspace, the customer’s moment, and the result that comes back. Every room uses the same campaign record.</p>
+              <p>Move through the owner's workspace, the customer's moment, and the result that comes back. Every room uses the same campaign record.</p>
             </div>
           </div>
 
@@ -337,6 +339,22 @@ export default function DemoShowcase() {
           </div>
         </section>
 
+        <section className='examples-industry-stories'>
+          <div className='examples-industry-stories__header'>
+            <div><p className='examples-kicker'><span /> CHOOSE A BUSINESS TO EXPERIENCE</p><h2>Six local stories.<br />One connected system.</h2></div>
+            <p>River City is the flagship case file. Each additional business follows an equally complete, industry-specific challenge through measurable customer engagement.</p>
+          </div>
+          <div className='examples-industry-stories__grid'>
+            {DEMO_BUSINESS_PRESETS.map(preset => (
+              <Link key={preset.slug} to={buildDemoRoute(preset.slug)} className={'examples-industry-story' + (preset.flagship ? ' examples-industry-story--flagship' : '')}>
+                <div className='examples-industry-story__image'><img src={preset.heroImage} alt='' /><span style={{ background: preset.accent }}>{preset.flagship ? 'Flagship' : preset.industry}</span></div>
+                <div className='examples-industry-story__body'><small>{preset.business.location}</small><h3>{preset.business.name}</h3><p>{preset.challenge}</p><strong>Experience this business <ArrowRight /></strong></div>
+              </Link>
+            ))}
+          </div>
+          <p className='examples-industry-stories__note'>All businesses, customers, campaigns, and engagement metrics are fictional sample data.</p>
+        </section>
+
         <section className='examples-final'>
           <div className='examples-final__frame'>
             <div className='examples-final__stage'>
@@ -349,7 +367,7 @@ export default function DemoShowcase() {
             <div className='examples-final__copy'>
               <p className='examples-kicker'><span /> SAFE TO EXPLORE</p>
               <h2>Now take the case file for a spin.</h2>
-              <p>Create sample campaigns, trigger customer actions, manage leads, and reset the fictional workspace whenever you’re finished.</p>
+              <p>Create sample campaigns, trigger customer actions, manage leads, and reset the fictional workspace whenever you're finished.</p>
               <div className='examples-actions'>
                 <Link to='/demo/workspace' className='examples-button'>Open guided demo <ArrowRight /></Link>
                 <Link to='/auth' className='examples-text-link'>Create my account <ArrowRight /></Link>
@@ -471,7 +489,7 @@ function OutputTile({
         <h3>{label}</h3>
         <p>{detail}</p>
       </div>
-      <small>CAMPAIGN CORE → CHANNEL</small>
+      <small>CAMPAIGN CORE TO CHANNEL</small>
     </article>
   );
 }

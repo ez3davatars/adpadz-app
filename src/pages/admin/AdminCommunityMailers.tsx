@@ -170,7 +170,7 @@ export default function AdminCommunityMailers() {
           onChange={(e) => setStatus(e.target.value)}
         >
           <option value="all">All statuses</option>
-          {["draft", "selling", "proof", "approved", "mailed", "archived"].map(
+          {["draft", "selling", "building", "review", "ready_for_print", "printed", "mailed", "published", "archived"].map(
             (x) => <option key={x}>{x}</option>,
           )}
         </select>

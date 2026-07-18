@@ -21,13 +21,13 @@ const BizCampaigns = lazy(() => import('./pages/business/Campaigns'));
 const BizCommunityCampaigns = lazy(() => import('./pages/business/CommunityCampaigns'));
 const CommunityCardPublic = lazy(() => import('./pages/CommunityCardPublic'));
 const CampaignContentStudio = lazy(() => import('./pages/business/CampaignContentStudio'));
+const CampaignDistribution = lazy(() => import('./pages/business/CampaignDistribution'));
 const BizQRStudio = lazy(() => import('./pages/business/QRStudio'));
 const BizSmartCards = lazy(() => import('./pages/business/SmartCards'));
 const BizAnalytics = lazy(() => import('./pages/business/Analytics'));
 const BizAssets = lazy(() => import('./pages/business/Assets'));
 const BizServices = lazy(() => import('./pages/business/Services'));
 const BizLeads = lazy(() => import('./pages/business/Leads'));
-const BizSocial = lazy(() => import('./pages/business/Social'));
 const BizSettings = lazy(() => import('./pages/business/Settings'));
 const BizBilling = lazy(() => import('./pages/business/Billing'));
 const InstallPrompt = lazy(() => import('./components/ui/InstallPrompt'));
@@ -68,7 +68,8 @@ export default function App() {
     };
   }, []);
 
-  if (loading) return <LoadingScreen label="Restoring your session..." />;
+  const isStandaloneDemoRoute = window.location.pathname === '/examples' || window.location.pathname.startsWith('/demo');
+  if (loading && !isStandaloneDemoRoute) return <LoadingScreen label="Restoring your session..." />;
 
   return (
     <BrowserRouter>
@@ -120,6 +121,8 @@ export default function App() {
             <Route path="community-campaigns" element={<BizCommunityCampaigns />} />
             <Route path="campaigns/:campaignId/edit" element={<BizCreateAd />} />
             <Route path="campaigns/:campaignId/content" element={<CampaignContentStudio />} />
+            <Route path="campaigns/:campaignId/distribution" element={<CampaignDistribution />} />
+            <Route path="campaigns/:campaignId/distribution/social" element={<CampaignDistribution />} />
             <Route path="qr-studio" element={<BizQRStudio />} />
             <Route path="smart-cards" element={<BizSmartCards />} />
             <Route path="smart-cards/new" element={<BizSmartCards mode="new" />} />
@@ -128,7 +131,7 @@ export default function App() {
             <Route path="assets" element={<BizAssets />} />
             <Route path="services" element={<BizServices />} />
             <Route path="leads" element={<BizLeads />} />
-            <Route path="social" element={<BizSocial />} />
+            <Route path="social" element={<Navigate to="../campaigns" replace />} />
             <Route path="settings" element={<BizSettings />} />
             <Route path="billing" element={<BizBilling />} />
             <Route index element={<Navigate to="dashboard" replace />} />

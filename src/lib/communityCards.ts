@@ -3,9 +3,14 @@ export type CommunityCardSide = "front" | "back";
 export type CommunityCardStatus =
   | "draft"
   | "selling"
+  | "building"
+  | "review"
+  | "ready_for_print"
+  | "printed"
   | "proof"
   | "approved"
   | "mailed"
+  | "published"
   | "archived";
 export type CommunityCardSlotStatus =
   | "available"

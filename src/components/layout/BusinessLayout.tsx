@@ -33,7 +33,7 @@ const navGroups: NavGroup[] = [
       { to: '/app/business/campaigns', icon: Target, label: 'Campaigns' },
       { to: '/app/business/community-campaigns', icon: LayoutDashboard, label: 'Community Campaigns' },
       { to: '/app/business/create-ad', icon: Zap, label: 'Campaign Studio' },
-      { to: '/app/business/social', icon: Share2, label: 'Publishing Workspace' },
+      { to: '/app/business/campaigns', icon: Share2, label: 'Campaign Distribution' },
       { to: '/app/business/qr-studio', icon: QrCode, label: 'QR Studio' },
     ],
   },
@@ -204,8 +204,8 @@ export default function BusinessLayout({ session }: { session: Session }) {
                 </div>
               ))}
             </nav>
-            <button type="button" onClick={handleSignOut} disabled={signingOut} className="mt-4 flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 w-full">
-              {signingOut ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <LogOut className="w-[18px] h-[18px]" />} {signingOut ? 'Signing out...' : 'Sign Out'}
+            <button type="button" onClick={handleSignOut} disabled={signingOut} className="mt-4 flex min-h-11 w-full items-center gap-3 rounded-xl border border-red-400/15 px-3 text-sm font-bold text-red-400 transition-colors hover:bg-red-400/5 disabled:opacity-55">
+              {signingOut ? <Loader2 className="w-[18px] h-[18px] animate-spin" aria-hidden="true" /> : <LogOut className="w-[18px] h-[18px]" aria-hidden="true" />} {signingOut ? 'Signing out...' : 'Sign Out'}
             </button>
           </div>
         </div>

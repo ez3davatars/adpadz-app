@@ -1,539 +1,387 @@
 # ADPADZ PRODUCT VISION
 
-Version 1.0
+Version 2.0
 
-## PURPOSE
+Status: Active
 
-This document defines the purpose, philosophy, long-term vision, and guiding principles of Adpadz.
-
-Every AI assistant, engineer, designer, or contributor working on Adpadz should read this document before making product decisions.
-
-If a requested feature conflicts with this vision, explain the conflict before implementing it.
+Owner: CEO Office
 
 ---
 
-# WHAT IS ADPADZ?
+# Mission
 
-Adpadz is **not** a digital business card platform.
+Adpadz exists to help local businesses advertise professionally without requiring enterprise-sized marketing budgets.
 
-Adpadz is **not** a QR code generator.
+We accomplish this by combining shared-cost physical distribution with a unified digital advertising platform.
 
-Adpadz is **not** a direct-mail company.
-
-Adpadz is **not** an advertising marketplace.
-
-Adpadz is a **Local Advertising Cooperative**.
-
-Its mission is to help local businesses grow by making professional marketing affordable, measurable, and easy to manage.
-
-Everything inside Adpadz exists to support that mission.
+Adpadz is a Local Advertising Cooperative.
 
 ---
 
-# THE PROBLEM
+# What Adpadz Is
 
-Most small businesses struggle to market themselves consistently.
+Adpadz is NOT:
 
-Traditional advertising is fragmented.
+• a direct mail company
+• a QR code generator
+• a digital business card platform
+• a coupon app
+• an advertising marketplace
 
-Businesses must separately manage:
+Adpadz is a local advertising network.
 
-Website
+The Community Mailer acquires customers.
 
-Business Profile
-
-Coupons
-
-Direct Mail
-
-QR Codes
-
-Social Media
-
-Booking
-
-Lead Capture
-
-Videos
-
-Analytics
-
-Advertising Campaigns
-
-Every platform requires different tools, different logins, and different content.
-
-Marketing becomes expensive, inconsistent, and overwhelming.
+The digital platform keeps businesses visible.
 
 ---
 
-# THE SOLUTION
+# The Core Idea
 
-Adpadz unifies local marketing into one platform.
+Businesses should never have to recreate the same marketing campaign multiple times.
 
-Businesses create one campaign.
+Businesses create ONE campaign.
 
-Adpadz distributes that campaign wherever the business chooses.
+Adpadz publishes that campaign everywhere.
 
 Create Once.
 
 Publish Everywhere.
 
----
-
-# THE ADPADZ PHILOSOPHY
-
-Every feature should answer one question:
-
-"Does this make local marketing easier for a business owner?"
-
-If not,
-
-do not build it.
+This philosophy must never be compromised.
 
 ---
 
-# LOCAL FIRST
+# The Community Mailer
 
-Adpadz exists for local businesses.
+The Community Mailer is NOT the product.
 
-Restaurants
+It is the customer acquisition engine.
 
-Contractors
+Each Community Mailer should:
 
-Dentists
+• introduce local businesses
 
-Salons
+• introduce consumers to Adpadz
 
-Auto Repair
+• drive QR engagement
 
-Fitness
+• fund platform growth
 
-Photographers
+• create neighborhood awareness
 
-Real Estate
+• increase marketplace density
 
-Pet Groomers
+Its purpose is distribution.
 
-Professional Services
-
-Small businesses should feel like the platform was designed specifically for them.
+Not destination.
 
 ---
 
-# THE BUSINESS HUB
+# The Product
 
-Every business owns one Business Hub.
+The digital platform is the product.
 
-The Business Hub contains permanent business information.
+Every printed campaign continues digitally through:
 
-Examples:
+• Business Hub
 
-Logo
+• Consumer Discovery
 
-Cover Images
+• QR Experiences
 
-Gallery
+• Campaign Pages
 
-Videos
+• Adpadz TV
 
-Services
+• Future Social Distribution
 
-Booking
+Printing is the beginning of the customer journey.
 
-Reviews
-
-Smart Card
-
-QR Codes
-
-Documents
-
-Business Information
-
-Campaigns reference Business Hub assets.
-
-Business information should never be duplicated.
+Never the end.
 
 ---
 
-# CAMPAIGN ENGINE
+# Campaign Philosophy
 
-The Campaign Engine is the heart of Adpadz.
+Campaigns are the heart of Adpadz.
 
-Businesses do not create advertisements.
+Businesses do not create:
 
-Businesses create Campaigns.
-
-A Campaign represents one marketing initiative.
-
-Examples:
-
-Holiday Promotion
-
-Grand Opening
-
-Summer Sale
-
-New Service
-
-Customer Appreciation
-
-Campaigns are the single source of truth for promotional content.
-
----
-
-# CREATE ONCE
-
-A business enters information once.
-
-Adpadz automatically publishes it wherever requested.
-
-Examples:
-
-Smart Card
-
-Interactive Ad
-
-Community Mailer
-
-QR Landing
-
-Social Media
-
-Email
+Ads
 
 Flyers
 
-Future Outputs
+Coupons
 
-Businesses should never recreate the same promotion multiple times.
+Posts
 
----
+Mailers
 
-# THE SMART CARD
+Businesses create Campaigns.
 
-The Smart Card is the business's public marketing experience.
-
-It is not merely a digital business card.
-
-It is a premium landing page where customers can:
-
-Learn
-
-Watch
-
-Book
-
-Call
-
-Claim Offers
-
-Submit Leads
-
-View Services
-
-View Campaigns
-
-The Smart Card presents information.
-
-It does not own campaign data.
+Campaigns automatically become every marketing output.
 
 ---
 
-# INTERACTIVE ADS
+# One Campaign
 
-Interactive Ads create engagement.
+Every Campaign should become:
 
-Examples:
+Community Mailer
 
-Tap to Reveal
+Business Hub Update
 
-Scratch Off
+QR Landing Experience
 
-Before & After
+Consumer Discovery Card
 
-Future Games
+Adpadz TV Experience
 
-Their purpose is discovery.
+Future Social Assets
 
-Interactive Ads drive customers into Campaigns.
+Future Email Assets
 
----
+Future Interactive Experiences
 
-# COMMUNITY MAILERS
+One Campaign.
 
-Community Mailers are distribution.
-
-They introduce local businesses to neighborhoods.
-
-Every mailer should drive consumers into the digital Adpadz experience.
-
-The mailer is not the destination.
-
-The Campaign is.
+Many Destinations.
 
 ---
 
-# QR STUDIO
+# Persistent Exposure
 
-QR codes connect physical marketing with digital experiences.
+Traditional direct mail loses value after delivery.
 
-QR codes should never simply open a website.
+Adpadz Campaigns should become MORE valuable after printing.
 
-They should launch Campaigns, Smart Cards, Booking, Offers, or interactive experiences.
-
----
-
-# CUSTOMER JOURNEY
-
-Every customer moves through four stages.
-
-Discovery
-
-↓
-
-Engagement
-
-↓
-
-Conversion
-
-↓
-
-Retention
-
-Every feature should support one or more of these stages.
-
----
-
-# DISCOVERY
-
-Community Mailers
-
-Interactive Ads
-
-QR Codes
-
-Campaigns
+Campaigns continue producing exposure through:
 
 Search
 
----
+Categories
 
-# ENGAGEMENT
+QR
 
-Smart Card
+Consumer Discovery
 
-Videos
+Business Hub
 
-Gallery
+Adpadz TV
 
-Services
-
-About
-
-Offers
+Every feature should increase campaign lifespan.
 
 ---
 
-# CONVERSION
+# Exposure Before Results
 
-Booking
+Adpadz does not promise sales.
 
-Lead Forms
+Adpadz provides:
 
-Offer Claims
+Professional exposure
 
-Phone Calls
+Measurable engagement
 
-Directions
+Campaign analytics
 
-Website Visits
+Businesses measure their own business outcomes.
 
-Purchases
-
----
-
-# RETENTION
-
-Future Campaigns
-
-Saved Businesses
-
-Reviews
-
-Follow-up Marketing
-
-Loyalty
-
-Notifications
+Adpadz measures campaign performance.
 
 ---
 
-# BUSINESS VALUE
+# Consumer Experience
 
-Every feature should increase value for businesses.
+Consumers should enjoy discovering local businesses.
 
-Businesses should save:
+Browsing should feel:
 
-Time
-
-Money
-
-Effort
-
-Complexity
-
-The platform should reduce work, not create more work.
-
----
-
-# CONSUMER VALUE
-
-Consumers should feel like Adpadz is the easiest way to discover local businesses.
-
-The experience should be:
+Visual
 
 Beautiful
 
-Interactive
-
 Fast
+
+Simple
 
 Rewarding
 
-Fun
+The primary discovery experience is campaigns.
 
-Helpful
+Not directories.
 
-Never overwhelming.
+Not business listings.
 
----
-
-# SALES PARTNER VALUE
-
-Sales representatives should have a product that is easy to explain.
-
-The value proposition should be obvious.
-
-The platform should demonstrate itself.
+Campaigns.
 
 ---
 
-# AI
+# Consumer Discovery
 
-AI should never replace the business owner.
+Consumer Discovery is a first-class product.
 
-AI should assist.
+Inspired by Pinterest.
 
-Examples:
+Consumers browse campaigns visually.
 
-Campaign Suggestions
+Search by:
 
-Copywriting
+Category
 
-Image Generation
+Location
 
-Commercial Creation
+Nearby
 
-Social Posts
+Newest
 
-Headline Suggestions
+Featured
 
-Campaign Optimization
+Offers
 
-AI reduces work.
+Businesses compete through better campaigns.
 
-The business remains in control.
+Not better SEO.
 
 ---
 
-# DESIGN PHILOSOPHY
+# Adpadz TV
 
-Adpadz should feel:
+Adpadz TV is another Campaign destination.
 
-Premium
+It is not a separate product.
 
-Modern
+Every campaign should be capable of becoming:
+
+Static
+
+Animated
+
+Video
 
 Interactive
 
-Elegant
-
-Fast
-
-Beautiful
-
-Friendly
-
-Never:
-
-Corporate
-
-Complicated
-
-Generic
-
-Overwhelming
-
-Every page should feel like part of one product.
+Future AI Experiences
 
 ---
 
-# SIMPLICITY
+# Business Hub
 
-Business owners should always know:
+Every business owns one Business Hub.
 
-What should I do next?
+Business Hub stores permanent information.
 
-Every page should have one obvious primary action.
+Campaigns reference Business Hub assets.
 
-Complexity belongs behind the scenes.
-
----
-
-# LONG-TERM VISION
-
-Adpadz becomes the operating system for local business marketing.
-
-Businesses manage one platform.
-
-Customers experience one seamless journey.
-
-Campaigns become the center of everything.
-
-The Business Hub becomes the permanent home for every business.
-
-Every future feature should strengthen this ecosystem rather than creating disconnected tools.
+Business information must never be duplicated.
 
 ---
 
-# WHAT SUCCESS LOOKS LIKE
+# Campaign Engine
 
-A business owner logs in and thinks:
+Campaign Engine is the center of Adpadz.
 
-"I don't need five different marketing platforms anymore."
+Everything promotional begins here.
 
-A customer thinks:
+Everything promotional ends here.
 
-"This is the easiest way I've ever discovered a local business."
+Future products should extend Campaign Engine.
 
-A salesperson thinks:
-
-"This practically sells itself."
-
-That is the standard every future feature should support.
+Never bypass it.
 
 ---
 
-# INSTRUCTIONS FOR AI
+# Our Customers
 
-Before implementing any feature:
+Businesses
 
-1. Read this document.
-2. Read ADPADZ_ARCHITECTURE.md.
-3. Read ADPADZ_DESIGN_SYSTEM.md.
-4. Follow all three documents together.
-5. If a request conflicts with these documents, explain the conflict before writing code.
-6. Prefer extending existing systems over creating new ones.
-7. Protect the "Create Once. Publish Everywhere." philosophy in every implementation.
+Consumers
+
+Sales Partners
+
+Adpadz
+
+Every feature should increase value for one or more.
+
+If it benefits none of them...
+
+Do not build it.
+
+---
+
+# Product Philosophy
+
+Simple.
+
+Premium.
+
+Fast.
+
+Visual.
+
+Businesses should always know:
+
+"What do I do next?"
+
+Consumers should always know:
+
+"What can I discover next?"
+
+---
+
+# Long-Term Vision
+
+Adpadz becomes the operating system for local advertising.
+
+Businesses manage every campaign from one place.
+
+Consumers discover every local business from one place.
+
+Community Mailers continuously grow neighborhood density.
+
+Every campaign increases the value of the network.
+
+Every new business strengthens the platform.
+
+Every new consumer strengthens the platform.
+
+This creates a self-reinforcing Local Advertising Cooperative.
+
+---
+
+# Success
+
+Success is not measured by software features.
+
+Success is measured by:
+
+Businesses participating.
+
+Campaigns launched.
+
+Campaigns renewed.
+
+Consumers engaged.
+
+Neighborhoods activated.
+
+---
+
+# Executive Principle
+
+Whenever uncertainty exists...
+
+Ask:
+
+Does this strengthen the Community Mailer?
+
+Does this strengthen Campaigns?
+
+Does this strengthen Consumer Discovery?
+
+Does this strengthen the Local Advertising Cooperative?
+
+If not...
+
+It probably should not be built.

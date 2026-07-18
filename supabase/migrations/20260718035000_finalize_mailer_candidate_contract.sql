@@ -1,0 +1,204 @@
+CREATE OR REPLACE FUNCTION public.get_admin_community_mailer_campaigns(
+  p_mailer_id uuid
+)
+RETURNS TABLE (
+  id uuid, business_id uuid, title text, status text, updated_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT campaign.id, campaign.business_id, campaign.title, campaign.status,
+    campaign.updated_at
+  FROM public.campaigns AS campaign
+  WHERE public.is_adpadz_admin(auth.uid())
+    AND campaign.status IN ('draft','active','scheduled')
+    AND EXISTS (
+      SELECT 1 FROM public.community_card_slots AS slot
+      WHERE slot.community_card_id = p_mailer_id
+        AND slot.business_id = campaign.business_id
+    )
+  ORDER BY campaign.title;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_admin_community_mailer_production(
+  p_mailer_id uuid
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT CASE WHEN public.is_adpadz_admin(auth.uid()) THEN jsonb_build_object(
+    'current_preflight_run_id', (
+      SELECT run.id FROM public.community_mailer_preflight_runs AS run
+      JOIN public.community_cards AS card ON card.id = run.community_card_id
+      WHERE run.community_card_id = p_mailer_id
+        AND run.layout_revision = card.layout_revision
+        AND run.fingerprint = card.preflight_fingerprint
+        AND run.passed IS TRUE
+      ORDER BY run.created_at DESC LIMIT 1
+    ),
+    'snapshots', COALESCE((
+      SELECT jsonb_agg(to_jsonb(snapshot) ORDER BY snapshot.placement_id)
+      FROM public.community_mailer_production_snapshots AS snapshot
+      WHERE snapshot.community_card_id = p_mailer_id
+    ), '[]'::jsonb),
+    'qr_associations', COALESCE((
+      SELECT jsonb_agg(to_jsonb(association) ORDER BY association.placement_id)
+      FROM public.community_mailer_qr_associations AS association
+      WHERE association.community_card_id = p_mailer_id
+    ), '[]'::jsonb),
+    'exports', COALESCE((
+      SELECT jsonb_agg(to_jsonb(export) ORDER BY export.created_at DESC)
+      FROM public.community_mailer_exports AS export
+      WHERE export.community_card_id = p_mailer_id
+    ), '[]'::jsonb)
+  ) ELSE NULL END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.finalize_admin_community_mailer_candidate(
+  p_mailer_id uuid,
+  p_preflight_run_id uuid,
+  p_storage_prefix text,
+  p_manifest jsonb,
+  p_checksum text,
+  p_generator_version text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, storage
+AS $$
+DECLARE
+  card public.community_cards%ROWTYPE;
+  export_id uuid;
+  total_bytes bigint;
+  required_count integer;
+  expected_prefix text;
+BEGIN
+  IF NOT public.can_manage_community_mailers(auth.uid()) THEN
+    RAISE EXCEPTION 'Community Mailer administrator access required.'
+      USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO card FROM public.community_cards
+  WHERE id = p_mailer_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Community Mailer not found.'; END IF;
+  expected_prefix := 'community-mailers/' || card.id::text ||
+    '/revisions/' || card.layout_revision::text || '/production-candidate/';
+  IF p_storage_prefix <> expected_prefix
+     OR p_checksum !~ '^[0-9a-f]{64}$'
+     OR NULLIF(btrim(p_generator_version), '') IS NULL
+     OR p_manifest->>'preflightFingerprint' IS DISTINCT FROM
+       card.preflight_fingerprint
+  THEN RAISE EXCEPTION 'Candidate metadata does not match the current revision.'; END IF;
+  IF card.layout_locked IS NOT TRUE
+     OR card.preflight_layout_revision IS DISTINCT FROM card.layout_revision
+     OR NOT EXISTS (
+       SELECT 1 FROM public.community_mailer_preflight_runs AS run
+       WHERE run.id = p_preflight_run_id
+         AND run.community_card_id = card.id
+         AND run.layout_revision = card.layout_revision
+         AND run.passed IS TRUE
+         AND run.fingerprint = card.preflight_fingerprint
+     ) THEN RAISE EXCEPTION 'A current passing preflight is required.'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.community_card_slots AS slot
+    WHERE slot.community_card_id = card.id
+      AND slot.status NOT IN ('available','unavailable')
+      AND (
+        slot.campaign_id IS NULL OR
+        NOT EXISTS (
+          SELECT 1 FROM public.community_mailer_production_snapshots AS snapshot
+          WHERE snapshot.placement_id = slot.id
+            AND snapshot.layout_revision = card.layout_revision
+            AND snapshot.campaign_id = slot.campaign_id
+        ) OR NOT EXISTS (
+          SELECT 1 FROM public.community_mailer_qr_associations AS association
+          WHERE association.placement_id = slot.id
+            AND association.layout_revision = card.layout_revision
+            AND association.campaign_id = slot.campaign_id
+            AND association.qr_link_id = slot.qr_link_id
+            AND association.active IS TRUE
+        )
+      )
+  ) THEN RAISE EXCEPTION 'Campaign snapshot or QR association is incomplete.'; END IF;
+  SELECT count(*), COALESCE(sum((metadata->>'size')::bigint), 0)
+  INTO required_count, total_bytes
+  FROM storage.objects
+  WHERE bucket_id = 'community-mailer-production'
+    AND name IN (
+      expected_prefix || 'front.pdf',
+      expected_prefix || 'back.pdf',
+      expected_prefix || 'front.png',
+      expected_prefix || 'back.png',
+      expected_prefix || 'production-manifest.json',
+      expected_prefix || 'placement-manifest.json',
+      expected_prefix || 'advertiser-manifest.csv',
+      expected_prefix || 'qr-manifest.json',
+      expected_prefix || 'preflight-report.json',
+      expected_prefix || 'confirmation-record.json'
+    );
+  IF required_count <> 10 OR total_bytes <= 0 THEN
+    RAISE EXCEPTION 'The complete stored Production Candidate package is required.';
+  END IF;
+  INSERT INTO public.community_mailer_exports (
+    community_card_id, preflight_run_id, production_version, layout_revision,
+    fingerprint, manifest, export_kind, checksum, storage_prefix, byte_size,
+    generator_version, created_by
+  ) VALUES (
+    card.id, p_preflight_run_id, card.production_version, card.layout_revision,
+    card.preflight_fingerprint, p_manifest, 'production_candidate', p_checksum,
+    expected_prefix, total_bytes, btrim(p_generator_version), auth.uid()
+  ) RETURNING id INTO export_id;
+  RETURN export_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.certify_admin_community_mailer_candidate(
+  p_export_id uuid,
+  p_metadata jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF NOT public.can_manage_community_mailers(auth.uid()) THEN
+    RAISE EXCEPTION 'Community Mailer administrator access required.'
+      USING ERRCODE = '42501';
+  END IF;
+  UPDATE public.community_mailer_exports SET
+    export_kind = 'printer_certified',
+    printer_certified_at = now(),
+    printer_certified_by = auth.uid(),
+    certification_metadata = COALESCE(p_metadata, '{}'::jsonb)
+  WHERE id = p_export_id
+    AND export_kind = 'production_candidate'
+    AND storage_prefix IS NOT NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Production Candidate not found.'; END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_admin_community_mailer_export(
+  uuid,uuid,jsonb,text,text
+) FROM authenticated;
+REVOKE ALL ON FUNCTION public.get_admin_community_mailer_campaigns(uuid),
+  public.get_admin_community_mailer_production(uuid),
+  public.finalize_admin_community_mailer_candidate(
+    uuid,uuid,text,jsonb,text,text
+  ),
+  public.certify_admin_community_mailer_candidate(uuid,jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_community_mailer_campaigns(uuid),
+  public.get_admin_community_mailer_production(uuid),
+  public.finalize_admin_community_mailer_candidate(
+    uuid,uuid,text,jsonb,text,text
+  ),
+  public.certify_admin_community_mailer_candidate(uuid,jsonb)
+  TO authenticated;
+
+NOTIFY pgrst, 'reload schema';

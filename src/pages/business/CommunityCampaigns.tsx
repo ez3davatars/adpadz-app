@@ -9,6 +9,7 @@ import { formatCommunityCardFormat } from "../../lib/communityCards";
 import {
   type BusinessCommunityCampaign,
   getBusinessCommunityCampaigns,
+  getBusinessCommunityMailerAssignments,
 } from "../../lib/admin/communityMailers";
 
 export default function CommunityCampaigns() {
@@ -17,9 +18,14 @@ export default function CommunityCampaigns() {
     [side, setSide] = useState<"front" | "back">("front"),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
+  const [assignments, setAssignments] = useState<Array<{ placement_id: string; campaign_title: string | null; campaign_status: string | null; placement_locked: boolean; layout_locked: boolean }>>([]);
   useEffect(() => {
     void (async () => {
-      const result = await getBusinessCommunityCampaigns();
+      const [result, assignmentResult] = await Promise.all([
+        getBusinessCommunityCampaigns(),
+        getBusinessCommunityMailerAssignments(),
+      ]);
+      if (!assignmentResult.error) setAssignments((assignmentResult.data || []) as typeof assignments);
       if (result.error) setError(result.error.message);
       else {
         const campaigns = (result.data || []) as BusinessCommunityCampaign[];
@@ -165,7 +171,16 @@ export default function CommunityCampaigns() {
                               className="mt-3 aspect-video w-full rounded-lg bg-white object-contain"
                             />
                           )}
-                          <p className="mt-2 text-xs text-[var(--text-muted)]">
+                          {(() => {
+                            const assignment = assignments.find((item) => item.placement_id === placement.id);
+                            return (
+                              <p className="mt-2 text-xs">
+                                <b>Assigned Campaign:</b> {assignment?.campaign_title || "Not assigned"}
+                                {assignment?.campaign_status ? ` · ${assignment.campaign_status}` : ""}<br />
+                                <b>Placement:</b> {assignment?.layout_locked || assignment?.placement_locked ? "Production locked" : "Editable before production lock"}
+                              </p>
+                            );
+                          })()}                          <p className="mt-2 text-xs text-[var(--text-muted)]">
                             Payment: {placement.payment_status} / Proof:{" "}
                             {placement.proof_status} / Production:{" "}
                             {placement.production_status}

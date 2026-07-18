@@ -13,6 +13,8 @@ type BusinessRecord = {
   email: string | null;
   website: string | null;
   address: string | null;
+  category: string | null;
+  service_area: string | null;
   active: boolean;
 };
 
@@ -24,10 +26,12 @@ type BusinessForm = {
   email: string;
   website: string;
   address: string;
+  category: string;
+  serviceArea: string;
   active: boolean;
 };
 
-const emptyForm: BusinessForm = { name: '', slug: '', description: '', phone: '', email: '', website: '', address: '', active: true };
+const emptyForm: BusinessForm = { name: '', slug: '', description: '', phone: '', email: '', website: '', address: '', category: '', serviceArea: '', active: true };
 
 export default function BizSettings() {
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -73,6 +77,8 @@ export default function BizSettings() {
               email: card.email,
               website: card.website,
               address: card.address,
+              category: null,
+              service_area: null,
               active: card.is_published,
             };
           }
@@ -133,6 +139,8 @@ export default function BizSettings() {
         throw new Error('Business resources changed during this save. Try again to apply the latest state safely.');
       }
       if (saveError || typeof savedId !== 'string') throw new Error(saveError?.message ?? 'Could not save the Business Hub.');
+      const { error: readinessFieldsError } = await supabase.from('businesses').update({ category: form.category.trim() || null, service_area: form.serviceArea.trim() || null }).eq('id', savedId).eq('owner_user_id', ownerId);
+      if (readinessFieldsError) throw new Error(readinessFieldsError.message);
 
       const { data: reloaded, error: reloadError } = await supabase.from('businesses').select('*').eq('id', savedId).single();
       if (reloadError || !reloaded) throw new Error(reloadError?.message ?? 'Could not verify Business Settings.');
@@ -169,6 +177,8 @@ export default function BizSettings() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Phone"><input type="tel" value={form.phone} onChange={event => update('phone', event.target.value)} className="input-field" maxLength={64} /></Field>
               <Field label="Public email"><input type="email" value={form.email} onChange={event => update('email', event.target.value)} className="input-field" maxLength={320} /></Field>
+              <Field label="Business category"><input value={form.category} onChange={event => update('category', event.target.value)} className="input-field" maxLength={120} placeholder="Restaurant, Home Services, Salon…" /></Field>
+              <Field label="Service area"><input value={form.serviceArea} onChange={event => update('serviceArea', event.target.value)} className="input-field" maxLength={240} placeholder="Jacksonville, NC or surrounding counties" /></Field>
               <Field label="Website"><input type="url" value={form.website} onChange={event => update('website', event.target.value)} className="input-field" maxLength={2048} placeholder="https://..." /></Field>
               <Field label="Address"><input value={form.address} onChange={event => update('address', event.target.value)} className="input-field" maxLength={1000} /></Field>
             </div>
@@ -220,6 +230,8 @@ function toForm(record: BusinessRecord): BusinessForm {
     email: record.email || '',
     website: record.website || '',
     address: record.address || '',
+    category: record.category || '',
+    serviceArea: record.service_area || '',
     active: record.active !== false,
   };
 }

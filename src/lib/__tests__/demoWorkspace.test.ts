@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEMO_SAMPLE_DATA_NOTICE,
-  DEMO_WORKSPACE_STORAGE_KEY,
   clearDemoWorkspaceState,
   createInitialDemoWorkspaceState,
   demoWorkspaceReducer,
   deserializeDemoWorkspaceState,
   getDemoConversionRate,
+  getDemoWorkspaceStorageKey,
   loadDemoWorkspaceState,
   saveDemoWorkspaceState,
   serializeDemoWorkspaceState,
@@ -196,10 +196,10 @@ describe('demo workspace session serialization', () => {
 
     expect(loadDemoWorkspaceState(storage)).toEqual(state);
     saveDemoWorkspaceState(changed, storage);
-    expect(storage.values.has(DEMO_WORKSPACE_STORAGE_KEY)).toBe(true);
+    expect(storage.values.has(getDemoWorkspaceStorageKey(state.business.slug))).toBe(true);
     expect(loadDemoWorkspaceState(storage)).toEqual(changed);
     clearDemoWorkspaceState(storage);
-    expect(storage.values.has(DEMO_WORKSPACE_STORAGE_KEY)).toBe(false);
+    expect(storage.values.has(getDemoWorkspaceStorageKey(state.business.slug))).toBe(false);
     expect(loadDemoWorkspaceState(storage)).toEqual(state);
   });
 });
