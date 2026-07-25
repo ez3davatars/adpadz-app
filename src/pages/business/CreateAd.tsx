@@ -416,7 +416,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
           <h1 className="text-2xl font-black">{editing ? 'Edit Campaign' : 'Create Campaign'}</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">Enter the promotion once, then choose every customer experience it should power.</p>
         </div>
-        {editing && campaignId && <AdpadzButton href={`/app/business/campaigns/${campaignId}/content`} variant="secondary">Marketing Package</AdpadzButton>}
+        {editing && campaignId && <div className="flex flex-wrap gap-2"><AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`}>Design Creative</AdpadzButton><AdpadzButton href={`/app/business/campaigns/${campaignId}/content`} variant="secondary">Marketing Package</AdpadzButton></div>}
       </div>
 
       {error && <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-4 text-sm font-bold text-red-100" role="alert">{error}</AdpadzCard>}
@@ -515,7 +515,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
             {format === 'before_after' && <Field label="After image URL" className="mt-4"><input type="url" value={secondaryImageUrl} onChange={event => setSecondaryImageUrl(event.target.value)} className="input-field" placeholder="https://..." /><span className="mt-1 block text-[10px] text-[var(--text-muted)]">The primary asset is used as the before image.</span></Field>}
             <div className="mt-6 flex gap-2"><AdpadzButton type="button" variant="secondary" onClick={() => setStep(1)}>Back</AdpadzButton><AdpadzButton type="button" onClick={nextStep}>Choose outputs</AdpadzButton></div>
           </AdpadzSection>
-          <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
 
@@ -563,7 +563,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
               <AdpadzButton type="button" onClick={() => void saveCampaign()} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {editing ? 'Save Campaign' : 'Create Campaign'}</AdpadzButton>
             </div>
           </AdpadzSection>
-          <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
     </div>
@@ -578,6 +578,9 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   return <div className="flex items-start justify-between gap-4 px-4 py-3 text-sm"><span className="text-[var(--text-muted)]">{label}</span><span className="text-right font-black capitalize">{value}</span></div>;
 }
 
+function CreativeSummary({ campaignId, content, settings }: { campaignId: string; content: CampaignTemplateContent; settings: CampaignTemplateSettings }) {
+  return <AdpadzCard variant="featured" className="p-4"><div className="aspect-square overflow-hidden rounded-2xl" style={{ containerType: 'inline-size' }}><CampaignTemplateRenderer content={content} settings={settings} destination="studio" /></div><div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Creative summary</p><p className="mt-1 text-sm font-black">{CAMPAIGN_TEMPLATES.find(item => item.key === settings.template)?.label}</p><p className="mt-1 text-[10px] text-[var(--text-muted)]">Open the dedicated workspace to refine every destination without duplicating campaign content.</p><AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`} fullWidth className="mt-4">Design Creative</AdpadzButton></div></AdpadzCard>;
+}
 function TemplateStudioPreview({ content, settings, onChange, ready, issues }: { content: CampaignTemplateContent; settings: CampaignTemplateSettings; onChange: (settings: CampaignTemplateSettings) => void; ready: boolean; issues: string[] }) {
   const destinations = [
     { key: 'mailer' as const, label: 'Mailer', ratio: 'aspect-[4/3]' },

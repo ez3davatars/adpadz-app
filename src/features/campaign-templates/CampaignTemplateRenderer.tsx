@@ -2,21 +2,23 @@ import { useEffect, useState, type CSSProperties } from "react";
 import QRCode from "qrcode";
 import { CAMPAIGN_TEMPLATE_REGISTRY, resolveTemplateLayout } from "./templateRegistry";
 import type { CampaignTemplateContent, CampaignTemplateDestination, CampaignTemplateSettings, NormalizedBox } from "./types";
+import type { CreativeSettings } from "./creativeWorkshop";
 
 type Props = {
   content: CampaignTemplateContent;
-  settings: CampaignTemplateSettings;
+  settings: CampaignTemplateSettings | CreativeSettings;
   destination: CampaignTemplateDestination;
   className?: string;
 };
 
 export function CampaignTemplateRenderer({ content, settings, destination, className = "" }: Props) {
+  const creative = settings as Partial<CreativeSettings>;
   const layout = resolveTemplateLayout(settings.template);
   const light = settings.theme === "light";
   const compact = destination === "mailer" || destination === "discovery";
   const rootStyle = {
-    "--campaign-primary": content.primaryColor,
-    "--campaign-accent": content.accentColor,
+    "--campaign-primary": creative.primaryColorOverride || content.primaryColor,
+    "--campaign-accent": creative.accentColorOverride || content.accentColor,
     "--campaign-ink": light ? "#10150f" : "#ffffff",
     "--campaign-surface": light ? "#f7f8f4" : content.primaryColor,
   } as CSSProperties;
@@ -37,12 +39,13 @@ export function CampaignTemplateRenderer({ content, settings, destination, class
             style={{
               objectFit: settings.imageFit,
               objectPosition: `${settings.imagePositionX}% ${settings.imagePositionY}%`,
-              transform: `scale(${settings.imageZoom})`,
+              transform: `scale(${settings.imageZoom}) rotate(${creative.rotation ?? 0}deg)`,
+              filter: `brightness(${creative.brightness ?? 100}%) contrast(${creative.contrast ?? 100}%) saturate(${creative.saturation ?? 100}%) blur(${creative.blur ?? 0}px)`,
             }}
           />
         </div>
       )}
-      <div className={`absolute inset-0 ${light ? "bg-gradient-to-t from-white via-white/55 to-transparent" : "bg-gradient-to-t from-black/90 via-black/30 to-black/5"}`} />
+      {creative.overlayEnabled === undefined && <div className={`absolute inset-0 ${light ? "bg-gradient-to-t from-white via-white/55 to-transparent" : "bg-gradient-to-t from-black/90 via-black/30 to-black/5"}`} />}
       <div className="absolute overflow-hidden" style={boxStyle(layout.logo)}>
         {content.businessLogoUrl
           ? <img src={content.businessLogoUrl} alt={`${content.businessName} logo`} className="h-full w-full object-contain object-left" />

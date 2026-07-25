@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Check, Copy, Download, ExternalLink, ImageOff, Loader2, Mail,
-  MonitorPlay, QrCode, RefreshCcw, Share2, Store, Users,
+  MonitorPlay, QrCode, RefreshCcw, Share2, Sparkles, Store, Users,
 } from 'lucide-react';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzSection } from '../../components/adpadz-ui';
 import CampaignCreativeRenderer from '../../components/campaign-distribution/CampaignCreativeRenderer';
@@ -69,7 +69,7 @@ function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<
           <div>
             <div className="flex flex-wrap items-center gap-2"><AdpadzBadge variant="campaign">Distribution</AdpadzBadge><AdpadzBadge variant="status" className="capitalize">{creative.campaign.status}</AdpadzBadge></div>
             <h1 className="mt-4 text-3xl font-black">{creative.campaign.title}</h1>
-            <p className="mt-3 max-w-2xl text-base text-[var(--text-secondary)]">Your campaign is prepared for every Adpadz destination. One campaign powers every output below.</p>
+            <p className="mt-3 max-w-2xl text-base text-[var(--text-secondary)]">Your campaign is prepared for every Adpadz destination. One campaign powers every output below.</p><AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/creative`} variant="secondary" size="sm" className="mt-4"><Sparkles className="h-4 w-4" /> Open Creative Workshop</AdpadzButton>
           </div>
         </div>
       </AdpadzCard>

@@ -1,8 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const artifactRoot = process.env.PLAYWRIGHT_ARTIFACT_ROOT || 'artifacts/rc1';
+
 export default defineConfig({
   testDir: './tests/e2e',
-  outputDir: 'artifacts/rc1/playwright-results',
+  outputDir: `${artifactRoot}/playwright-results`,
   globalSetup: './tests/e2e/global-setup.ts',
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{arg}{ext}',
   timeout: 45_000,
@@ -12,9 +14,9 @@ export default defineConfig({
   retries: 1,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'artifacts/rc1/playwright-report', open: 'never' }],
-    ['json', { outputFile: 'artifacts/rc1/playwright-report/results.json' }],
-    ['junit', { outputFile: 'artifacts/rc1/playwright-report/junit.xml' }],
+    ['html', { outputFolder: artifactRoot + '/playwright-report', open: 'never' }],
+    ['json', { outputFile: artifactRoot + '/playwright-report/results.json' }],
+    ['junit', { outputFile: artifactRoot + '/playwright-report/junit.xml' }],
   ],
   use: {
     baseURL: 'http://127.0.0.1:5173',

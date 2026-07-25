@@ -141,6 +141,7 @@ test('responsive launch surfaces match visual baselines without horizontal overf
   const ownerSurfaces = [
     ['business-dashboard.png', '/app/business/dashboard', 'Evergreen Outdoor Living Company'],
     ['campaign-studio.png', '/app/business/create-ad', 'Create Campaign'],
+    ['creative-workshop.png', `/app/business/campaigns/${campaignId}/creative`, 'Complete Approved Published Campaign'],
     ['campaign-readiness.png', `/app/business/campaigns/${campaignId}/content`, 'Campaign package.'],
     ['campaign-distribution.png', `/app/business/campaigns/${campaignId}/distribution`, 'Complete Approved Published Campaign'],
     ['community-mailer.png', '/app/business/community-campaigns', 'Community Campaigns'],
@@ -279,4 +280,29 @@ test('Mission Control exposes supported fixture lifecycle states and blocks inva
   await expect(page.getByRole('button', { name: 'Generate Production Candidate' })).toBeDisabled();
   await expect(page.getByText('Historical candidate exists for an older revision.')).toBeVisible();
   expect(failures, `Mission Control browser failures in ${testInfo.project.name}`).toEqual([]);
+});
+test('Creative Workshop preserves destination overrides and saved distribution state', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'State-changing creative save runs once against fixture data.');
+  await signIn(page, ownerA, `/app/business/campaigns/${campaignId}/creative`);
+  const failures = monitorReleasePage(page, testInfo);
+  await expect(page.getByRole('heading', { name: 'Complete Approved Published Campaign' })).toBeVisible();
+  await page.getByRole('button', { name: /Social Media/ }).click();
+  await page.getByRole('button', { name: 'Social Media', exact: true }).click();
+  await page.getByRole('button', { name: /Offer First/ }).click();
+  await page.getByRole('button', { name: 'Overlay' }).click();
+  await page.getByLabel('Opacity').press('ArrowRight');
+  await page.getByRole('button', { name: 'QR', exact: true }).click();
+  const qrOptions = page.getByRole('option');
+  if (await qrOptions.count()) await qrOptions.first().click();
+  await page.getByRole('button', { name: 'Print Safety' }).click();
+  await page.getByLabel('Safe area overlay').check();
+  await page.getByRole('button', { name: 'Save Creative' }).click();
+  await expect(page.getByText('Creative saved.')).toBeVisible();
+  await page.getByRole('button', { name: /Community Mailer/ }).click();
+  await page.getByRole('button', { name: 'Template' }).click();
+  await expect(page.getByRole('button', { name: /Hero Visual/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('link', { name: 'Continue to Distribution' }).click();
+  await expect(page.getByRole('heading', { name: 'Complete Approved Published Campaign' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Creative Workshop' })).toBeVisible();
+  expect(failures, 'Creative Workshop browser failures').toEqual([]);
 });
