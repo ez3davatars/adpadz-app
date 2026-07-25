@@ -5,7 +5,7 @@ export type QRDestinationType = 'url' | 'business_card' | 'campaign';
 
 export type QRCenterFrameShape = 'rounded-rect' | 'circle';
 export type QRRimDecoration = 'none';
-export type QROrnamentStyle = 'none' | 'wave-premium';
+export type QROrnamentStyle = 'none' | 'wave-premium' | 'module-mosaic';
 export type QROuterBackgroundType = 'none' | 'solid' | 'gradient' | 'image' | 'pattern';
 export type QROuterBackgroundFit = 'cover' | 'contain';
 export type QRRimBandBackgroundType = 'solid' | 'image' | 'gradient' | 'pattern';

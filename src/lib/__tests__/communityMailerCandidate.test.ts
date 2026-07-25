@@ -85,7 +85,7 @@ describe("Community Mailer Production Candidate", () => {
       "front.png",
       "back.png",
       "production-manifest.json",
-      "placement-manifest.json",
+      "placement-manifest.csv",
       "advertiser-manifest.csv",
       "qr-manifest.json",
       "preflight-report.json",

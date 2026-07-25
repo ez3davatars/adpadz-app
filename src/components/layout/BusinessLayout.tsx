@@ -212,7 +212,7 @@ export default function BusinessLayout({ session }: { session: Session }) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 lg:ml-60 pt-14 lg:pt-0 min-h-screen">
+      <main className="min-w-0 flex-1 lg:ml-60 pt-14 lg:pt-0 min-h-screen">
         {isDemoAccount && (
           <div className="border-b border-neon/20 bg-neon/[0.065] px-4 py-3 sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center">

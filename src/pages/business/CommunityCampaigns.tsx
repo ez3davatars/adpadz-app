@@ -78,7 +78,7 @@ export default function CommunityCampaigns() {
           </AdpadzCard>
         )
         : selected && mailer && (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {items.map((campaign) => (
                 <button
@@ -125,8 +125,8 @@ export default function CommunityCampaigns() {
                 </Link>
               </div>
             </AdpadzCard>
-            <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="space-y-3">
+            <div className="grid min-w-0 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="min-w-0 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <CommunityMailerSideTabs side={side} onChange={setSide} />
                   <CommunityMailerLegend />

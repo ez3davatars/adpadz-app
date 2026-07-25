@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeftRight, Building2, Check, FileText, Image as ImageIcon, Instagram, Loader2,
-  Mail, Megaphone, MonitorSmartphone, MousePointerClick, Save, Sparkles,
+  Mail, Megaphone, MonitorSmartphone, MousePointerClick, Save, Upload,
   Smartphone, Zap, type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -10,6 +10,19 @@ import { SMART_CARD_CAMPAIGN_SECTIONS, type CampaignOutputRecord, type CampaignR
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzSection } from '../../components/adpadz-ui';
 import { evaluateCampaignReadiness } from '../../lib/campaignReadiness';
 import { CampaignReadinessSummary } from '../../components/campaign-readiness/CampaignReadinessSummary';
+import { uploadSmartCardImage } from '../../lib/cloudflareImages';
+import { clampImagePosition, clampImageZoom, normalizeImageFit, type ImageFitMode } from '../../lib/smartCards';
+import {
+  CAMPAIGN_TEMPLATES,
+  CampaignTemplateRenderer,
+  DEFAULT_TEMPLATE_SETTINGS,
+  evaluateTemplateReadiness,
+  normalizeCampaignContent,
+  normalizeTemplateSettings,
+  type CampaignTemplateContent,
+  type CampaignTemplateKey,
+  type CampaignTemplateSettings,
+} from '../../features/campaign-templates';
 
 type AdType = 'tap_reveal' | 'scratch' | 'before_after';
 type CampaignStatus = 'draft' | 'active' | 'scheduled' | 'expired';
@@ -95,6 +108,13 @@ export default function BizCreateAd() {
   const [endDate, setEndDate] = useState('');
   const [primaryAssetId, setPrimaryAssetId] = useState('');
   const [secondaryImageUrl, setSecondaryImageUrl] = useState('');
+  const [imageFit, setImageFit] = useState<ImageFitMode>('cover');
+  const [imagePositionX, setImagePositionX] = useState(50);
+  const [imagePositionY, setImagePositionY] = useState(50);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [templateSettings, setTemplateSettings] = useState<CampaignTemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [outputs, setOutputs] = useState<Record<OutputType, boolean>>(defaultOutputs);
   const [smartCards, setSmartCards] = useState<SmartCardChoice[]>([]);
   const [assets, setAssets] = useState<AssetChoice[]>([]);
@@ -179,6 +199,12 @@ export default function BizCreateAd() {
     if (typeof interactiveMetadata.format === 'string' && isAdType(interactiveMetadata.format)) setFormat(interactiveMetadata.format);
     if (typeof interactiveMetadata.tone === 'string') setTone(interactiveMetadata.tone);
     if (typeof interactiveMetadata.secondary_image_url === 'string') setSecondaryImageUrl(interactiveMetadata.secondary_image_url);
+    setImageFit(normalizeImageFit(typeof interactiveMetadata.image_fit === 'string' ? interactiveMetadata.image_fit : undefined));
+    setImagePositionX(clampImagePosition(asImageNumber(interactiveMetadata.image_position_x)));
+    setImagePositionY(clampImagePosition(asImageNumber(interactiveMetadata.image_position_y)));
+    setImageZoom(clampImageZoom(asImageNumber(interactiveMetadata.image_zoom)));
+    const savedTemplateMetadata = savedOutputs.find(output => output.metadata?.template_settings)?.metadata?.template_settings;
+    setTemplateSettings(normalizeTemplateSettings(interactiveMetadata.template_settings ?? savedTemplateMetadata));
 
     const cardOutput = savedOutputs.find(output => output.output_type === 'smart_card');
     const cardMetadata = cardOutput?.metadata ?? {};
@@ -189,6 +215,21 @@ export default function BizCreateAd() {
   const selectedAsset = useMemo(() => assets.find(asset => asset.id === primaryAssetId) ?? null, [assets, primaryAssetId]);
   const selectedCard = useMemo(() => smartCards.find(card => card.id === selectedSmartCardId) ?? null, [selectedSmartCardId, smartCards]);
   const previewImage = selectedAsset?.file_url || selectedAsset?.thumbnail_url || selectedAsset?.external_url || selectedCard?.cover_image_url || null;
+  const templateContent = useMemo(() => normalizeCampaignContent({
+    campaign: {
+      id: campaignId || 'new-campaign', owner_id: 'current-owner', title: campaignName,
+      headline, description, offer_title: offerTitle, offer_description: offerDescription,
+      cta_label: ctaLabel, cta_url: ctaUrl, status, start_date: startDate || null,
+      end_date: endDate || null, primary_image_id: primaryAssetId || null,
+    },
+    businessName: businessHub?.name || selectedCard?.business_name,
+    businessLogoUrl: selectedCard?.logo_url,
+    imageUrl: previewImage,
+    destinationUrl: ctaUrl || null,
+    primaryColor: '#14251b',
+    accentColor: '#b6ff00',
+  }), [businessHub?.name, campaignId, campaignName, ctaLabel, ctaUrl, description, endDate, headline, offerDescription, offerTitle, previewImage, primaryAssetId, selectedCard?.business_name, selectedCard?.logo_url, startDate, status]);
+  const templateReadiness = useMemo(() => evaluateTemplateReadiness(templateContent, templateSettings), [templateContent, templateSettings]);
 const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
   const liveReadiness = useMemo(() => evaluateCampaignReadiness({
     campaign: { id: campaignId || 'new-campaign', owner_id: 'current-owner', title: campaignName, headline, description, offer_title: offerTitle, offer_description: offerDescription, cta_label: ctaLabel, cta_url: ctaUrl, status, start_date: startDate || null, end_date: endDate || null, primary_image_id: primaryAssetId || null },
@@ -202,6 +243,60 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
     setOutputs(current => ({ ...current, [type]: !current[type] }));
   }
 
+  async function uploadCampaignImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const uploadCard = (selectedCard?.business_id === businessHub?.id ? selectedCard : null) ?? smartCards.find(card => card.business_id === businessHub?.id);
+    if (!uploadCard) {
+      setError('Create a Business Profile before uploading campaign images. The uploaded image will be stored in Asset Library.');
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadProgress('Preparing image...');
+    setError(null);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw new Error(authError.message);
+      const userId = authData.user?.id;
+      if (!userId || !businessHub) throw new Error('Sign in and finish Business Settings before uploading an image.');
+      const result = await uploadSmartCardImage({
+        file,
+        cardId: uploadCard.id,
+        imageType: 'gallery',
+        onProgress: progress => setUploadProgress(progress.label),
+      });
+      const title = file.name.replace(/\.[^.]+$/, '').trim() || 'Campaign image';
+      const { data: asset, error: assetError } = await supabase.from('business_marketing_assets').insert({
+        business_id: businessHub.id,
+        smart_card_id: uploadCard.id,
+        owner_id: userId,
+        asset_type: 'image',
+        title,
+        file_url: result.imageUrl,
+        thumbnail_url: result.imageUrl,
+        provider: 'cloudflare_images',
+        provider_asset_id: result.imageId,
+        mime_type: file.type,
+        file_size_bytes: file.size,
+        is_active: true,
+      }).select('id,title,asset_type,file_url,external_url,thumbnail_url').single();
+      if (assetError) throw new Error(assetError.message);
+      const uploadedAsset = asset as AssetChoice;
+      setAssets(current => [uploadedAsset, ...current.filter(item => item.id !== uploadedAsset.id)]);
+      setPrimaryAssetId(uploadedAsset.id);
+      setImagePositionX(50);
+      setImagePositionY(50);
+      setImageZoom(1);
+      setUploadProgress('Image ready');
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Could not upload the campaign image.');
+      setUploadProgress('');
+    } finally {
+      setUploadingImage(false);
+    }
+  }
   function nextStep() {
     setError(null);
     if (step === 2 && (!campaignName.trim() || !headline.trim())) {
@@ -292,9 +387,10 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
   }
 
   function buildOutputMetadata(type: OutputType): Record<string, unknown> {
-    if (type === 'interactive_ad') return { format, tone, secondary_image_url: secondaryImageUrl.trim() || null };
-    if (type === 'smart_card') return { smart_card_id: selectedSmartCardId, section: smartCardSection };
-    return { channel: type, prepared_from_campaign: true };
+    if (type === 'interactive_ad') return { format, tone, secondary_image_url: secondaryImageUrl.trim() || null, image_fit: imageFit, image_position_x: imagePositionX, image_position_y: imagePositionY, image_zoom: imageZoom, template_settings: { ...templateSettings, imageFit, imagePositionX, imagePositionY, imageZoom } };
+    const template_settings = { ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom };
+    if (type === 'smart_card') return { smart_card_id: selectedSmartCardId, section: smartCardSection, template_settings };
+    return { channel: type, prepared_from_campaign: true, template_settings };
   }
 
   if (loading) {
@@ -362,7 +458,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
             <Field label="Description" className="mt-4"><textarea value={description} onChange={event => setDescription(event.target.value)} className="input-field resize-y" rows={4} placeholder="Explain why this campaign matters to local customers." maxLength={500} /></Field>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Offer title"><input value={offerTitle} onChange={event => setOfferTitle(event.target.value)} className="input-field" placeholder="20% off your first visit" /></Field>
-              <Field label="Offer details"><input value={offerDescription} onChange={event => setOfferDescription(event.target.value)} className="input-field" placeholder="New customers Â· weekdays only" /></Field>
+              <Field label="Offer details"><input value={offerDescription} onChange={event => setOfferDescription(event.target.value)} className="input-field" placeholder="New customers Ãƒâ€šÃ‚Â· weekdays only" /></Field>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="CTA label"><input value={ctaLabel} onChange={event => setCtaLabel(event.target.value)} className="input-field" /></Field>
@@ -381,7 +477,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
               <Field label="Primary Business Hub asset">
                 <select value={primaryAssetId} onChange={event => setPrimaryAssetId(event.target.value)} className="input-field">
                   <option value="">Use Business Profile cover</option>
-                  {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.title} Â· {asset.asset_type}</option>)}
+                  {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.title} Ãƒâ€šÃ‚Â· {asset.asset_type}</option>)}
                 </select>
               </Field>
               <Field label="Tone">
@@ -390,10 +486,36 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
                 </select>
               </Field>
             </div>
+            <AdpadzCard variant="flat" className="mt-4 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="text-sm font-black">Offer image framing</p><p className="mt-1 text-xs text-[var(--text-muted)]">Upload once to Asset Library, then position and zoom it for this offer.</p></div>
+                <label className={`btn-secondary cursor-pointer px-4 py-2.5 text-sm ${uploadingImage ? 'pointer-events-none opacity-60' : ''}`}>
+                  {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {uploadingImage ? uploadProgress : 'Upload image'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploadingImage} onChange={event => void uploadCampaignImage(event)} />
+                </label>
+              </div>
+              {previewImage && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="mb-2 text-xs font-bold text-[var(--text-secondary)]">Image fit</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setImageFit('cover')} className={`rounded-xl border px-3 py-2 text-xs font-bold ${imageFit === 'cover' ? 'border-neon bg-neon/10 text-neon' : 'border-[var(--border-default)] text-[var(--text-secondary)]'}`}>Fill frame</button>
+                      <button type="button" onClick={() => { setImageFit('contain'); setImageZoom(1); }} className={`rounded-xl border px-3 py-2 text-xs font-bold ${imageFit === 'contain' ? 'border-neon bg-neon/10 text-neon' : 'border-[var(--border-default)] text-[var(--text-secondary)]'}`}>Show entire image</button>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <RangeControl label="Horizontal position" value={imagePositionX} display={`${Math.round(imagePositionX)}%`} min={0} max={100} step={1} onChange={value => setImagePositionX(clampImagePosition(value))} />
+                    <RangeControl label="Vertical position" value={imagePositionY} display={`${Math.round(imagePositionY)}%`} min={0} max={100} step={1} onChange={value => setImagePositionY(clampImagePosition(value))} />
+                    <RangeControl label="Zoom" value={imageZoom} display={`${imageZoom.toFixed(2)}x`} min={1} max={3} step={0.05} onChange={value => setImageZoom(clampImageZoom(value))} />
+                    <button type="button" className="btn-secondary px-3 py-2 text-xs md:col-span-3" onClick={() => { setImageFit('cover'); setImagePositionX(50); setImagePositionY(50); setImageZoom(1); }}>Reset image framing</button>
+                  </div>
+                </div>
+              )}
+            </AdpadzCard>
             {format === 'before_after' && <Field label="After image URL" className="mt-4"><input type="url" value={secondaryImageUrl} onChange={event => setSecondaryImageUrl(event.target.value)} className="input-field" placeholder="https://..." /><span className="mt-1 block text-[10px] text-[var(--text-muted)]">The primary asset is used as the before image.</span></Field>}
             <div className="mt-6 flex gap-2"><AdpadzButton type="button" variant="secondary" onClick={() => setStep(1)}>Back</AdpadzButton><AdpadzButton type="button" onClick={nextStep}>Choose outputs</AdpadzButton></div>
           </AdpadzSection>
-          <PhonePreview headline={headline} description={description} offer={offerTitle} cta={ctaLabel} image={previewImage} format={format} />
+          <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />
         </div>
       )}
 
@@ -414,7 +536,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
                 <Field label="Business Profile">
                   <select value={selectedSmartCardId} onChange={event => setSelectedSmartCardId(event.target.value)} className="input-field">
                     <option value="">Choose a Business Profile</option>
-                    {smartCards.map(card => <option key={card.id} value={card.id}>{card.business_name} Â· {card.is_published ? 'Published' : 'Draft'}</option>)}
+                    {smartCards.map(card => <option key={card.id} value={card.id}>{card.business_name} Ãƒâ€šÃ‚Â· {card.is_published ? 'Published' : 'Draft'}</option>)}
                   </select>
                 </Field>
                 <Field label="Profile section">
@@ -441,7 +563,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
               <AdpadzButton type="button" onClick={() => void saveCampaign()} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {editing ? 'Save Campaign' : 'Create Campaign'}</AdpadzButton>
             </div>
           </AdpadzSection>
-          <PhonePreview headline={headline} description={description} offer={offerTitle} cta={ctaLabel} image={previewImage} format={format} />
+          <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />
         </div>
       )}
     </div>
@@ -456,27 +578,34 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   return <div className="flex items-start justify-between gap-4 px-4 py-3 text-sm"><span className="text-[var(--text-muted)]">{label}</span><span className="text-right font-black capitalize">{value}</span></div>;
 }
 
-function PhonePreview({ headline, description, offer, cta, image, format }: { headline: string; description: string; offer: string; cta: string; image: string | null; format: AdType }) {
-  return (
-    <div className="flex justify-center">
-      <div className="w-full max-w-[310px] overflow-hidden rounded-[2.5rem] border-[3px] border-[var(--border-default)] bg-[var(--bg-surface)] p-2">
-        <div className="relative aspect-[3/5] overflow-hidden rounded-[2rem] bg-black">
-          {image ? <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-65" /> : <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(182,255,0,0.25),transparent_38%),linear-gradient(150deg,#1d221c,#050605)]" />}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/15" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-            <AdpadzBadge variant="campaign">{formats.find(item => item.value === format)?.label}</AdpadzBadge>
-            <Sparkles className="mt-6 h-12 w-12 text-neon" />
-            <h2 className="mt-4 text-xl font-black">{headline || 'Your campaign headline'}</h2>
-            <p className="mt-2 line-clamp-4 text-xs leading-relaxed text-neutral-300">{description || 'Your campaign description will appear here.'}</p>
-            {offer && <p className="mt-4 rounded-full border border-neon/30 bg-neon/10 px-4 py-2 text-xs font-black text-neon">{offer}</p>}
-            <span className="mt-4 rounded-full bg-neon px-5 py-2 text-xs font-black text-black">{cta || 'Learn More'}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+function TemplateStudioPreview({ content, settings, onChange, ready, issues }: { content: CampaignTemplateContent; settings: CampaignTemplateSettings; onChange: (settings: CampaignTemplateSettings) => void; ready: boolean; issues: string[] }) {
+  const destinations = [
+    { key: 'mailer' as const, label: 'Mailer', ratio: 'aspect-[4/3]' },
+    { key: 'discovery' as const, label: 'Discovery', ratio: 'aspect-square' },
+    { key: 'qr' as const, label: 'QR landing', ratio: 'aspect-[3/4]' },
+    { key: 'social-square' as const, label: 'Social', ratio: 'aspect-square' },
+  ];
+  const update = (patch: Partial<CampaignTemplateSettings>) => onChange({ ...settings, ...patch });
+  return <div className="space-y-4">
+    <AdpadzCard variant="featured" className="p-4">
+      <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black">Live destination previews</p><p className="text-[10px] text-[var(--text-muted)]">Unsaved campaign state Â· one canonical template</p></div><AdpadzBadge variant={ready ? 'verified' : 'status'}>{ready ? 'Ready' : 'Needs attention'}</AdpadzBadge></div>
+      <div className="mt-4 grid grid-cols-2 gap-3">{destinations.map(destination => <div key={destination.key}><p className="mb-1 text-[10px] font-bold text-[var(--text-muted)]">{destination.label}</p><div className={`${destination.ratio} container-type-inline-size overflow-hidden rounded-xl border border-white/10`} style={{ containerType: 'inline-size' }}><CampaignTemplateRenderer content={content} settings={settings} destination={destination.key} /></div></div>)}</div>
+      {issues.length > 0 && <ul className="mt-3 space-y-1 text-[10px] text-amber-200">{issues.map(message => <li key={message}>â€¢ {message}</li>)}</ul>}
+    </AdpadzCard>
+    <AdpadzCard variant="flat" className="space-y-4 p-4">
+      <div><p className="mb-2 text-xs font-black">Template family</p><div className="grid gap-2">{CAMPAIGN_TEMPLATES.map(template => <button key={template.key} type="button" onClick={() => update({ template: template.key as CampaignTemplateKey })} aria-pressed={settings.template === template.key} className={`rounded-xl border p-3 text-left ${settings.template === template.key ? 'border-neon bg-neon/10' : 'border-white/10'}`}><span className="block text-xs font-black">{template.label}</span><span className="mt-1 block text-[10px] text-[var(--text-muted)]">{template.description}</span></button>)}</div></div>
+      <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => update({ theme: 'dark' })} className={`rounded-xl border p-2 text-xs font-bold ${settings.theme === 'dark' ? 'border-neon text-neon' : 'border-white/10'}`}>Dark</button><button type="button" onClick={() => update({ theme: 'light' })} className={`rounded-xl border p-2 text-xs font-bold ${settings.theme === 'light' ? 'border-neon text-neon' : 'border-white/10'}`}>Light</button></div>
+      <label className="flex items-center justify-between gap-3 text-xs font-bold"><span>Show QR code</span><input type="checkbox" checked={settings.showQr} onChange={event => update({ showQr: event.target.checked })} className="h-5 w-5 accent-[var(--neon)]" /></label>
+      <label className="flex items-center justify-between gap-3 text-xs font-bold"><span>Show expiration</span><input type="checkbox" checked={settings.showExpiration} onChange={event => update({ showExpiration: event.target.checked })} className="h-5 w-5 accent-[var(--neon)]" /></label>
+    </AdpadzCard>
+  </div>;
 }
-
+function RangeControl({ label, value, display, min, max, step, onChange }: { label: string; value: number; display: string; min: number; max: number; step: number; onChange: (value: number) => void }) {
+  return <label className="block"><span className="mb-2 flex justify-between gap-2 text-xs font-bold text-[var(--text-secondary)]"><span>{label}</span><span className="text-[var(--text-muted)]">{display}</span></span><input type="range" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.target.value))} className="w-full accent-[var(--brand-primary)]" /></label>;
+}
+function asImageNumber(value: unknown): number | string | undefined {
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined;
+}
 function normalizeOptionalUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;

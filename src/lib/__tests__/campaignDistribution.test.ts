@@ -21,7 +21,7 @@ describe('campaign distribution', () => {
     expect(SOCIAL_FORMATS.map(({ width, height }) => [width, height])).toEqual([[1080, 1080], [1080, 1350], [1200, 628], [1080, 1920]]);
   });
 
-  it('limits launch templates to three', () => expect(SOCIAL_TEMPLATES).toHaveLength(3));
+  it('exposes the four canonical template families', () => expect(SOCIAL_TEMPLATES).toHaveLength(4));
 
   it('builds a modest deterministic hashtag list', () => {
     expect(buildSuggestedHashtags(creative)).toEqual(['#SupportLocal', '#JacksonvilleNC', '#LocalDining', '#HarborHearth', '#Adpadz']);
@@ -40,16 +40,16 @@ describe('campaign distribution', () => {
 
   it('reports missing image and message', () => {
     const incomplete = { ...creative, campaignImageUrl: null, campaign: { ...creative.campaign, headline: null, offer_title: null } };
-    expect(evaluateDistributionReadiness(incomplete, { template: 'offer', showQr: false }).issues.map(issue => issue.field)).toEqual(['headline', 'hero_image']);
+    expect(evaluateDistributionReadiness(incomplete, { template: 'offer-first', showQr: false }).issues.map(issue => issue.field)).toEqual(['headline', 'hero_image']);
   });
 
   it('reports a QR destination only when QR is enabled', () => {
     const withoutDestination = { ...creative, campaignUrl: null };
-    expect(evaluateDistributionReadiness(withoutDestination, { template: 'offer', showQr: false }).ready).toBe(true);
-    expect(evaluateDistributionReadiness(withoutDestination, { template: 'offer', showQr: true }).issues[0].field).toBe('qr_destination');
+    expect(evaluateDistributionReadiness(withoutDestination, { template: 'offer-first', showQr: false }).ready).toBe(true);
+    expect(evaluateDistributionReadiness(withoutDestination, { template: 'offer-first', showQr: true }).issues[0].field).toBe('qr_destination');
   });
 
   it('requires a logo for Brand Focus', () => {
-    expect(evaluateDistributionReadiness({ ...creative, businessLogoUrl: null }, { template: 'brand', showQr: false }).issues[0].field).toBe('logo');
+    expect(evaluateDistributionReadiness({ ...creative, businessLogoUrl: null }, { template: 'brand-focus', showQr: false }).issues[0].field).toBe('logo');
   });
 });

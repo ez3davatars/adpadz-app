@@ -15,6 +15,7 @@ import { copyTextToClipboard } from '../../lib/clipboard';
 import { exportSocialCreative } from '../../lib/socialCreativeExport';
 import { supabase } from '../../lib/supabase';
 import { evaluateCampaignReadiness, type CampaignReadinessResult } from '../../lib/campaignReadiness';
+import { normalizeTemplateSettings } from '../../features/campaign-templates';
 
 type State = {
   creative: CampaignCreativeData | null;
@@ -42,7 +43,7 @@ export default function CampaignDistribution() {
   if (state.loading) return <p className="flex items-center rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-4 w-4 animate-spin text-neon" /> Loading campaign distribution...</p>;
   if (state.error || !state.creative) return <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-5 text-sm text-red-100" role="alert">{state.error || 'Campaign not found.'}</AdpadzCard>;
   return social
-    ? <SocialDistributionWorkspace creative={state.creative} />
+    ? <SocialDistributionWorkspace creative={state.creative} output={state.outputs.find(item => item.output_type === 'interactive_ad')} />
     : <DistributionOverview creative={state.creative} outputs={state.outputs} smartCard={state.smartCard} readiness={state.readiness} />;
 }
 
@@ -72,7 +73,7 @@ function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<
           </div>
         </div>
       </AdpadzCard>
-      <AdpadzSection eyebrow="One campaign Â· many destinations" title="Where this campaign can go" description="Each destination reads the same approved campaign and Business Hub information.">
+      <AdpadzSection eyebrow="One campaign Ã‚Â· many destinations" title="Where this campaign can go" description="Each destination reads the same approved campaign and Business Hub information.">
         <div className="grid gap-4 md:grid-cols-2">
           {destinations.map(destination => (
             <AdpadzCard key={destination.key} as="article" variant={destination.primary ? 'featured' : 'flat'} className={`p-5 ${destination.key === 'tv' ? 'opacity-70' : ''}`}>
@@ -92,11 +93,12 @@ function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<
   );
 }
 
-function SocialDistributionWorkspace({ creative }: { creative: CampaignCreativeData }) {
+function SocialDistributionWorkspace({ creative, output }: { creative: CampaignCreativeData; output?: CampaignOutputRecord }) {
+  const savedTemplateSettings = normalizeTemplateSettings(output?.metadata?.template_settings);
   const [format, setFormat] = useState<SocialFormatKey>('square');
-  const [template, setTemplate] = useState<SocialTemplateKey>('offer');
-  const [showQr, setShowQr] = useState(Boolean(creative.campaignUrl));
-  const [showExpiration, setShowExpiration] = useState(Boolean(creative.campaign.end_date));
+  const [template, setTemplate] = useState<SocialTemplateKey>(savedTemplateSettings.template);
+  const [showQr, setShowQr] = useState(savedTemplateSettings.showQr || Boolean(creative.campaignUrl));
+  const [showExpiration, setShowExpiration] = useState(savedTemplateSettings.showExpiration && Boolean(creative.campaign.end_date));
   const suggestedCaption = useMemo(() => buildSuggestedCaption(creative), [creative]);
   const [caption, setCaption] = useState(suggestedCaption);
   const [message, setMessage] = useState('');
@@ -120,7 +122,7 @@ function SocialDistributionWorkspace({ creative }: { creative: CampaignCreativeD
     setMessage('');
     try {
       await exportSocialCreative(svgRef.current, format, creative.businessName, creative.campaign.title);
-      setMessage(`${preset.width} Ã— ${preset.height} PNG downloaded.`);
+      setMessage(`${preset.width} Ãƒâ€” ${preset.height} PNG downloaded.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not export the image.');
     } finally {
@@ -132,7 +134,7 @@ function SocialDistributionWorkspace({ creative }: { creative: CampaignCreativeD
     <div className="space-y-6">
       <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/distribution`} variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Distribution</AdpadzButton>
       <div>
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Social Media Â· Manual posting</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Social Media Ã‚Â· Manual posting</p>
         <h1 className="mt-1 text-2xl font-black">{creative.campaign.title}</h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">Choose a destination-ready layout, download the image, then copy the editable caption into the social account you already use.</p>
       </div>
@@ -140,7 +142,7 @@ function SocialDistributionWorkspace({ creative }: { creative: CampaignCreativeD
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
         <section aria-label="Creative preview" className="order-1 xl:sticky xl:top-6 xl:self-start">
           <AdpadzCard variant="featured" className="p-3 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-3 px-1"><div><p className="text-xs font-black">Live preview</p><p className="text-[10px] text-[var(--text-muted)]">{preset.width} Ã— {preset.height} PNG</p></div><AdpadzBadge variant={readiness.ready ? 'verified' : 'status'}>{readiness.ready ? 'Ready' : 'Needs attention'}</AdpadzBadge></div>
+            <div className="mb-3 flex items-center justify-between gap-3 px-1"><div><p className="text-xs font-black">Live preview</p><p className="text-[10px] text-[var(--text-muted)]">{preset.width} Ãƒâ€” {preset.height} PNG</p></div><AdpadzBadge variant={readiness.ready ? 'verified' : 'status'}>{readiness.ready ? 'Ready' : 'Needs attention'}</AdpadzBadge></div>
             <div className="mx-auto flex max-h-[70vh] justify-center overflow-hidden rounded-2xl bg-black/30">
               <CampaignCreativeRenderer ref={svgRef} creative={creative} format={format} template={template} showQr={showQr} showExpiration={showExpiration} className="h-auto max-h-[70vh] w-auto max-w-full" />
             </div>
@@ -150,7 +152,7 @@ function SocialDistributionWorkspace({ creative }: { creative: CampaignCreativeD
         <div className="order-2 space-y-5">
           <Selector title="Format">
             <div className="flex gap-2 overflow-x-auto pb-2 xl:grid xl:grid-cols-2">
-              {SOCIAL_FORMATS.map(option => <SelectionButton key={option.key} selected={format === option.key} onClick={() => setFormat(option.key)} title={option.label} detail={`${option.width} Ã— ${option.height}`} />)}
+              {SOCIAL_FORMATS.map(option => <SelectionButton key={option.key} selected={format === option.key} onClick={() => setFormat(option.key)} title={option.label} detail={`${option.width} Ãƒâ€” ${option.height}`} />)}
             </div>
           </Selector>
           <Selector title="Template">

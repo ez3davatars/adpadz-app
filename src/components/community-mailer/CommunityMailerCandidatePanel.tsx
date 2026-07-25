@@ -134,6 +134,7 @@ export default function CommunityMailerCandidatePanel(
             qrLinkId: placement.qr_link_id || "",
             qrDestination: String(qr.destination_url || ""),
             snapshotFingerprint: production.fingerprint,
+            templateSettings: snapshot.template_settings && typeof snapshot.template_settings === 'object' ? snapshot.template_settings as Record<string, unknown> : null,
           };
         }),
       };
@@ -197,7 +198,7 @@ export default function CommunityMailerCandidatePanel(
         onClick={() => void generate()}
       >
         {state === "generating" && <Loader2 className="h-4 w-4 animate-spin" />}
-        {current ? "Candidate current" : state === "generating" ? "Generating…" : "Generate Production Candidate"}
+        {current ? "Candidate current" : state === "generating" ? "Generatingâ€¦" : "Generate Production Candidate"}
       </AdpadzButton>
       {current && (
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -218,7 +219,7 @@ export default function CommunityMailerCandidatePanel(
         <details className="mt-4 text-xs">
           <summary className="cursor-pointer font-black">Export history ({exports.length})</summary>
           <div className="mt-2 space-y-1 text-[var(--text-muted)]">
-            {exports.map((item) => <p key={item.id}>Revision {item.layout_revision} · {item.export_kind.replace("_", " ")} · {new Date(item.created_at).toLocaleString()}</p>)}
+            {exports.map((item) => <p key={item.id}>Revision {item.layout_revision} Â· {item.export_kind.replace("_", " ")} Â· {new Date(item.created_at).toLocaleString()}</p>)}
           </div>
         </details>
       )}

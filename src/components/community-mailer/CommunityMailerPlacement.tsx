@@ -1,5 +1,6 @@
 import type { KeyboardEvent, PointerEvent } from "react";
 import { Lock } from "lucide-react";
+import { CampaignTemplateRenderer, normalizeCampaignContent, normalizeTemplateSettings } from "../../features/campaign-templates";
 import type {
   CommunityMailerMode,
   LayoutPlacement,
@@ -95,11 +96,16 @@ export default function CommunityMailerPlacement(
     >
       {creative
         ? (
-          <img
-            src={creative}
-            alt=""
-            className="h-full w-full bg-white object-contain"
-          />
+          placement.campaign_id ? <CampaignTemplateRenderer
+            destination="mailer"
+            content={normalizeCampaignContent({
+              campaign: { id: placement.campaign_id, owner_id: placement.buyer_user_id || 'mailer', title: placement.offer_text || placement.business_name || placement.label, headline: placement.offer_text || placement.label, offer_title: placement.offer_text, status: 'active' },
+              businessName: placement.business_name || placement.advertiser_name,
+              imageUrl: creative,
+              destinationUrl: placement.qr_destination_url,
+            })}
+            settings={normalizeTemplateSettings({ template: placement.is_featured ? 'featured-sponsor' : 'hero-visual', showQr: Boolean(placement.qr_destination_url), showExpiration: false })}
+          /> : <img src={creative} alt="" className="h-full w-full bg-white object-contain" />
         )
         : (
           <span className="flex h-full flex-col items-center justify-center p-2 text-center">

@@ -26,6 +26,7 @@ async function fillSignIn(page: Page) {
 }
 
 test.describe('authentication request discipline', () => {
+  test.beforeEach(({ baseURL }, testInfo) => { void baseURL; test.skip(testInfo.project.name !== 'desktop', 'Authentication request discipline is viewport independent.'); });
   test('one click produces one request and a rerender does not resubmit', async ({ page }) => {
     const requestCount = await mockPasswordAuth(page);
     await fillSignIn(page);
@@ -67,12 +68,12 @@ test.describe('authentication request discipline', () => {
     page.on('request', request => {
       if (request.url().includes('/auth/v1/signup')) signupRequests.push(request.url());
     });
-    await page.route('**/auth/v1/signup', async route => {
+    await page.route('**/auth/v1/signup**', async route => {
       await new Promise(resolve => setTimeout(resolve, 75));
       await route.fulfill({
         status: 422,
         contentType: 'application/json',
-        body: JSON.stringify({ code: 'email_exists', message: 'A user with this email address has already been registered' }),
+        body: JSON.stringify({ code: 'user_already_exists', msg: 'User already registered' }),
       });
     });
     await page.goto('/auth');

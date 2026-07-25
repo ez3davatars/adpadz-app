@@ -196,19 +196,93 @@ function ReferenceOrnamentShapes({ mainColor, accentColor, shadowColor }: Premiu
   );
 }
 
+type QrContinuationOrnamentProps = {
+  color: string;
+  matrixSize: number;
+  moduleRadius: number;
+  moduleSize: number;
+  qrStart: number;
+  quietZone: number;
+};
+
+function QrContinuationOrnaments({ color, matrixSize, moduleRadius, moduleSize, qrStart, quietZone }: QrContinuationOrnamentProps) {
+  const moduleCenter = (row: number, column: number) => ({
+    cx: qrStart + (column + quietZone + 0.5) * moduleSize,
+    cy: qrStart + (row + quietZone + 0.5) * moduleSize,
+  });
+  const shouldRender = (row: number, column: number) => {
+    const hash = Math.abs((row * 73) ^ (column * 151) ^ ((row + column) * 37));
+    return hash % 100 < 49;
+  };
+  const modules: Array<{ key: string; row: number; column: number }> = [];
+
+  // Fill the full space between the encoded matrix and inner circular boundary.
+  // The ornament clip keeps these continuation modules out of the text ring.
+  for (let offset = 2; offset <= 10; offset += 1) {
+    for (let index = 0; index < matrixSize; index += 1) {
+      const topRow = -offset;
+      const bottomRow = matrixSize - 1 + offset;
+      const leftColumn = -offset;
+      const rightColumn = matrixSize - 1 + offset;
+
+      if (shouldRender(topRow, index)) modules.push({ key: `top-${offset}-${index}`, row: topRow, column: index });
+      if (shouldRender(bottomRow, index)) modules.push({ key: `bottom-${offset}-${index}`, row: bottomRow, column: index });
+      if (shouldRender(index, leftColumn)) modules.push({ key: `left-${offset}-${index}`, row: index, column: leftColumn });
+      if (shouldRender(index, rightColumn)) modules.push({ key: `right-${offset}-${index}`, row: index, column: rightColumn });
+    }
+  }
+
+  // Fill the diagonal pockets between the horizontal and vertical bands.
+  // The shared circle clip trims these grid-aligned modules to the badge edge.
+  for (let rowOffset = 2; rowOffset <= 10; rowOffset += 1) {
+    for (let columnOffset = 2; columnOffset <= 10; columnOffset += 1) {
+      const topRow = -rowOffset;
+      const bottomRow = matrixSize - 1 + rowOffset;
+      const leftColumn = -columnOffset;
+      const rightColumn = matrixSize - 1 + columnOffset;
+      const cornerCandidates = [
+        { key: `top-left-${rowOffset}-${columnOffset}`, row: topRow, column: leftColumn },
+        { key: `top-right-${rowOffset}-${columnOffset}`, row: topRow, column: rightColumn },
+        { key: `bottom-left-${rowOffset}-${columnOffset}`, row: bottomRow, column: leftColumn },
+        { key: `bottom-right-${rowOffset}-${columnOffset}`, row: bottomRow, column: rightColumn },
+      ];
+
+      for (const candidate of cornerCandidates) {
+        if (shouldRender(candidate.row, candidate.column)) modules.push(candidate);
+      }
+    }
+  }
+  return (
+    <g pointerEvents="none">
+      {modules.map(module => {
+        const { cx, cy } = moduleCenter(module.row, module.column);
+        return <circle key={module.key} cx={cx} cy={cy} r={moduleRadius} fill={color} />;
+      })}
+    </g>
+  );
+}
 type PremiumOrnamentLayerProps = PremiumWaveOrnamentProps & {
   style: QROrnamentStyle;
   opacity: number;
+  qrColor: string;
+  matrixSize: number;
+  moduleRadius: number;
+  moduleSize: number;
+  qrStart: number;
+  quietZone: number;
 };
 
-function PremiumOrnamentLayer({ style, opacity, mainColor, accentColor, shadowColor }: PremiumOrnamentLayerProps) {
-  if (style !== 'wave-premium' || opacity <= 0) return null;
+function PremiumOrnamentLayer({ style, opacity, mainColor, accentColor, shadowColor, qrColor, matrixSize, moduleRadius, moduleSize, qrStart, quietZone }: PremiumOrnamentLayerProps) {
+  if (style === 'none' || opacity <= 0) return null;
 
   const clampedOpacity = Math.max(0, Math.min(opacity, 1));
+  const ornament = style === 'module-mosaic'
+    ? <QrContinuationOrnaments color={qrColor} matrixSize={matrixSize} moduleRadius={moduleRadius} moduleSize={moduleSize} qrStart={qrStart} quietZone={quietZone} />
+    : <ReferenceOrnamentShapes mainColor={mainColor} accentColor={accentColor} shadowColor={shadowColor} />;
 
   return (
     <g opacity={clampedOpacity} pointerEvents="none">
-      <ReferenceOrnamentShapes mainColor={mainColor} accentColor={accentColor} shadowColor={shadowColor} />
+      {ornament}
     </g>
   );
 }
@@ -548,6 +622,12 @@ const CircularPadQR = forwardRef<SVGSVGElement, CircularPadQRProps>(function Cir
               accentColor={ornamentAccentColor}
               shadowColor={ornamentShadowColor}
               opacity={ornamentOpacity}
+              qrColor={foregroundColor}
+              matrixSize={matrixSize}
+              moduleRadius={moduleRadius}
+              moduleSize={moduleSize}
+              qrStart={qrStart}
+              quietZone={quietZone}
             />
           </g>
 

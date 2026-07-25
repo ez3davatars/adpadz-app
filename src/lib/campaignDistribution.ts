@@ -9,9 +9,10 @@ export const SOCIAL_FORMATS = [
 ] as const;
 
 export const SOCIAL_TEMPLATES = [
-  { key: 'offer', label: 'Offer Focus', description: 'Makes the offer the strongest element.' },
-  { key: 'visual', label: 'Visual Focus', description: 'Gives the campaign image center stage.' },
-  { key: 'brand', label: 'Brand Focus', description: 'Leads with the business identity.' },
+  { key: 'hero-visual', label: 'Hero Visual', description: 'Gives the campaign image center stage.' },
+  { key: 'offer-first', label: 'Offer First', description: 'Makes the offer the strongest element.' },
+  { key: 'brand-focus', label: 'Brand Focus', description: 'Leads with the business identity.' },
+  { key: 'featured-sponsor', label: 'Featured Sponsor', description: 'A premium layout for high-visibility placements.' },
 ] as const;
 
 export type SocialFormatKey = (typeof SOCIAL_FORMATS)[number]['key'];
@@ -53,11 +54,11 @@ export function evaluateDistributionReadiness(
     campaignImageUrl: creative.campaignImageUrl,
     business: { name: creative.businessName, logoUrl: creative.businessLogoUrl, category: creative.category, location: creative.city, website: creative.website, phone: creative.phone, profilePublished: true },
     qr: creative.campaignUrl ? { exists: true, valid: true, publishable: true, publicRouteResolves: true } : null,
-    social: { templateRequiresLogo: options.template === 'brand', qrEnabled: options.showQr },
+    social: { templateRequiresLogo: options.template === 'brand-focus', qrEnabled: options.showQr },
   });
-  const relevant = [...result.blockers, ...result.warnings].filter(issue => ['business_name', 'headline', 'primary_image', 'cta_label', 'cta_destination'].includes(issue.field ?? '') || issue.field === 'social' && (options.template === 'brand' && !creative.businessLogoUrl || options.showQr && !creative.campaignUrl));
+  const relevant = [...result.blockers, ...result.warnings].filter(issue => ['business_name', 'headline', 'primary_image', 'cta_label', 'cta_destination'].includes(issue.field ?? '') || issue.field === 'social' && (options.template === 'brand-focus' && !creative.businessLogoUrl || options.showQr && !creative.campaignUrl));
   const issues = relevant.map<ReadinessIssue>(issue => {
-    const brandLogo = issue.field === 'social' && options.template === 'brand' && !creative.businessLogoUrl;
+    const brandLogo = issue.field === 'social' && options.template === 'brand-focus' && !creative.businessLogoUrl;
     const qrDestination = issue.field === 'social' && options.showQr && !creative.campaignUrl;
     return {
       field: issue.field === 'primary_image' ? 'hero_image' : issue.field === 'cta_label' || issue.field === 'cta_destination' ? 'cta' : brandLogo ? 'logo' : qrDestination ? 'qr_destination' : issue.field as ReadinessIssue['field'],
@@ -100,7 +101,7 @@ export function buildSocialFilename(businessName: string, campaignName: string, 
 }
 
 function slugify(value: string): string {
-  return value.toLowerCase().trim().replace(/['â€™]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
+  return value.toLowerCase().trim().replace(/['Ã¢â‚¬â„¢]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
 }
 
 function formatCaptionDate(value: string): string {

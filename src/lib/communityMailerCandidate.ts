@@ -28,6 +28,7 @@ export type CandidatePlacement = {
   qrForegroundColor?: string | null;
   qrBackgroundColor?: string | null;
   snapshotFingerprint: string;
+  templateSettings?: Record<string, unknown> | null;
 };
 
 export type CandidateInput = {
@@ -241,7 +242,7 @@ async function composePdf(
     }
   }
   page.drawText(
-    `PRODUCTION CANDIDATE · NOT PRINTER CERTIFIED · revision ${input.layoutRevision}`,
+    `PRODUCTION CANDIDATE Â· NOT PRINTER CERTIFIED Â· revision ${input.layoutRevision}`,
     { x: 8, y: 3, size: 5, font, color: rgb(0.35, 0.35, 0.35) },
   );
   return document.save({ useObjectStreams: false });
@@ -269,21 +270,31 @@ export async function generateCommunityMailerCandidate(
     preflightFingerprint: input.preflightFingerprint,
     geometry: geometryForMailer(input.format),
     classification: "Production Candidate",
+    templateContractVersion: 1,
+    placements: input.placements.map(placement => ({
+      placementId: placement.id,
+      campaignId: placement.campaignId,
+      snapshotFingerprint: placement.snapshotFingerprint,
+      templateSettings: placement.templateSettings || null,
+    })),
     printerCertified: false,
     caveats: [
       "Not printer certified.",
       "Printer must confirm embedded fonts, color conversion, postal compliance, and final imposition.",
     ],
   };
-  const placementManifest = input.placements.map((placement) => ({
-    placementId: placement.id,
-    slotKey: placement.slotKey,
-    side: placement.side,
-    campaignId: placement.campaignId,
-    businessId: placement.businessId,
-    creativeAssetId: placement.creativeAssetId,
-    snapshotFingerprint: placement.snapshotFingerprint,
-  }));
+  const placementCsv = [
+    ["placement_id", "slot_key", "side", "campaign_id", "business_id", "creative_asset_id", "snapshot_fingerprint"],
+    ...input.placements.map((placement) => [
+      placement.id,
+      placement.slotKey,
+      placement.side,
+      placement.campaignId,
+      placement.businessId,
+      placement.creativeAssetId,
+      placement.snapshotFingerprint,
+    ]),
+  ].map((row) => row.map(csvCell).join(",")).join("\r\n");
   const qrManifest = input.placements.map((placement) => ({
     placementId: placement.id,
     slotKey: placement.slotKey,
@@ -321,8 +332,7 @@ export async function generateCommunityMailerCandidate(
       await dependencies.renderPreview(input, "back")],
     ["production-manifest.json", "application/json",
       encoder.encode(JSON.stringify(manifest, null, 2))],
-    ["placement-manifest.json", "application/json",
-      encoder.encode(JSON.stringify(placementManifest, null, 2))],
+    ["placement-manifest.csv", "text/csv", encoder.encode(placementCsv)],
     ["advertiser-manifest.csv", "text/csv", encoder.encode(advertiserCsv)],
     ["qr-manifest.json", "application/json",
       encoder.encode(JSON.stringify(qrManifest, null, 2))],

@@ -14,6 +14,8 @@ import {
   type PublicCampaignExperience,
 } from '../../lib/campaigns';
 import { copyTextToClipboard } from '../../lib/clipboard';
+import { getImageDisplayStyle, normalizeImageFit } from '../../lib/smartCards';
+import { CampaignTemplateRenderer, normalizeCampaignContent, normalizeTemplateSettings } from '../../features/campaign-templates';
 
 export default function AdView() {
   const { adId = '' } = useParams();
@@ -75,6 +77,13 @@ export default function AdView() {
   const format = experience ? getCampaignFormat(experience) : 'tap_reveal';
   const image = experience ? getCampaignImage(experience) : null;
   const destination = experience ? getCampaignDestination(experience) : null;
+  const imageMetadata = experience?.output.metadata;
+  const imageStyle = getImageDisplayStyle({
+    fit: normalizeImageFit(typeof imageMetadata?.image_fit === 'string' ? imageMetadata.image_fit : undefined),
+    position_x: asImageNumber(imageMetadata?.image_position_x),
+    position_y: asImageNumber(imageMetadata?.image_position_y),
+    zoom: asImageNumber(imageMetadata?.image_zoom),
+  });
   const secondaryImage = useMemo(() => {
     const value = experience?.output.metadata?.secondary_image_url;
     return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : null;
@@ -168,11 +177,11 @@ export default function AdView() {
         </section>
 
         <section className="relative mx-4 aspect-square overflow-hidden rounded-[2rem] border border-neon/30 bg-black shadow-[var(--glow-sm)]" aria-live="polite">
-          {image ? <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(182,255,0,0.28),transparent_35%),linear-gradient(150deg,#20251f,#070807)]" />}
+          <CampaignTemplateRenderer destination="qr" content={normalizeCampaignContent({ campaign: experience.campaign, businessName: experience.business?.business_name, businessLogoUrl: experience.business?.logo_url, imageUrl: image, destinationUrl: destination, primaryColor: experience.business?.primary_color, accentColor: experience.business?.accent_color })} settings={normalizeTemplateSettings(experience.output.metadata?.template_settings)} />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-black/20" />
 
           {format === 'before_after' && secondaryImage ? (
-            <BeforeAfterExperience beforeImage={image} afterImage={secondaryImage} value={comparison} onChange={value => { setComparison(value); if (value > 70) reveal(); }} headline={headline} />
+            <BeforeAfterExperience beforeImage={image} afterImage={secondaryImage} value={comparison} onChange={value => { setComparison(value); if (value > 70) reveal(); }} headline={headline} imageStyle={imageStyle} />
           ) : !revealed ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-7 text-center">
               <p className="mb-3 text-[10px] font-black uppercase tracking-[0.24em] text-neon">{interactionLabel(format)}</p>
@@ -245,10 +254,13 @@ export default function AdView() {
   );
 }
 
-function BeforeAfterExperience({ beforeImage, afterImage, value, onChange, headline }: { beforeImage: string | null; afterImage: string; value: number; onChange: (value: number) => void; headline: string }) {
+function asImageNumber(value: unknown): number | string | undefined {
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined;
+}
+function BeforeAfterExperience({ beforeImage, afterImage, value, onChange, headline, imageStyle }: { beforeImage: string | null; afterImage: string; value: number; onChange: (value: number) => void; headline: string; imageStyle: ReturnType<typeof getImageDisplayStyle> }) {
   return (
     <div className="absolute inset-0">
-      {beforeImage ? <img src={beforeImage} alt="Before" className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 bg-neutral-900" />}
+      {beforeImage ? <img src={beforeImage} alt="Before" className="absolute inset-0 h-full w-full" style={imageStyle} /> : <div className="absolute inset-0 bg-neutral-900" />}
       <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 0 0 ${value}%)` }}><img src={afterImage} alt="After" className="h-full w-full object-cover" /></div>
       <div className="absolute inset-y-0 w-0.5 bg-neon shadow-[0_0_16px_rgba(182,255,0,0.9)]" style={{ left: `${value}%` }} />
       <div className="absolute inset-x-5 bottom-5 rounded-2xl bg-black/70 p-4 backdrop-blur">

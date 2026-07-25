@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
 import { getSafeAuthDestination, isRecoveryRequest } from './lib/authRedirect';
+import { isPublicStandaloneRoute } from './lib/publicRoutes';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const DemoShowcase = lazy(() => import('./pages/DemoShowcase'));
@@ -68,8 +69,8 @@ export default function App() {
     };
   }, []);
 
-  const isStandaloneDemoRoute = window.location.pathname === '/examples' || window.location.pathname.startsWith('/demo');
-  if (loading && !isStandaloneDemoRoute) return <LoadingScreen label="Restoring your session..." />;
+  const isPublicRoute = isPublicStandaloneRoute(window.location.pathname);
+  if (loading && !isPublicRoute) return <LoadingScreen label="Restoring your session..." />;
 
   return (
     <BrowserRouter>
@@ -151,6 +152,7 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();

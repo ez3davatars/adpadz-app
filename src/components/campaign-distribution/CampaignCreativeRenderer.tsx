@@ -29,8 +29,8 @@ const CampaignCreativeRenderer = forwardRef<SVGSVGElement, Props>(function Campa
   const qrModules = useQrModules(showQr ? creative.campaignUrl : null);
   const resolvedImage = imageHref === undefined ? creative.campaignImageUrl : imageHref;
   const resolvedLogo = logoHref === undefined ? creative.businessLogoUrl : logoHref;
-  const visualImageHeight = template === 'visual' ? height * (portrait ? 0.56 : 0.64) : height * (compact ? 0.46 : 0.42);
-  const contentTop = template === 'visual' ? visualImageHeight - margin * 0.5 : margin;
+  const visualImageHeight = template === 'hero-visual' ? height * (portrait ? 0.56 : 0.64) : height * (compact ? 0.46 : 0.42);
+  const contentTop = template === 'hero-visual' ? visualImageHeight - margin * 0.5 : margin;
   const contentWidth = width - margin * 2;
   const qrSize = compact ? 118 : 156;
 
@@ -39,7 +39,7 @@ const CampaignCreativeRenderer = forwardRef<SVGSVGElement, Props>(function Campa
       <title>{creative.campaign.title} {preset.label} social creative</title>
       <defs>
         <linearGradient id="creative-shade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={creative.primaryColor} stopOpacity={template === 'visual' ? 0.05 : 0.18} />
+          <stop offset="0%" stopColor={creative.primaryColor} stopOpacity={template === 'hero-visual' ? 0.05 : 0.18} />
           <stop offset="100%" stopColor={creative.primaryColor} stopOpacity="0.98" />
         </linearGradient>
         <clipPath id="creative-image-clip"><rect width={width} height={visualImageHeight} /></clipPath>
@@ -62,10 +62,10 @@ const CampaignCreativeRenderer = forwardRef<SVGSVGElement, Props>(function Campa
         </g>
 
         <g transform={`translate(0 ${compact ? 86 : 118})`}>
-          {template === 'brand' && <text fill={creative.accentColor} fontFamily="Poppins, Arial, sans-serif" fontWeight="800" fontSize={compact ? 18 : 24} letterSpacing="3">LOCAL BUSINESS. LOCAL OFFER.</text>}
-          <WrappedText text={template === 'offer' ? offer : headline} y={template === 'brand' ? (compact ? 42 : 58) : 0} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={template === 'offer' ? (compact ? 54 : portrait ? 82 : 72) : (compact ? 43 : 60)} lineHeight={1.02} maxLines={template === 'offer' ? 3 : 2} fill="white" />
-          {template !== 'offer' && offer !== headline && <WrappedText text={offer} y={compact ? 112 : 150} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={compact ? 27 : 40} lineHeight={1.12} maxLines={2} fill={creative.accentColor} />}
-          {!compact && description && <WrappedText text={description} y={template === 'offer' ? (portrait ? 268 : 210) : 260} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={27} lineHeight={1.25} maxLines={2} fill="#f3f4f1" />}
+          {template === 'brand-focus' && <text fill={creative.accentColor} fontFamily="Poppins, Arial, sans-serif" fontWeight="800" fontSize={compact ? 18 : 24} letterSpacing="3">LOCAL BUSINESS. LOCAL OFFER.</text>}
+          <WrappedText text={template === 'offer-first' ? offer : headline} y={template === 'brand-focus' ? (compact ? 42 : 58) : 0} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={template === 'offer-first' ? (compact ? 54 : portrait ? 82 : 72) : (compact ? 43 : 60)} lineHeight={1.02} maxLines={template === 'offer-first' ? 3 : 2} fill="white" />
+          {template !== 'offer-first' && offer !== headline && <WrappedText text={offer} y={compact ? 112 : 150} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={compact ? 27 : 40} lineHeight={1.12} maxLines={2} fill={creative.accentColor} />}
+          {!compact && description && <WrappedText text={description} y={template === 'offer-first' ? (portrait ? 268 : 210) : 260} width={contentWidth - (showQr ? qrSize + margin : 0)} fontSize={27} lineHeight={1.25} maxLines={2} fill="#f3f4f1" />}
         </g>
       </g>
 
@@ -97,7 +97,7 @@ function WrappedText({ text, x = 0, y, width, fontSize, lineHeight, maxLines, fi
     if (!current || `${current} ${word}`.length <= maxCharacters) lines[Math.max(0, lines.length - 1)] = current ? `${current} ${word}` : word;
     else if (lines.length < maxLines) lines.push(word);
     else {
-      lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.…]$/, '')}…`;
+      lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.â€¦]$/, '')}â€¦`;
       break;
     }
   }

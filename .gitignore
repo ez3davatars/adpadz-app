@@ -27,3 +27,7 @@ public/qr-config.php
 # Local backups and Supabase CLI state
 backup.zip
 supabase/.temp/
+
+# Local RC verification evidence
+artifacts/rc1/
+test-results/

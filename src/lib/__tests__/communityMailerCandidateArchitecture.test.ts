@@ -6,6 +6,10 @@ const assignment = readFileSync(
   "utf8",
 );
 const finalization = readFileSync(
+  "supabase/migrations/20260725010000_require_candidate_placement_csv.sql",
+  "utf8",
+);
+const candidateSecurity = readFileSync(
   "supabase/migrations/20260718035000_finalize_mailer_candidate_contract.sql",
   "utf8",
 );
@@ -47,7 +51,9 @@ describe("Community Mailer candidate architecture", () => {
     expect(finalization).toContain("required_count <> 10");
     expect(finalization).toContain("storage.objects");
     expect(finalization).toContain("production_candidate");
-    expect(finalization).toContain(
+    expect(finalization).toContain("placement-manifest.csv");
+    expect(finalization).not.toContain("placement-manifest.json");
+    expect(candidateSecurity).toContain(
       "REVOKE ALL ON FUNCTION public.record_admin_community_mailer_export",
     );
   });

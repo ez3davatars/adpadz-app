@@ -12,6 +12,7 @@ import {
   type PublicCampaignExperience,
 } from '../../lib/campaigns';
 import { copyTextToClipboard } from '../../lib/clipboard';
+import { CampaignTemplateRenderer, normalizeCampaignContent, normalizeTemplateSettings } from '../../features/campaign-templates';
 
 const filters = [
   { value: 'all', label: 'All' },
@@ -165,17 +166,14 @@ export default function Feed() {
                   </div>
 
                   <Link to={`/ad/${experience.campaign.id}`} aria-label={`Open ${experience.campaign.headline || experience.campaign.title}`}>
-                    <div className="group relative aspect-[4/3] overflow-hidden bg-[var(--bg-input)]">
-                      {image ? <img src={image} alt="" className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-[1.02] group-hover:opacity-100" /> : <div className="h-full w-full bg-[radial-gradient(circle_at_30%_20%,rgba(182,255,0,0.22),transparent_40%),linear-gradient(145deg,#171a18,#070807)]" />}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
-                      <div className="absolute inset-x-0 bottom-0 p-5">
-                        <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-neon">{formatLabel(format)}</p>
-                        <h2 className="text-xl font-black">{experience.campaign.headline || experience.campaign.title}</h2>
-                        {experience.campaign.description && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-neutral-300">{experience.campaign.description}</p>}
-                      </div>
-                      <span className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-neon/40 bg-black/50 text-neon shadow-[var(--glow-sm)]"><Sparkles className="h-5 w-5" /></span>
-                    </div>
-                  </Link>
+                    <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg-input)]" style={{ containerType: 'inline-size' }}>
+                      <CampaignTemplateRenderer
+                        destination="discovery"
+                        content={normalizeCampaignContent({ campaign: experience.campaign, businessName: experience.business?.business_name, businessLogoUrl: experience.business?.logo_url, imageUrl: image, destinationUrl: `/ad/${experience.campaign.id}`, primaryColor: experience.business?.primary_color, accentColor: experience.business?.accent_color })}
+                        settings={normalizeTemplateSettings(experience.output.metadata?.template_settings)}
+                      />
+                      <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-neon">{formatLabel(format)}</span>
+                    </div>                  </Link>
 
                   <div className="flex items-center justify-between gap-3 p-4">
                     <div className="min-w-0">

@@ -12,10 +12,13 @@ import {
   Upload,
   X,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import CircularPadQR from '../../components/qr/CircularPadQR';
+import { AdpadzButton } from '../../components/adpadz-ui';
 import { supabase } from '../../lib/supabase';
 import type { QRFormState, QRLinkRecord, QRStylePreset } from '../../lib/qr/qrTypes';
+import { isQrSlugConflict } from '../../lib/qr/qrErrors';
 import {
   buildShortUrl,
   createSlugFromTitle,
@@ -118,6 +121,7 @@ export default function QRStudio() {
   const [manualBaseUrl, setManualBaseUrl] = useState('');
   const [loadingLinks, setLoadingLinks] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -431,6 +435,13 @@ export default function QRStudio() {
       return;
     }
 
+    const existingLink = links.find(link => link.slug === slug && link.id !== selectedLinkId);
+    if (existingLink) {
+      editLink(existingLink);
+      setMessage(`That short link already exists. Opened “${existingLink.title}” so you can edit it.`);
+      setSaving(false);
+      return;
+    }
     const payload = {
       title: form.title.trim() || slug,
       slug,
@@ -492,7 +503,29 @@ export default function QRStudio() {
     const { data, error } = await query;
 
     if (error) {
-      setError(error.message);
+      if (isQrSlugConflict(error)) {
+        const { data: authData } = await supabase.auth.getUser();
+        const { data: existingData } = authData.user
+          ? await supabase
+              .from('qr_links')
+              .select('*')
+              .eq('owner_user_id', authData.user.id)
+              .eq('slug', slug)
+              .maybeSingle()
+          : { data: null };
+
+        if (existingData) {
+          const existingLink = existingData as QRLinkRecord;
+          editLink(existingLink);
+          setLinks(current => current.some(link => link.id === existingLink.id) ? current : [existingLink, ...current]);
+          setMessage(`That short link already exists. Opened “${existingLink.title}” so you can edit it.`);
+        } else {
+          setError(`The short link “${slug}” is already in use. Choose a different short slug.`);
+        }
+      } else {
+        setError('QR link could not be saved. Please try again.');
+        if (import.meta.env.DEV) console.error('[QRStudio] failed to save QR link', error);
+      }
     } else if (data) {
       const savedLink = data as QRLinkRecord;
       setSelectedLinkId(savedLink.id);
@@ -504,6 +537,49 @@ export default function QRStudio() {
     setSaving(false);
   }
 
+  async function deleteSelectedLink() {
+    if (!selectedLink || deleting) return;
+
+    const confirmed = window.confirm(
+      `Permanently delete “${selectedLink.title}” and release /q/${selectedLink.slug}?\n\nExisting printed QR codes will stop working, and this link’s scan history will be deleted. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setMessage(null);
+
+    const { data, error: deleteError } = await supabase
+      .from('qr_links')
+      .delete()
+      .eq('id', selectedLink.id)
+      .select('id')
+      .maybeSingle();
+
+    if (deleteError) {
+      if (deleteError.code === '23503') {
+        setError('This QR link is locked by a Community Mailer production record and cannot be deleted. Archive it or contact an administrator.');
+      } else {
+        setError('QR link could not be deleted. Please try again.');
+        if (import.meta.env.DEV) console.error('[QRStudio] failed to delete QR link', deleteError);
+      }
+      setDeleting(false);
+      return;
+    }
+
+    if (!data) {
+      setError('QR link was not deleted. Refresh the page and confirm that you still own this link.');
+      setDeleting(false);
+      return;
+    }
+
+    const releasedSlug = selectedLink.slug;
+    setLinks(current => current.filter(link => link.id !== selectedLink.id));
+    setSelectedLinkId(null);
+    setForm({ ...DEFAULT_FORM });
+    setMessage(`QR link deleted. The short slug “${releasedSlug}” is available again.`);
+    setDeleting(false);
+  }
   async function copyShortLink() {
     if (productionLocalhostError) {
       setError(productionLocalhostError);
@@ -788,6 +864,7 @@ export default function QRStudio() {
                     onChange={event => updateField('ornament_style', event.target.value as QRFormState['ornament_style'])}
                   >
                     <option value="wave-premium">Wave premium</option>
+                    <option value="module-mosaic">Module mosaic</option>
                     <option value="none">None</option>
                   </select>
                 </Field>
@@ -803,7 +880,13 @@ export default function QRStudio() {
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              {form.ornament_style === 'module-mosaic' && (
+                <p className="mt-3 text-xs text-[var(--text-muted)]">
+                  Module mosaic follows the QR color, circular dot size, and module grid automatically for a continuous look.
+                </p>
+              )}
+              {form.ornament_style !== 'module-mosaic' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 <ColorField
                   label="Ornament main"
                   value={form.ornament_main_color}
@@ -819,7 +902,8 @@ export default function QRStudio() {
                   value={form.ornament_shadow_color}
                   onChange={value => updateField('ornament_shadow_color', value)}
                 />
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -1194,10 +1278,17 @@ export default function QRStudio() {
               </button>
             </div>
 
-            <button onClick={saveLink} disabled={saving} className="btn-secondary w-full text-sm px-4 py-2.5 mt-3">
+            <button onClick={saveLink} disabled={saving || deleting} className="btn-secondary w-full text-sm px-4 py-2.5 mt-3">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {selectedLinkId ? 'Save Changes' : 'Save Dynamic Link'}
             </button>
+
+            {selectedLink && (
+              <AdpadzButton onClick={() => void deleteSelectedLink()} disabled={saving || deleting} variant="danger" fullWidth className="mt-3">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {deleting ? 'Deleting...' : 'Delete QR Link'}
+              </AdpadzButton>
+            )}
 
             {!selectedLinkId && (
               <p className="text-[11px] text-[var(--text-muted)] mt-3 leading-relaxed">
