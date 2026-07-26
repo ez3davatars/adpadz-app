@@ -20,6 +20,10 @@ import { supabase } from '../../lib/supabase';
 import type { QRFormState, QRLinkRecord, QRStylePreset } from '../../lib/qr/qrTypes';
 import { isQrSlugConflict } from '../../lib/qr/qrErrors';
 import {
+  getQrEmbeddedArtworkBytes,
+  MAX_QR_EMBEDDED_ARTWORK_BYTES,
+} from '../../lib/qr/qrArtwork';
+import {
   buildShortUrl,
   createSlugFromTitle,
   downloadSvgElementAsPng,
@@ -432,6 +436,14 @@ export default function QRStudio() {
     if (productionLocalhostError) {
       setSaving(false);
       setError(productionLocalhostError);
+      return;
+    }
+
+    if (getQrEmbeddedArtworkBytes(form) > MAX_QR_EMBEDDED_ARTWORK_BYTES) {
+      setSaving(false);
+      setError(
+        'Embedded QR images must total 1 MB or less. Compress or remove an uploaded logo or background, then try again.',
+      );
       return;
     }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Bookmark, CheckCircle2, ExternalLink, Loader2, Share2, Sparkles, Zap } from 'lucide-react';
+import QRStudioPreview from '../../components/qr/QRStudioPreview';
 import {
   getCampaignDestination,
   getCampaignFormat,
@@ -15,7 +16,8 @@ import {
 } from '../../lib/campaigns';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getImageDisplayStyle, normalizeImageFit } from '../../lib/smartCards';
-import { CampaignTemplateRenderer, normalizeCampaignContent, normalizeTemplateSettings } from '../../features/campaign-templates';
+import { buildShortUrl } from '../../lib/qr/qrUtils';
+import { CampaignTemplateRenderer, normalizeCampaignContent, resolveDestinationCreative } from '../../features/campaign-templates';
 
 export default function AdView() {
   const { adId = '' } = useParams();
@@ -78,11 +80,23 @@ export default function AdView() {
   const image = experience ? getCampaignImage(experience) : null;
   const destination = experience ? getCampaignDestination(experience) : null;
   const imageMetadata = experience?.output.metadata;
+  const qrArtwork = experience?.creativeQrArtwork.qr ?? null;
+  const savedCreative = experience
+    ? resolveDestinationCreative(experience.output.metadata, 'qr')
+    : null;
+  const creative = experience ? resolveDestinationCreative(experience.output.metadata, 'qr', {
+    assets: experience.creativeAssets,
+    qrLinks: qrArtwork
+      ? [{ id: qrArtwork.id, publicUrl: buildShortUrl(qrArtwork.slug) }]
+      : [],
+    fallbackImageUrl: savedCreative?.imageAssetId ? null : image,
+    fallbackDestinationUrl: absolutePublicUrl(destination),
+  }) : null;
   const imageStyle = getImageDisplayStyle({
-    fit: normalizeImageFit(typeof imageMetadata?.image_fit === 'string' ? imageMetadata.image_fit : undefined),
-    position_x: asImageNumber(imageMetadata?.image_position_x),
-    position_y: asImageNumber(imageMetadata?.image_position_y),
-    zoom: asImageNumber(imageMetadata?.image_zoom),
+    fit: normalizeImageFit(creative?.settings.imageFit ?? (typeof imageMetadata?.image_fit === 'string' ? imageMetadata.image_fit : undefined)),
+    position_x: creative?.settings.imagePositionX ?? asImageNumber(imageMetadata?.image_position_x),
+    position_y: creative?.settings.imagePositionY ?? asImageNumber(imageMetadata?.image_position_y),
+    zoom: creative?.settings.imageZoom ?? asImageNumber(imageMetadata?.image_zoom),
   });
   const secondaryImage = useMemo(() => {
     const value = experience?.output.metadata?.secondary_image_url;
@@ -139,7 +153,7 @@ export default function AdView() {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--bg-base)] text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-5 w-5 animate-spin text-neon" /> Loading campaign...</div>;
   }
 
-  if (error || !experience) {
+  if (error || !experience || !creative) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[var(--bg-base)] p-6">
         <div className="card-surface w-full max-w-lg p-8 text-center">
@@ -176,12 +190,32 @@ export default function AdView() {
           </div>
         </section>
 
-        <section className="relative mx-4 aspect-square overflow-hidden rounded-[2rem] border border-neon/30 bg-black shadow-[var(--glow-sm)]" aria-live="polite">
-          <CampaignTemplateRenderer destination="qr" content={normalizeCampaignContent({ campaign: experience.campaign, businessName: experience.business?.business_name, businessLogoUrl: experience.business?.logo_url, imageUrl: image, destinationUrl: destination, primaryColor: experience.business?.primary_color, accentColor: experience.business?.accent_color })} settings={normalizeTemplateSettings(experience.output.metadata?.template_settings)} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-black/20" />
+        {creative.issues.length > 0 && (
+          <div className="mx-4 mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100" role="status">
+            {creative.issues.join(' ')}
+          </div>
+        )}
+
+        <section className="relative mx-4 aspect-[3/4] overflow-hidden rounded-[2rem] border border-neon/30 bg-black shadow-[var(--glow-sm)]" aria-live="polite">
+          <CampaignTemplateRenderer
+            destination={creative.rendererDestination}
+            content={normalizeCampaignContent({
+              campaign: experience.campaign,
+              businessName: experience.business?.business_name,
+              businessPhone: experience.business?.phone,
+              businessWebsite: experience.business?.website,
+              businessLogoUrl: experience.business?.logo_url,
+              imageUrl: creative.imageUrl,
+              destinationUrl: creative.qrDestinationUrl,
+              primaryColor: experience.business?.primary_color,
+              accentColor: experience.business?.accent_color,
+            })}
+            settings={creative.renderSettings}
+            qrArtwork={qrArtwork ? <QRStudioPreview qr={qrArtwork} /> : undefined}
+          />
 
           {format === 'before_after' && secondaryImage ? (
-            <BeforeAfterExperience beforeImage={image} afterImage={secondaryImage} value={comparison} onChange={value => { setComparison(value); if (value > 70) reveal(); }} headline={headline} imageStyle={imageStyle} />
+            <BeforeAfterExperience beforeImage={creative.imageUrl} afterImage={secondaryImage} value={comparison} onChange={value => { setComparison(value); if (value > 70) reveal(); }} headline={headline} imageStyle={imageStyle} />
           ) : !revealed ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-7 text-center">
               <p className="mb-3 text-[10px] font-black uppercase tracking-[0.24em] text-neon">{interactionLabel(format)}</p>
@@ -295,5 +329,13 @@ async function recordEvent(experience: PublicCampaignExperience, eventType: Camp
     await trackCampaignEvent(experience, eventType, metadata);
   } catch (error) {
     if (import.meta.env.DEV) console.error('[AdView] event tracking failed', error);
+  }
+}
+function absolutePublicUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value, window.location.origin).toString();
+  } catch {
+    return null;
   }
 }

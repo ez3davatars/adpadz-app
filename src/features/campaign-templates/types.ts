@@ -58,6 +58,8 @@ export type CampaignTemplateSettings = {
 export type CampaignTemplateContent = {
   campaignId: string;
   businessName: string;
+  businessPhone: string | null;
+  businessWebsite: string | null;
   businessLogoUrl: string | null;
   imageUrl: string | null;
   headline: string;
@@ -77,4 +79,3 @@ export type TemplateReadinessIssue = {
   severity: "blocker" | "warning";
   message: string;
 };
-

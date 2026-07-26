@@ -12,6 +12,9 @@ import { evaluateCampaignReadiness } from '../../lib/campaignReadiness';
 import { CampaignReadinessSummary } from '../../components/campaign-readiness/CampaignReadinessSummary';
 import { uploadSmartCardImage } from '../../lib/cloudflareImages';
 import { clampImagePosition, clampImageZoom, normalizeImageFit, type ImageFitMode } from '../../lib/smartCards';
+import QRStudioPreview from '../../components/qr/QRStudioPreview';
+import { buildShortUrl } from '../../lib/qr/qrUtils';
+import type { QRLinkRecord } from '../../lib/qr/qrTypes';
 import {
   CAMPAIGN_TEMPLATES,
   CampaignTemplateRenderer,
@@ -19,6 +22,7 @@ import {
   evaluateTemplateReadiness,
   normalizeCampaignContent,
   normalizeTemplateSettings,
+  resolveDestinationCreative,
   type CampaignTemplateContent,
   type CampaignTemplateKey,
   type CampaignTemplateSettings,
@@ -118,6 +122,8 @@ export default function BizCreateAd() {
   const [outputs, setOutputs] = useState<Record<OutputType, boolean>>(defaultOutputs);
   const [smartCards, setSmartCards] = useState<SmartCardChoice[]>([]);
   const [assets, setAssets] = useState<AssetChoice[]>([]);
+  const [qrLinks, setQrLinks] = useState<QRLinkRecord[]>([]);
+  const [savedCreativeMetadata, setSavedCreativeMetadata] = useState<Record<string, unknown>>({});
   const [businessHub, setBusinessHub] = useState<BusinessHubChoice | null>(null);
   const [selectedSmartCardId, setSelectedSmartCardId] = useState('');
   const [smartCardSection, setSmartCardSection] = useState('promotions');
@@ -137,19 +143,22 @@ export default function BizCreateAd() {
         const userId = authData.user?.id;
         if (!userId) throw new Error('Sign in to open Campaign Studio.');
 
-        const [cardResult, assetResult, businessResult] = await Promise.all([
+        const [cardResult, assetResult, businessResult, qrResult] = await Promise.all([
           supabase.from('business_cards').select('id,business_id,business_name,slug,is_published,cover_image_url,logo_url,website,phone,address').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
           supabase.from('business_marketing_assets').select('id,title,asset_type,file_url,external_url,thumbnail_url').eq('owner_id', userId).eq('is_active', true).order('updated_at', { ascending: false }),
           supabase.from('businesses').select('id,name,category,service_area,address,website,phone,active').eq('owner_user_id', userId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+          supabase.from('qr_links').select('*').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
         ]);
         if (cardResult.error) throw new Error(cardResult.error.message);
         if (assetResult.error) throw new Error(assetResult.error.message);
         if (businessResult.error) throw new Error(businessResult.error.message);
+        if (qrResult.error) throw new Error(qrResult.error.message);
 
         const loadedCards = (cardResult.data ?? []) as SmartCardChoice[];
         if (!cancelled) {
           setSmartCards(loadedCards);
           setAssets((assetResult.data ?? []) as AssetChoice[]);
+          setQrLinks((qrResult.data ?? []) as QRLinkRecord[]);
           setBusinessHub((businessResult.data ?? null) as BusinessHubChoice | null);
           if (loadedCards.length === 1) setSelectedSmartCardId(loadedCards[0].id);
         }
@@ -205,6 +214,10 @@ export default function BizCreateAd() {
     setImageZoom(clampImageZoom(asImageNumber(interactiveMetadata.image_zoom)));
     const savedTemplateMetadata = savedOutputs.find(output => output.metadata?.template_settings)?.metadata?.template_settings;
     setTemplateSettings(normalizeTemplateSettings(interactiveMetadata.template_settings ?? savedTemplateMetadata));
+    setSavedCreativeMetadata({
+      ...interactiveMetadata,
+      template_settings: interactiveMetadata.template_settings ?? savedTemplateMetadata,
+    });
 
     const cardOutput = savedOutputs.find(output => output.output_type === 'smart_card');
     const cardMetadata = cardOutput?.metadata ?? {};
@@ -223,12 +236,14 @@ export default function BizCreateAd() {
       end_date: endDate || null, primary_image_id: primaryAssetId || null,
     },
     businessName: businessHub?.name || selectedCard?.business_name,
+    businessPhone: businessHub?.phone || selectedCard?.phone,
+    businessWebsite: businessHub?.website || selectedCard?.website,
     businessLogoUrl: selectedCard?.logo_url,
     imageUrl: previewImage,
     destinationUrl: ctaUrl || null,
     primaryColor: '#14251b',
     accentColor: '#b6ff00',
-  }), [businessHub?.name, campaignId, campaignName, ctaLabel, ctaUrl, description, endDate, headline, offerDescription, offerTitle, previewImage, primaryAssetId, selectedCard?.business_name, selectedCard?.logo_url, startDate, status]);
+  }), [businessHub?.name, businessHub?.phone, businessHub?.website, campaignId, campaignName, ctaLabel, ctaUrl, description, endDate, headline, offerDescription, offerTitle, previewImage, primaryAssetId, selectedCard?.business_name, selectedCard?.logo_url, selectedCard?.phone, selectedCard?.website, startDate, status]);
   const templateReadiness = useMemo(() => evaluateTemplateReadiness(templateContent, templateSettings), [templateContent, templateSettings]);
 const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
   const liveReadiness = useMemo(() => evaluateCampaignReadiness({
@@ -515,7 +530,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
             {format === 'before_after' && <Field label="After image URL" className="mt-4"><input type="url" value={secondaryImageUrl} onChange={event => setSecondaryImageUrl(event.target.value)} className="input-field" placeholder="https://..." /><span className="mt-1 block text-[10px] text-[var(--text-muted)]">The primary asset is used as the before image.</span></Field>}
             <div className="mt-6 flex gap-2"><AdpadzButton type="button" variant="secondary" onClick={() => setStep(1)}>Back</AdpadzButton><AdpadzButton type="button" onClick={nextStep}>Choose outputs</AdpadzButton></div>
           </AdpadzSection>
-          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
 
@@ -563,7 +578,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
               <AdpadzButton type="button" onClick={() => void saveCampaign()} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {editing ? 'Save Campaign' : 'Create Campaign'}</AdpadzButton>
             </div>
           </AdpadzSection>
-          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
     </div>
@@ -578,8 +593,54 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   return <div className="flex items-start justify-between gap-4 px-4 py-3 text-sm"><span className="text-[var(--text-muted)]">{label}</span><span className="text-right font-black capitalize">{value}</span></div>;
 }
 
-function CreativeSummary({ campaignId, content, settings }: { campaignId: string; content: CampaignTemplateContent; settings: CampaignTemplateSettings }) {
-  return <AdpadzCard variant="featured" className="p-4"><div className="aspect-square overflow-hidden rounded-2xl" style={{ containerType: 'inline-size' }}><CampaignTemplateRenderer content={content} settings={settings} destination="studio" /></div><div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Creative summary</p><p className="mt-1 text-sm font-black">{CAMPAIGN_TEMPLATES.find(item => item.key === settings.template)?.label}</p><p className="mt-1 text-[10px] text-[var(--text-muted)]">Open the dedicated workspace to refine every destination without duplicating campaign content.</p><AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`} fullWidth className="mt-4">Design Creative</AdpadzButton></div></AdpadzCard>;
+function CreativeSummary({
+  campaignId,
+  content,
+  metadata,
+  assets,
+  qrLinks,
+}: {
+  campaignId: string;
+  content: CampaignTemplateContent;
+  metadata: Record<string, unknown>;
+  assets: AssetChoice[];
+  qrLinks: QRLinkRecord[];
+}) {
+  const creative = resolveDestinationCreative(metadata, 'discovery', {
+    assets,
+    qrLinks: qrLinks.map(qr => ({ id: qr.id, publicUrl: buildShortUrl(qr.slug) })),
+    fallbackImageUrl: content.imageUrl,
+    fallbackDestinationUrl: content.destinationUrl,
+  });
+  const selectedQr = qrLinks.find(qr => qr.id === creative.qrId) ?? null;
+  const resolvedContent = {
+    ...content,
+    imageUrl: creative.imageUrl,
+    destinationUrl: creative.qrDestinationUrl,
+  };
+  return (
+    <AdpadzCard variant="featured" className="p-4">
+      <div className="aspect-square overflow-hidden rounded-2xl" style={{ containerType: 'inline-size' }}>
+        <CampaignTemplateRenderer
+          content={resolvedContent}
+          settings={creative.renderSettings}
+          destination={creative.rendererDestination}
+          qrArtwork={selectedQr && creative.qrResolution === 'exact' ? <QRStudioPreview qr={selectedQr} /> : undefined}
+        />
+      </div>
+      {creative.issues.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-[10px] font-bold text-amber-100" role="status">
+          {creative.issues.join(' ')}
+        </div>
+      )}
+      <div className="mt-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Discovery creative summary</p>
+        <p className="mt-1 text-sm font-black">{CAMPAIGN_TEMPLATES.find(item => item.key === creative.settings.template)?.label}</p>
+        <p className="mt-1 text-[10px] text-[var(--text-muted)]">This summary uses the canonical saved Workshop creative. Open the dedicated workspace to refine every destination.</p>
+        <AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`} fullWidth className="mt-4">Design Creative</AdpadzButton>
+      </div>
+    </AdpadzCard>
+  );
 }
 function TemplateStudioPreview({ content, settings, onChange, ready, issues }: { content: CampaignTemplateContent; settings: CampaignTemplateSettings; onChange: (settings: CampaignTemplateSettings) => void; ready: boolean; issues: string[] }) {
   const destinations = [

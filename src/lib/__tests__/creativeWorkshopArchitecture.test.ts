@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const workshop = readFileSync(
-  new URL("../../pages/business/CampaignCreativeWorkshop.tsx", import.meta.url),
-  "utf8",
-);
+const workshop = [
+  "../../pages/business/CampaignCreativeWorkshopAdvanced.tsx",
+  "../../components/campaign-creative/CreativeInspector.tsx",
+  "../../components/campaign-creative/CreativeHistoryDrawer.tsx",
+].map(path => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 const studio = readFileSync(new URL("../../pages/business/CreateAd.tsx", import.meta.url), "utf8");
 const distribution = readFileSync(
@@ -32,7 +33,7 @@ describe("Creative Workshop component architecture", () => {
       "Template", "Image", "Overlay", "QR", "Text", "Branding", "Visibility", "Print Safety",
     ]) expect(workshop).toContain(`"${section}"`);
     expect(workshop).toContain('aria-label="Choose from QR Studio"');
-    expect(workshop).toContain("<CircularPadQR");
+    expect(workshop).toContain("<QRStudioPreview");
   });
 
   it("keeps Campaign Studio and Distribution as summaries rather than duplicate editors", () => {
@@ -44,7 +45,7 @@ describe("Creative Workshop component architecture", () => {
 
   it("provides an intentional mobile save action and horizontal-overflow guard", () => {
     expect(workshop).toContain("fixed inset-x-0 bottom-0");
-    expect(workshop).toContain("overflow-x-hidden");
+    expect(workshop).toContain("min-w-0 max-w-full");
     expect(workshop).toContain("xl:hidden");
   });
 });

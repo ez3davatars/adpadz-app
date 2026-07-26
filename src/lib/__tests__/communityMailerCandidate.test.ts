@@ -4,6 +4,7 @@ import {
   candidateEligibility,
   generateCommunityMailerCandidate,
   qrContrastRatio,
+  resolveCandidateQrPrintBox,
   sha256Hex,
   type CandidateInput,
 } from "../communityMailerCandidate";
@@ -14,6 +15,54 @@ const onePixelPng = Uint8Array.from([
   84, 8, 215, 99, 248, 207, 192, 240, 31, 0, 5, 0, 1, 255, 137, 153, 61, 29,
   0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ]);
+const qrArtwork = {
+  id: "77777777-7777-7777-7777-777777777777",
+  title: "Exact campaign QR",
+  slug: "exact-campaign",
+  destination_url: "https://example.com/demo",
+  status: "active" as const,
+  expires_at: null,
+  updated_at: "2026-07-18T11:00:00.000Z",
+  style_preset: "circular-pad" as const,
+  top_ring_text: "Fictional local business",
+  bottom_ring_text: "Scan to connect",
+  center_label: "Adpadz",
+  foreground_color: "#000000",
+  background_color: "#f1f1ef",
+  accent_color: "#8edb39",
+  show_center_label: true,
+  show_short_url: true,
+  logo_data_url: "",
+  center_frame_shape: "rounded-rect" as const,
+  center_frame_stroke_color: "#111111",
+  center_frame_fill_color: "#ffffff",
+  rim_decoration: "none" as const,
+  rim_band_color: "#f1f1ef",
+  rim_text_color: "#111111",
+  inner_field_color: "#ffffff",
+  outer_border_color: "#111111",
+  outer_background_type: "none" as const,
+  outer_background_color: "#f1f1ef",
+  outer_background_image_data_url: "",
+  outer_background_image_opacity: 0.65,
+  outer_background_image_fit: "cover" as const,
+  outer_background_overlay_color: "transparent",
+  rim_band_background_type: "solid" as const,
+  rim_band_image_data_url: "",
+  rim_band_image_opacity: 1,
+  rim_band_image_fit: "cover" as const,
+  rim_band_overlay_color: "#ffffff",
+  rim_band_overlay_opacity: 0.15,
+  ornament_style: "module-mosaic" as const,
+  ornament_main_color: "#111111",
+  ornament_accent_color: "#8edb39",
+  ornament_shadow_color: "#d8d8d2",
+  ornament_opacity: 1,
+};
+const dependencies = {
+  renderPlacement: async () => onePixelPng,
+  renderPreview: async () => onePixelPng,
+};
 const input: CandidateInput = {
   mailerId: "11111111-1111-1111-1111-111111111111",
   title: "Fictional River City Mailer",
@@ -41,9 +90,26 @@ const input: CandidateInput = {
     creativeUrl: "https://demo.invalid/creative.png",
     qrLinkId: "77777777-7777-7777-7777-777777777777",
     qrDestination: "https://example.com/demo",
+    associatedQrLinkId: "77777777-7777-7777-7777-777777777777",
+    associatedQrDestination: "https://example.com/demo",
+    qrShortUrl: "https://adpadz.co/q/exact-campaign",
     qrForegroundColor: "#000000",
     qrBackgroundColor: "#ffffff",
     snapshotFingerprint: "snapshot-1",
+    creativeSettings: {
+      template: "featured-sponsor",
+      imageFit: "cover",
+      imageAssetId: "66666666-6666-6666-6666-666666666666",
+      showQr: true,
+      qrId: "77777777-7777-7777-7777-777777777777",
+    },
+    creativeFormatKey: "featured",
+    creativeVersionId: "88888888-8888-8888-8888-888888888888",
+    creativeSettingsFingerprint:
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    creativeSnapshotContractVersion: 2,
+    creativeRenderContractVersion: 1,
+    qrArtwork,
   }],
 };
 
@@ -71,14 +137,26 @@ describe("Community Mailer Production Candidate", () => {
       placements: [{ ...input.placements[0], headline: "x".repeat(121) }],
     }).eligible).toBe(false);
     expect(qrContrastRatio(null, "#ffffff")).toBeNull();
+    expect(qrContrastRatio("invalid", "#ffffff")).toBeNull();
     expect(qrContrastRatio("#000000", "#ffffff")).toBeGreaterThan(20);
+    const lowContrast = candidateEligibility({
+      ...input,
+      placements: [{
+        ...input.placements[0],
+        qrArtwork: {
+          ...qrArtwork,
+          foreground_color: "#777777",
+        },
+      }],
+    });
+    expect(lowContrast.eligible).toBe(false);
+    expect(lowContrast.blockers).toContain(
+      "front-top-1 QR contrast is below 4.5:1.",
+    );
   });
 
   it("generates real PDFs and the complete deterministic file contract", async () => {
-    const candidate = await generateCommunityMailerCandidate(input, {
-      fetchAsset: async () => onePixelPng,
-      renderPreview: async () => onePixelPng,
-    });
+    const candidate = await generateCommunityMailerCandidate(input, dependencies);
     expect(candidate.files.map((file) => file.name)).toEqual([
       "front.pdf",
       "back.pdf",
@@ -102,6 +180,30 @@ describe("Community Mailer Production Candidate", () => {
     expect(await sha256Hex(front.bytes)).toBe(front.checksum);
     expect(candidate.checksum).toMatch(/^[0-9a-f]{64}$/);
     expect(candidate.storagePrefix).toContain("/revisions/8/");
+    expect(candidate.manifest).toMatchObject({
+      templateContractVersion: 2,
+      placements: [{
+        placementId: "33333333-3333-3333-3333-333333333333",
+        creativeSettings: {
+          template: "featured-sponsor",
+          imageFit: "cover",
+      imageAssetId: "66666666-6666-6666-6666-666666666666",
+      showQr: true,
+      qrId: "77777777-7777-7777-7777-777777777777",
+        },
+        creativeFormatKey: "featured",
+        creativeVersionId: "88888888-8888-8888-8888-888888888888",
+        creativeSettingsFingerprint:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        templateSettings: {
+          template: "featured-sponsor",
+          imageFit: "cover",
+      imageAssetId: "66666666-6666-6666-6666-666666666666",
+      showQr: true,
+      qrId: "77777777-7777-7777-7777-777777777777",
+        },
+      }],
+    });
   });
 
 
@@ -112,10 +214,7 @@ describe("Community Mailer Production Candidate", () => {
         ...input.placements[0],
         creativeUrl: "https://demo.invalid/creative.svg",
       }],
-    }, {
-      fetchAsset: async () => onePixelPng,
-      renderPreview: async () => onePixelPng,
-    });
+    }, dependencies);
     const front = candidate.files.find((file) => file.name === "front.pdf")!;
     await expect(PDFDocument.load(front.bytes)).resolves.toBeDefined();
   });
@@ -123,16 +222,34 @@ describe("Community Mailer Production Candidate", () => {
     const candidate = await generateCommunityMailerCandidate({
       ...input,
       format: "community_card_6x11",
-    }, {
-      fetchAsset: async () => onePixelPng,
-      renderPreview: async () => onePixelPng,
-    });
+    }, dependencies);
     const front = candidate.files.find((file) => file.name === "front.pdf")!;
     const document = await PDFDocument.load(front.bytes);
     expect(document.getPage(0).getSize()).toEqual({
       width: 11.25 * 72,
       height: 6.25 * 72,
     });
+  });
+  it("keeps the exact QR association and enforces the physical module-field minimum", () => {
+    const printBox = resolveCandidateQrPrintBox(input, input.placements[0]);
+    expect(printBox?.adjusted).toBe(true);
+    expect(printBox?.moduleFieldInches).toBeGreaterThanOrEqual(0.75);
+    const mismatch = candidateEligibility({
+      ...input,
+      placements: [{
+        ...input.placements[0],
+        associatedQrLinkId: "99999999-9999-4999-8999-999999999999",
+      }],
+    });
+    expect(mismatch.eligible).toBe(false);
+    expect(mismatch.blockers.join(" ")).toContain("association differs");
+  });
+
+  it("fails closed when the canonical renderer does not return a PNG", async () => {
+    await expect(generateCommunityMailerCandidate(input, {
+      ...dependencies,
+      renderPlacement: async () => Uint8Array.from([1, 2, 3]),
+    })).rejects.toThrow("did not produce a PNG");
   });
   it("produces stable checksums for stable bytes", async () => {
     expect(await sha256Hex(Uint8Array.from([1, 2, 3]))).toBe(

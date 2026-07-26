@@ -40,6 +40,16 @@ export type ReadinessIssue = {
   action: string;
 };
 
+export function isDistributionQrUsable(
+  qr: { status?: unknown; expires_at?: unknown } | null,
+  now = Date.now(),
+): boolean {
+  if (!qr || qr.status !== 'active') return false;
+  if (qr.expires_at === null || qr.expires_at === undefined || qr.expires_at === '') return true;
+  if (typeof qr.expires_at !== 'string') return false;
+  const expiresAt = Date.parse(qr.expires_at);
+  return Number.isFinite(expiresAt) && expiresAt > now;
+}
 export function getSocialFormat(key: SocialFormatKey) {
   return SOCIAL_FORMATS.find(format => format.key === key) ?? SOCIAL_FORMATS[0];
 }

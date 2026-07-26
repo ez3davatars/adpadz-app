@@ -1,9 +1,17 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import QRCode from "qrcode";
 import { geometryForMailer } from "./communityMailerProductionContracts";
 import type { CommunityCardFormat } from "./communityCards";
-
-export const COMMUNITY_MAILER_CANDIDATE_GENERATOR_VERSION = "1.0.0";
+import { normalizeCreativeSettings } from "../features/campaign-templates/creativeWorkshop";
+import { resolveTemplateLayout } from "../features/campaign-templates/templateRegistry";
+import type { NormalizedBox } from "../features/campaign-templates/types";
+import {
+  MIN_PRODUCTION_QR_CONTRAST_RATIO,
+  normalizeQRStudioProductionArtwork,
+  qrContrastRatio,
+  type QRStudioProductionArtwork,
+} from "./qr/qrArtwork";
+export { qrContrastRatio } from "./qr/qrArtwork";
+export const COMMUNITY_MAILER_CANDIDATE_GENERATOR_VERSION = "2.0.0";
 
 export type CandidatePlacement = {
   id: string;
@@ -17,17 +25,34 @@ export type CandidatePlacement = {
   businessId: string;
   businessName: string;
   headline: string;
+  description?: string | null;
   offer?: string | null;
+  offerDetails?: string | null;
   cta?: string | null;
   phone?: string | null;
   website?: string | null;
+  expiration?: string | null;
+  businessLogoUrl?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
   creativeAssetId: string;
   creativeUrl: string;
   qrLinkId: string;
   qrDestination: string;
+  associatedQrLinkId?: string | null;
+  associatedQrDestination?: string | null;
+  qrShortUrl?: string | null;
   qrForegroundColor?: string | null;
   qrBackgroundColor?: string | null;
   snapshotFingerprint: string;
+  creativeSettings?: Record<string, unknown> | null;
+  creativeFormatKey?: string | null;
+  creativeVersionId?: string | null;
+  creativeSettingsFingerprint?: string | null;
+  creativeSnapshotContractVersion?: number | null;
+  creativeRenderContractVersion?: number | null;
+  qrArtwork?: QRStudioProductionArtwork | null;
+  /** Compatibility alias for v1 candidate consumers. */
   templateSettings?: Record<string, unknown> | null;
 };
 
@@ -60,11 +85,29 @@ export type CandidatePackage = {
 };
 
 export type CandidateDependencies = {
-  fetchAsset: (url: string) => Promise<Uint8Array>;
+  renderPlacement: (
+    input: CandidateInput,
+    placement: CandidatePlacement,
+    options: CandidatePlacementRenderOptions,
+  ) => Promise<Uint8Array>;
   renderPreview: (
     input: CandidateInput,
     side: "front" | "back",
+    placements: readonly CandidateRenderedPlacement[],
   ) => Promise<Uint8Array>;
+};
+
+export type CandidatePlacementRenderOptions = {
+  width: number;
+  height: number;
+  qrBox: NormalizedBox | null;
+};
+
+export type CandidateRenderedPlacement = CandidatePlacementRenderOptions & {
+  placementId: string;
+  bytes: Uint8Array;
+  checksum: string;
+  qrModuleFieldInches: number | null;
 };
 
 const encoder = new TextEncoder();
@@ -86,168 +129,136 @@ export function candidateEligibility(input: CandidateInput) {
   if (!input.preflightFingerprint) blockers.push("Current preflight is missing.");
   if (!input.placements.length) blockers.push("No occupied placements exist.");
   for (const placement of input.placements) {
-    if (!placement.campaignId) {
-      blockers.push(`${placement.slotKey} has no Campaign assignment.`);
-    }
+    if (!placement.campaignId) blockers.push(`${placement.slotKey} has no Campaign assignment.`);
     if (!placement.creativeUrl || !placement.creativeAssetId) {
       blockers.push(`${placement.slotKey} has no immutable creative reference.`);
     }
     if (!placement.qrLinkId || !placement.qrDestination) {
       blockers.push(`${placement.slotKey} has no complete QR association.`);
     }
-    if (!placement.qrForegroundColor || !placement.qrBackgroundColor) {
-      warnings.push(`${placement.slotKey} QR contrast metadata is unavailable.`);
-    } else if ((qrContrastRatio(placement.qrForegroundColor, placement.qrBackgroundColor) || 0) < 4.5) {
-      blockers.push(`${placement.slotKey} QR contrast is below 4.5:1.`);
+    if (!placement.snapshotFingerprint) blockers.push(`${placement.slotKey} has no production snapshot.`);
+    if ((placement.creativeRenderContractVersion ?? 0) < 1) {
+      blockers.push(`${placement.slotKey} must be resnapshotted with the exact render-input contract.`);
     }
-    if (!placement.snapshotFingerprint) {
-      blockers.push(`${placement.slotKey} has no production snapshot.`);
+    const rawSettings = placement.creativeSettings || placement.templateSettings;
+    if (!rawSettings) blockers.push(`${placement.slotKey} has no bound Mailer creative settings.`);
+    const settings = normalizeCreativeSettings(rawSettings);
+    if (placement.creativeVersionId && !placement.creativeSettingsFingerprint) {
+      blockers.push(`${placement.slotKey} has an incomplete creative-version binding.`);
     }
-    if (placement.headline.length > 120) {
-      blockers.push(`${placement.slotKey} headline exceeds the production limit.`);
+    if (settings.imageAssetId && settings.imageAssetId !== placement.creativeAssetId) {
+      blockers.push(`${placement.slotKey} did not resolve the selected Workshop image asset.`);
     }
+    const artwork = normalizeQRStudioProductionArtwork(placement.qrArtwork);
+    if (settings.showQr) {
+      if (!placement.qrShortUrl || !/^https?:\/\//i.test(placement.qrShortUrl)) {
+        blockers.push(`${placement.slotKey} has no production short-link URL.`);
+      }
+      if (
+        placement.associatedQrLinkId !== placement.qrLinkId
+        || placement.associatedQrDestination !== placement.qrDestination
+      ) {
+        blockers.push(`${placement.slotKey} QR production association differs from the bound artwork.`);
+      }
+      if (!artwork || artwork.id !== placement.qrLinkId) {
+        blockers.push(`${placement.slotKey} has no exact bound QR Studio artwork.`);
+      } else {
+        if (artwork.status !== "active" || (artwork.expires_at && Date.parse(artwork.expires_at) <= Date.parse(input.generatedAt))) {
+          blockers.push(`${placement.slotKey} QR Studio artwork is inactive or expired.`);
+        }
+        if (artwork.destination_url !== placement.qrDestination) {
+          blockers.push(`${placement.slotKey} QR artwork does not match the production association.`);
+        }
+        const contrast = qrContrastRatio(artwork.foreground_color, artwork.inner_field_color);
+        if ((contrast ?? 0) < MIN_PRODUCTION_QR_CONTRAST_RATIO) blockers.push(`${placement.slotKey} QR contrast is below ${MIN_PRODUCTION_QR_CONTRAST_RATIO}:1.`);
+        const printBox = resolveCandidateQrPrintBox(input, placement, artwork);
+        if (!printBox) blockers.push(`${placement.slotKey} cannot fit the exact QR artwork at the print minimum.`);
+        else if (printBox.adjusted) warnings.push(`${placement.slotKey} QR artwork is enlarged to preserve the ${geometryForMailer(input.format).qrMinimumInches}-inch module field.`);
+      }
+    }
+    if (placement.headline.length > 120) blockers.push(`${placement.slotKey} headline exceeds the production limit.`);
   }
   return { eligible: blockers.length === 0, blockers, warnings };
 }
 
-function hexColor(value: string | null | undefined, fallback: string) {
-  const normalized = value?.match(/^#([0-9a-f]{6})$/i)?.[1] ??
-    fallback.slice(1);
+export type CandidateQrPrintBox = {
+  box: NormalizedBox;
+  moduleFieldInches: number;
+  adjusted: boolean;
+};
+
+export function resolveCandidateQrPrintBox(
+  input: CandidateInput,
+  placement: CandidatePlacement,
+  artwork = normalizeQRStudioProductionArtwork(placement.qrArtwork),
+): CandidateQrPrintBox | null {
+  const settings = normalizeCreativeSettings(placement.creativeSettings || placement.templateSettings);
+  if (!settings.showQr) return null;
+  if (!artwork) return null;
+  const geometry = geometryForMailer(input.format);
+  const layout = resolveTemplateLayout(settings.template).qr;
+  const moduleFieldRatio = artwork.style_preset === "standard" ? 0.72 : 0.54;
+  const minimumBadgeInches = geometry.qrMinimumInches / moduleFieldRatio;
+  const placementWidthInches = geometry.finishedWidthInches * placement.width / 100;
+  const placementHeightInches = geometry.finishedHeightInches * placement.height / 100;
+  if (placementWidthInches <= 0 || placementHeightInches <= 0) return null;
+  const width = Math.max(layout.width, minimumBadgeInches / placementWidthInches);
+  const height = Math.max(layout.height, minimumBadgeInches / placementHeightInches);
+  if (width > 0.94 || height > 0.94) return null;
+  const centerX = layout.x + layout.width / 2;
+  const centerY = layout.y + layout.height / 2;
+  const x = Math.min(1 - width, Math.max(0, centerX - width / 2));
+  const y = Math.min(1 - height, Math.max(0, centerY - height / 2));
+  const moduleFieldInches = Math.min(
+    width * placementWidthInches,
+    height * placementHeightInches,
+  ) * moduleFieldRatio;
+  if (moduleFieldInches + 1e-6 < geometry.qrMinimumInches) return null;
   return {
-    r: Number.parseInt(normalized.slice(0, 2), 16) / 255,
-    g: Number.parseInt(normalized.slice(2, 4), 16) / 255,
-    b: Number.parseInt(normalized.slice(4, 6), 16) / 255,
+    box: { x, y, width, height },
+    moduleFieldInches,
+    adjusted: width > layout.width + 1e-6 || height > layout.height + 1e-6,
   };
 }
 
-export function qrContrastRatio(
-  foreground: string | null | undefined,
-  background: string | null | undefined,
-) {
-  if (!foreground || !background) return null;
-  const luminance = (color: string) => {
-    const { r, g, b } = hexColor(color, "#000000");
-    const channel = (value: number) =>
-      value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    return 0.2126 * channel(r) + 0.7152 * channel(g) +
-      0.0722 * channel(b);
-  };
-  const first = luminance(foreground), second = luminance(background);
-  return (Math.max(first, second) + 0.05) /
-    (Math.min(first, second) + 0.05);
-}
 
 async function composePdf(
   input: CandidateInput,
   side: "front" | "back",
-  fetchAsset: CandidateDependencies["fetchAsset"],
+  renderedByPlacement: ReadonlyMap<string, CandidateRenderedPlacement>,
 ) {
   const document = await PDFDocument.create();
   document.setTitle(`${input.title} ${side} Production Candidate`);
-  document.setProducer(
-    `Adpadz Community Mailer ${COMMUNITY_MAILER_CANDIDATE_GENERATOR_VERSION}`,
-  );
+  document.setProducer(`Adpadz Community Mailer ${COMMUNITY_MAILER_CANDIDATE_GENERATOR_VERSION}`);
   document.setCreationDate(new Date(input.generatedAt));
   const geometry = geometryForMailer(input.format);
   const pageWidth = geometry.bleedWidthInches * 72;
   const pageHeight = geometry.bleedHeightInches * 72;
   const page = document.addPage([pageWidth, pageHeight]);
   const font = await document.embedFont(StandardFonts.Helvetica);
-  const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  page.drawRectangle({
-    x: 0,
-    y: 0,
-    width: pageWidth,
-    height: pageHeight,
-    color: rgb(1, 1, 1),
-  });
+  page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(1, 1, 1) });
   for (const placement of occupiedForSide(input, side)) {
+    const rendered = renderedByPlacement.get(placement.id);
+    if (!rendered) throw new Error(`${placement.slotKey} exact creative raster is missing.`);
     const x = placement.x / 100 * pageWidth;
     const y = pageHeight - (placement.y + placement.height) / 100 * pageHeight;
     const width = placement.width / 100 * pageWidth;
     const height = placement.height / 100 * pageHeight;
-    page.drawRectangle({
-      x,
-      y,
-      width,
-      height,
-      borderWidth: 0.5,
-      borderColor: rgb(0.15, 0.18, 0.22),
-      color: rgb(0.98, 0.98, 0.97),
-    });
-    const assetBytes = await fetchAsset(placement.creativeUrl);
-    const image = assetBytes[0] === 137 && assetBytes[1] === 80 &&
-        assetBytes[2] === 78 && assetBytes[3] === 71
-      ? await document.embedPng(assetBytes)
-      : await document.embedJpg(assetBytes);
-    const imageRatio = image.width / image.height;
-    const boxRatio = width / height;
-    const imageWidth = imageRatio > boxRatio ? width : height * imageRatio;
-    const imageHeight = imageRatio > boxRatio ? width / imageRatio : height;
-    page.drawImage(image, {
-      x: x + (width - imageWidth) / 2,
-      y: y + (height - imageHeight) / 2,
-      width: imageWidth,
-      height: imageHeight,
-    });
-    page.drawRectangle({
-      x,
-      y,
-      width,
-      height: Math.min(38, height * 0.28),
-      color: rgb(1, 1, 1),
-      opacity: 0.92,
-    });
-    page.drawText(placement.businessName.slice(0, 55), {
-      x: x + 5,
-      y: y + Math.min(27, height * 0.19),
-      size: Math.min(10, width / 24),
-      font: bold,
-      maxWidth: width - 50,
-    });
-    page.drawText(placement.headline.slice(0, 120), {
-      x: x + 5,
-      y: y + 7,
-      size: Math.min(7, width / 32),
-      font,
-      maxWidth: width - 50,
-    });
-    const qr = QRCode.create(placement.qrDestination, {
-      errorCorrectionLevel: "H",
-    });
-    const qrSize = Math.min(Math.max(54, Math.min(width, height) * 0.22), width - 8, height - 8);
-    const moduleSize = qrSize / qr.modules.size;
-    const qrX = x + width - qrSize - 4;
-    const qrY = y + 3;
-    const foreground = hexColor(placement.qrForegroundColor, "#000000");
-    page.drawRectangle({
-      x: qrX - 2,
-      y: qrY - 2,
-      width: qrSize + 4,
-      height: qrSize + 4,
-      color: rgb(1, 1, 1),
-    });
-    for (let row = 0; row < qr.modules.size; row += 1) {
-      for (let column = 0; column < qr.modules.size; column += 1) {
-        if (qr.modules.get(row, column)) {
-          page.drawRectangle({
-            x: qrX + column * moduleSize,
-            y: qrY + (qr.modules.size - row - 1) * moduleSize,
-            width: moduleSize + 0.01,
-            height: moduleSize + 0.01,
-            color: rgb(foreground.r, foreground.g, foreground.b),
-          });
-        }
-      }
+    let image;
+    try {
+      image = await document.embedPng(rendered.bytes);
+    } catch {
+      throw new Error(`${placement.slotKey} exact creative raster is not a valid PNG.`);
     }
+    page.drawImage(image, { x, y, width, height });
+    page.drawRectangle({ x, y, width, height, borderWidth: 0.5, borderColor: rgb(0.15, 0.18, 0.22) });
   }
   page.drawText(
-    `PRODUCTION CANDIDATE Â· NOT PRINTER CERTIFIED Â· revision ${input.layoutRevision}`,
+    `PRODUCTION CANDIDATE - NOT PRINTER CERTIFIED - revision ${input.layoutRevision}`,
     { x: 8, y: 3, size: 5, font, color: rgb(0.35, 0.35, 0.35) },
   );
   return document.save({ useObjectStreams: false });
 }
-
 function csvCell(value: unknown) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
@@ -258,8 +269,60 @@ export async function generateCommunityMailerCandidate(
 ): Promise<CandidatePackage> {
   const eligibility = candidateEligibility(input);
   if (!eligibility.eligible) throw new Error(eligibility.blockers.join(" "));
+  const geometry = geometryForMailer(input.format);
+  const renderedPlacements = await Promise.all(input.placements.map(async placement => {
+    const settings = normalizeCreativeSettings(placement.creativeSettings || placement.templateSettings);
+    const qrPrint = settings.showQr ? resolveCandidateQrPrintBox(input, placement) : null;
+    if (settings.showQr && !qrPrint) {
+      throw new Error(`${placement.slotKey} cannot fit the exact QR artwork at the print minimum.`);
+    }
+    const options: CandidatePlacementRenderOptions = {
+      width: Math.max(1, Math.round(geometry.bleedPixels.width * placement.width / 100)),
+      height: Math.max(1, Math.round(geometry.bleedPixels.height * placement.height / 100)),
+      qrBox: qrPrint?.box ?? null,
+    };
+    const bytes = await dependencies.renderPlacement(input, placement, options);
+    if (!isPng(bytes)) throw new Error(`${placement.slotKey} exact creative renderer did not produce a PNG.`);
+    return {
+      ...options,
+      placementId: placement.id,
+      bytes,
+      checksum: await sha256Hex(bytes),
+      qrModuleFieldInches: qrPrint?.moduleFieldInches ?? null,
+    } satisfies CandidateRenderedPlacement;
+  }));
+  const renderedByPlacement = new Map(renderedPlacements.map(item => [item.placementId, item]));
+  const manifestPlacements = await Promise.all(input.placements.map(async placement => {
+    const rendered = renderedByPlacement.get(placement.id)!;
+    const artwork = normalizeQRStudioProductionArtwork(placement.qrArtwork);
+    return {
+      placementId: placement.id,
+      campaignId: placement.campaignId,
+      snapshotFingerprint: placement.snapshotFingerprint,
+      creativeSnapshotContractVersion: placement.creativeSnapshotContractVersion,
+      creativeRenderContractVersion: placement.creativeRenderContractVersion,
+      creativeSettings: placement.creativeSettings || placement.templateSettings || null,
+      creativeFormatKey: placement.creativeFormatKey || "standard",
+      creativeVersionId: placement.creativeVersionId || null,
+      creativeVersionClaimed: Boolean(placement.creativeVersionId),
+      creativeSettingsFingerprint: placement.creativeSettingsFingerprint || null,
+      resolvedImageAssetId: placement.creativeAssetId,
+      resolvedImageUrl: placement.creativeUrl,
+      qrArtworkSnapshot: artwork,
+      encodedShortUrl: placement.qrShortUrl || null,
+      associatedQrLinkId: placement.associatedQrLinkId || null,
+      associatedQrDestination: placement.associatedQrDestination || null,
+      qrArtworkFingerprint: artwork
+        ? await sha256Hex(encoder.encode(JSON.stringify(artwork)))
+        : null,
+      qrPrintBox: rendered.qrBox,
+      qrModuleFieldInches: rendered.qrModuleFieldInches,
+      renderedCreativeChecksum: rendered.checksum,
+      templateSettings: placement.creativeSettings || placement.templateSettings || null,
+    };
+  }));
   const manifest = {
-    schema: "adpadz.community-mailer.production-candidate.v1",
+    schema: "adpadz.community-mailer.production-candidate.v2",
     generatorVersion: COMMUNITY_MAILER_CANDIDATE_GENERATOR_VERSION,
     generatedAt: input.generatedAt,
     mailerId: input.mailerId,
@@ -268,24 +331,24 @@ export async function generateCommunityMailerCandidate(
     layoutRevision: input.layoutRevision,
     preflightRunId: input.preflightRunId,
     preflightFingerprint: input.preflightFingerprint,
-    geometry: geometryForMailer(input.format),
+    geometry,
     classification: "Production Candidate",
-    templateContractVersion: 1,
-    placements: input.placements.map(placement => ({
-      placementId: placement.id,
-      campaignId: placement.campaignId,
-      snapshotFingerprint: placement.snapshotFingerprint,
-      templateSettings: placement.templateSettings || null,
-    })),
+    templateContractVersion: 2,
+    creativeRenderContractVersion: 1,
+    creativeRenderer: "CampaignTemplateRenderer",
+    qrRenderer: "QRStudioPreview/CircularPadQR",
+    placements: manifestPlacements,
     printerCertified: false,
+    warnings: eligibility.warnings,
     caveats: [
       "Not printer certified.",
+      "QR artwork may be enlarged from its screen template box to preserve the recorded print module-field minimum.",
       "Printer must confirm embedded fonts, color conversion, postal compliance, and final imposition.",
     ],
   };
   const placementCsv = [
-    ["placement_id", "slot_key", "side", "campaign_id", "business_id", "creative_asset_id", "snapshot_fingerprint"],
-    ...input.placements.map((placement) => [
+    ["placement_id", "slot_key", "side", "campaign_id", "business_id", "creative_asset_id", "snapshot_fingerprint", "rendered_creative_checksum"],
+    ...input.placements.map(placement => [
       placement.id,
       placement.slotKey,
       placement.side,
@@ -293,53 +356,59 @@ export async function generateCommunityMailerCandidate(
       placement.businessId,
       placement.creativeAssetId,
       placement.snapshotFingerprint,
+      renderedByPlacement.get(placement.id)?.checksum || "",
     ]),
-  ].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const qrManifest = input.placements.map((placement) => ({
-    placementId: placement.id,
-    slotKey: placement.slotKey,
-    campaignId: placement.campaignId,
-    businessId: placement.businessId,
-    mailerId: input.mailerId,
-    mailerRevision: input.layoutRevision,
-    zoneName: input.zoneName,
-    qrLinkId: placement.qrLinkId,
-    destination: placement.qrDestination,
-    minimumRecommendedInches: geometryForMailer(input.format).qrMinimumInches,
-    contrastRatio: qrContrastRatio(
-      placement.qrForegroundColor,
-      placement.qrBackgroundColor,
-    ),
+  ].map(row => row.map(csvCell).join(",")).join("\r\n");
+  const qrManifest = await Promise.all(input.placements.map(async placement => {
+    const artwork = normalizeQRStudioProductionArtwork(placement.qrArtwork);
+    const rendered = renderedByPlacement.get(placement.id)!;
+    return {
+      placementId: placement.id,
+      slotKey: placement.slotKey,
+      campaignId: placement.campaignId,
+      businessId: placement.businessId,
+      mailerId: input.mailerId,
+      mailerRevision: input.layoutRevision,
+      zoneName: input.zoneName,
+      qrLinkId: placement.qrLinkId,
+      destination: placement.qrDestination,
+      encodedShortUrl: placement.qrShortUrl || null,
+      associatedQrLinkId: placement.associatedQrLinkId || null,
+      associatedQrDestination: placement.associatedQrDestination || null,
+      slug: artwork?.slug ?? null,
+      stylePreset: artwork?.style_preset ?? null,
+      artworkFingerprint: artwork
+        ? await sha256Hex(encoder.encode(JSON.stringify(artwork)))
+        : null,
+      minimumRecommendedInches: geometry.qrMinimumInches,
+      renderedModuleFieldInches: rendered.qrModuleFieldInches,
+      printBox: rendered.qrBox,
+      contrastRatio: artwork
+        ? qrContrastRatio(artwork.foreground_color, artwork.inner_field_color)
+        : null,
+    };
   }));
   const advertiserCsv = [
     ["placement_id", "slot_key", "business_id", "business_name", "campaign_id"],
-    ...input.placements.map((placement) => [
+    ...input.placements.map(placement => [
       placement.id,
       placement.slotKey,
       placement.businessId,
       placement.businessName,
       placement.campaignId,
     ]),
-  ].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  ].map(row => row.map(csvCell).join(",")).join("\r\n");
   const rawFiles = [
-    ["front.pdf", "application/pdf",
-      await composePdf(input, "front", dependencies.fetchAsset)],
-    ["back.pdf", "application/pdf",
-      await composePdf(input, "back", dependencies.fetchAsset)],
-    ["front.png", "image/png",
-      await dependencies.renderPreview(input, "front")],
-    ["back.png", "image/png",
-      await dependencies.renderPreview(input, "back")],
-    ["production-manifest.json", "application/json",
-      encoder.encode(JSON.stringify(manifest, null, 2))],
+    ["front.pdf", "application/pdf", await composePdf(input, "front", renderedByPlacement)],
+    ["back.pdf", "application/pdf", await composePdf(input, "back", renderedByPlacement)],
+    ["front.png", "image/png", await dependencies.renderPreview(input, "front", renderedPlacements)],
+    ["back.png", "image/png", await dependencies.renderPreview(input, "back", renderedPlacements)],
+    ["production-manifest.json", "application/json", encoder.encode(JSON.stringify(manifest, null, 2))],
     ["placement-manifest.csv", "text/csv", encoder.encode(placementCsv)],
     ["advertiser-manifest.csv", "text/csv", encoder.encode(advertiserCsv)],
-    ["qr-manifest.json", "application/json",
-      encoder.encode(JSON.stringify(qrManifest, null, 2))],
-    ["preflight-report.json", "application/json",
-      encoder.encode(JSON.stringify(input.preflightReport, null, 2))],
-    ["confirmation-record.json", "application/json",
-      encoder.encode(JSON.stringify(input.confirmations, null, 2))],
+    ["qr-manifest.json", "application/json", encoder.encode(JSON.stringify(qrManifest, null, 2))],
+    ["preflight-report.json", "application/json", encoder.encode(JSON.stringify(input.preflightReport, null, 2))],
+    ["confirmation-record.json", "application/json", encoder.encode(JSON.stringify(input.confirmations, null, 2))],
   ] as const;
   const files = await Promise.all(rawFiles.map(async ([name, contentType, bytes]) => ({
     name,
@@ -348,13 +417,17 @@ export async function generateCommunityMailerCandidate(
     checksum: await sha256Hex(bytes),
   })));
   const checksum = await sha256Hex(encoder.encode(
-    files.map((file) => `${file.name}:${file.checksum}`).sort().join("\n"),
+    files.map(file => `${file.name}:${file.checksum}`).sort().join("\n"),
   ));
   return {
     files,
     checksum,
-    storagePrefix:
-      `community-mailers/${input.mailerId}/revisions/${input.layoutRevision}/production-candidate/`,
+    storagePrefix: `community-mailers/${input.mailerId}/revisions/${input.layoutRevision}/production-candidate/`,
     manifest,
   };
+}
+
+function isPng(bytes: Uint8Array) {
+  return bytes.length > 8 && bytes[0] === 137 && bytes[1] === 80
+    && bytes[2] === 78 && bytes[3] === 71;
 }

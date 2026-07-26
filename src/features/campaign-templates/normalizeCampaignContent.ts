@@ -4,6 +4,8 @@ import type { CampaignTemplateContent } from "./types";
 export type CampaignContentSource = {
   campaign: CampaignRecord;
   businessName?: string | null;
+  businessPhone?: string | null;
+  businessWebsite?: string | null;
   businessLogoUrl?: string | null;
   imageUrl?: string | null;
   destinationUrl?: string | null;
@@ -16,6 +18,8 @@ export function normalizeCampaignContent(source: CampaignContentSource): Campaig
   return {
     campaignId: campaign.id,
     businessName: clean(source.businessName) || "Local business",
+    businessPhone: clean(source.businessPhone),
+    businessWebsite: clean(source.businessWebsite),
     businessLogoUrl: clean(source.businessLogoUrl),
     imageUrl: clean(source.imageUrl),
     headline: clean(campaign.headline) || clean(campaign.title) || "Local campaign",
@@ -38,4 +42,3 @@ function clean(value: unknown): string | null {
 function validColor(value: unknown): string | null {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : null;
 }
-

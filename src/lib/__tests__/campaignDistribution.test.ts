@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   SOCIAL_FORMATS, SOCIAL_TEMPLATES, buildSocialFilename, buildSuggestedCaption,
-  buildSuggestedHashtags, evaluateDistributionReadiness, type CampaignCreativeData,
+  buildSuggestedHashtags, evaluateDistributionReadiness, isDistributionQrUsable,
+  type CampaignCreativeData,
 } from '../campaignDistribution';
 
 const creative: CampaignCreativeData = {
@@ -51,5 +52,14 @@ describe('campaign distribution', () => {
 
   it('requires a logo for Brand Focus', () => {
     expect(evaluateDistributionReadiness({ ...creative, businessLogoUrl: null }, { template: 'brand-focus', showQr: false }).issues[0].field).toBe('logo');
+  });
+
+  it('uses only active, unexpired QR Studio records for exact Social artwork', () => {
+    const now = Date.parse('2026-07-25T12:00:00Z');
+    expect(isDistributionQrUsable({ status: 'active', expires_at: null }, now)).toBe(true);
+    expect(isDistributionQrUsable({ status: 'active', expires_at: '2026-07-26T12:00:00Z' }, now)).toBe(true);
+    expect(isDistributionQrUsable({ status: 'paused', expires_at: null }, now)).toBe(false);
+    expect(isDistributionQrUsable({ status: 'active', expires_at: '2026-07-24T12:00:00Z' }, now)).toBe(false);
+    expect(isDistributionQrUsable({ status: 'active', expires_at: 'not-a-date' }, now)).toBe(false);
   });
 });

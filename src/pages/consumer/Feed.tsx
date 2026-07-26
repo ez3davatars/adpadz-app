@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bookmark, Heart, Loader2, MapPin, Search, Share2, Sparkles } from 'lucide-react';
 import AdpadzBrand from '../../components/AdpadzBrand';
+import QRStudioPreview from '../../components/qr/QRStudioPreview';
 import {
   getCampaignFormat,
   getCampaignImage,
@@ -12,7 +13,8 @@ import {
   type PublicCampaignExperience,
 } from '../../lib/campaigns';
 import { copyTextToClipboard } from '../../lib/clipboard';
-import { CampaignTemplateRenderer, normalizeCampaignContent, normalizeTemplateSettings } from '../../features/campaign-templates';
+import { buildShortUrl } from '../../lib/qr/qrUtils';
+import { CampaignTemplateRenderer, normalizeCampaignContent, resolveDestinationCreative } from '../../features/campaign-templates';
 
 const filters = [
   { value: 'all', label: 'All' },
@@ -154,6 +156,16 @@ export default function Feed() {
               const image = getCampaignImage(experience);
               const format = getCampaignFormat(experience);
               const isSaved = saved.has(experience.campaign.id);
+              const qrArtwork = experience.creativeQrArtwork.discovery ?? null;
+              const savedCreative = resolveDestinationCreative(experience.output.metadata, 'discovery');
+              const creative = resolveDestinationCreative(experience.output.metadata, 'discovery', {
+                assets: experience.creativeAssets,
+                qrLinks: qrArtwork
+                  ? [{ id: qrArtwork.id, publicUrl: buildShortUrl(qrArtwork.slug) }]
+                  : [],
+                fallbackImageUrl: savedCreative.imageAssetId ? null : image,
+                fallbackDestinationUrl: new URL(`/ad/${experience.campaign.id}`, window.location.origin).toString(),
+              });
               return (
                 <article key={experience.campaign.id} className="card-surface overflow-hidden">
                   <div className="flex items-center gap-3 p-4 pb-3">
@@ -166,14 +178,31 @@ export default function Feed() {
                   </div>
 
                   <Link to={`/ad/${experience.campaign.id}`} aria-label={`Open ${experience.campaign.headline || experience.campaign.title}`}>
-                    <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg-input)]" style={{ containerType: 'inline-size' }}>
+                    <div className="relative aspect-square overflow-hidden bg-[var(--bg-input)]" style={{ containerType: 'inline-size' }}>
                       <CampaignTemplateRenderer
-                        destination="discovery"
-                        content={normalizeCampaignContent({ campaign: experience.campaign, businessName: experience.business?.business_name, businessLogoUrl: experience.business?.logo_url, imageUrl: image, destinationUrl: `/ad/${experience.campaign.id}`, primaryColor: experience.business?.primary_color, accentColor: experience.business?.accent_color })}
-                        settings={normalizeTemplateSettings(experience.output.metadata?.template_settings)}
+                        destination={creative.rendererDestination}
+                        content={normalizeCampaignContent({
+                          campaign: experience.campaign,
+                          businessName: experience.business?.business_name,
+                          businessPhone: experience.business?.phone,
+                          businessWebsite: experience.business?.website,
+                          businessLogoUrl: experience.business?.logo_url,
+                          imageUrl: creative.imageUrl,
+                          destinationUrl: creative.qrDestinationUrl,
+                          primaryColor: experience.business?.primary_color,
+                          accentColor: experience.business?.accent_color,
+                        })}
+                        settings={creative.renderSettings}
+                        qrArtwork={qrArtwork ? <QRStudioPreview qr={qrArtwork} /> : undefined}
                       />
                       <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-neon">{formatLabel(format)}</span>
-                    </div>                  </Link>
+                    </div>
+                  </Link>
+                  {creative.issues.length > 0 && (
+                    <div className="border-t border-amber-300/20 bg-amber-300/10 px-4 py-2 text-[10px] font-bold leading-relaxed text-amber-100" role="status">
+                      {creative.issues.join(' ')}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-3 p-4">
                     <div className="min-w-0">

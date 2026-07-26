@@ -1,32 +1,52 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Check, Copy, Download, ExternalLink, ImageOff, Loader2, Mail,
+  ArrowLeft, Copy, Download, ExternalLink, Loader2, Mail,
   MonitorPlay, QrCode, RefreshCcw, Share2, Sparkles, Store, Users,
 } from 'lucide-react';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzSection } from '../../components/adpadz-ui';
-import CampaignCreativeRenderer from '../../components/campaign-distribution/CampaignCreativeRenderer';
 import {
-  SOCIAL_FORMATS, SOCIAL_TEMPLATES, buildSuggestedCaption, evaluateDistributionReadiness,
-  getSocialFormat, type CampaignCreativeData, type SocialFormatKey, type SocialTemplateKey,
+  buildSuggestedCaption, evaluateDistributionReadiness, getSocialFormat, isDistributionQrUsable,
+  type CampaignCreativeData, type SocialFormatKey,
 } from '../../lib/campaignDistribution';
 import type { CampaignOutputRecord, CampaignRecord } from '../../lib/ads';
 import { copyTextToClipboard } from '../../lib/clipboard';
-import { exportSocialCreative } from '../../lib/socialCreativeExport';
+import { exportSocialCreativeElement } from '../../lib/socialCreativeExport';
 import { supabase } from '../../lib/supabase';
 import { evaluateCampaignReadiness, type CampaignReadinessResult } from '../../lib/campaignReadiness';
-import { normalizeTemplateSettings } from '../../features/campaign-templates';
+import {
+  CAMPAIGN_TEMPLATE_REGISTRY,
+  CampaignTemplateRenderer,
+  normalizeCampaignContent,
+  resolveDestinationCreative,
+  type CreativeAssetReference,
+} from '../../features/campaign-templates';
+import QRStudioPreview from '../../components/qr/QRStudioPreview';
+import type { QRLinkRecord } from '../../lib/qr/qrTypes';
 
 type State = {
   creative: CampaignCreativeData | null;
   outputs: CampaignOutputRecord[];
   smartCard: { slug: string; is_published: boolean } | null;
   readiness: CampaignReadinessResult | null;
+  creativeAssets: CreativeAssetReference[];
+  discoveryQr: QRLinkRecord | null;
+  socialQr: QRLinkRecord | null;
   loading: boolean;
   error: string | null;
 };
 
-const initialState: State = { creative: null, outputs: [], smartCard: null, readiness: null, loading: true, error: null };
+const initialState: State = {
+  creative: null,
+  outputs: [],
+  smartCard: null,
+  readiness: null,
+  creativeAssets: [],
+  discoveryQr: null,
+  socialQr: null,
+  loading: true,
+  error: null,
+};
 
 export default function CampaignDistribution() {
   const { campaignId = '' } = useParams();
@@ -43,11 +63,81 @@ export default function CampaignDistribution() {
   if (state.loading) return <p className="flex items-center rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-4 w-4 animate-spin text-neon" /> Loading campaign distribution...</p>;
   if (state.error || !state.creative) return <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-5 text-sm text-red-100" role="alert">{state.error || 'Campaign not found.'}</AdpadzCard>;
   return social
-    ? <SocialDistributionWorkspace creative={state.creative} output={state.outputs.find(item => item.output_type === 'interactive_ad')} />
-    : <DistributionOverview creative={state.creative} outputs={state.outputs} smartCard={state.smartCard} readiness={state.readiness} />;
+    ? <SocialDistributionWorkspace
+        key={state.creative.campaign.id}
+        creative={state.creative}
+        output={state.outputs.find(item => item.output_type === 'interactive_ad')}
+        assets={state.creativeAssets}
+        socialQr={state.socialQr}
+      />
+    : <DistributionOverview
+        creative={state.creative}
+        outputs={state.outputs}
+        smartCard={state.smartCard}
+        readiness={state.readiness}
+        assets={state.creativeAssets}
+        discoveryQr={state.discoveryQr}
+      />;
 }
 
-function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<State, 'creative' | 'outputs' | 'smartCard' | 'readiness'> & { creative: CampaignCreativeData }) {
+function DistributionOverview({
+  creative,
+  outputs,
+  smartCard,
+  readiness,
+  assets,
+  discoveryQr,
+}: Pick<State, 'outputs' | 'smartCard' | 'readiness' | 'discoveryQr'> & {
+  creative: CampaignCreativeData;
+  assets: CreativeAssetReference[];
+}) {
+  const interactiveOutput = outputs.find(item => item.output_type === 'interactive_ad');
+  const savedDiscovery = useMemo(
+    () => resolveDestinationCreative(interactiveOutput?.metadata, 'discovery'),
+    [interactiveOutput?.metadata],
+  );
+  const usableDiscoveryQr = isDistributionQrUsable(discoveryQr) ? discoveryQr : null;
+  const qrPublicUrl = usableDiscoveryQr
+    ? `${window.location.origin}/q/${usableDiscoveryQr.slug}`
+    : null;
+  const resolved = useMemo(() => resolveDestinationCreative(
+    interactiveOutput?.metadata,
+    'discovery',
+    {
+      assets,
+      qrLinks: usableDiscoveryQr
+        ? [{ id: usableDiscoveryQr.id, publicUrl: qrPublicUrl }]
+        : [],
+      fallbackImageUrl: savedDiscovery.imageAssetId ? null : creative.campaignImageUrl,
+      fallbackDestinationUrl: creative.campaignUrl,
+    },
+  ), [
+    assets,
+    creative.campaignImageUrl,
+    creative.campaignUrl,
+    interactiveOutput?.metadata,
+    qrPublicUrl,
+    savedDiscovery.imageAssetId,
+    usableDiscoveryQr,
+  ]);
+  const content = useMemo(() => normalizeCampaignContent({
+    campaign: creative.campaign,
+    businessName: creative.businessName,
+    businessPhone: creative.phone,
+    businessWebsite: creative.website,
+    businessLogoUrl: creative.businessLogoUrl,
+    imageUrl: resolved.imageUrl,
+    destinationUrl: resolved.qrDestinationUrl,
+    primaryColor: creative.primaryColor,
+    accentColor: creative.accentColor,
+  }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
+  const exactQr = resolved.qrResolution === 'exact' ? usableDiscoveryQr : null;
+  const discoveryReadiness = readiness?.sections.find(section => section.key === 'discovery')?.status;
+  const savedPreviewReady = discoveryReadiness === 'ready' && resolved.issues.length === 0;
+  const savedPreviewStatus = savedPreviewReady
+    ? 'Ready'
+    : discoveryReadiness === 'blocked' ? 'Blocked' : 'Needs attention';
+  const templateLabel = CAMPAIGN_TEMPLATE_REGISTRY[resolved.settings.template].label;
   const output = (type: string) => outputs.find(item => item.output_type === type && item.enabled);
   const sectionStatus = (key: 'mailer' | 'qr' | 'discovery' | 'social') => readiness?.sections.find(section => section.key === key)?.status === 'ready' ? 'Ready' : readiness?.sections.find(section => section.key === key)?.status === 'blocked' ? 'Blocked' : 'Needs attention';
   const destinations = [
@@ -61,19 +151,63 @@ function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<
   return (
     <div className="space-y-7">
       <AdpadzButton href="/app/business/campaigns" variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Campaigns</AdpadzButton>
-      <AdpadzCard variant="featured" className="overflow-hidden p-6 sm:p-8">
-        <div className="grid gap-7 md:grid-cols-[180px_1fr] md:items-center">
-          <div className="aspect-square overflow-hidden rounded-3xl bg-white/[0.05]">
-            {creative.campaignImageUrl ? <img src={creative.campaignImageUrl} alt={`${creative.campaign.title} campaign`} className="h-full w-full object-cover" /> : <ImageOff className="m-auto h-full w-10 text-[var(--text-muted)]" />}
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2"><AdpadzBadge variant="campaign">Distribution</AdpadzBadge><AdpadzBadge variant="status" className="capitalize">{creative.campaign.status}</AdpadzBadge></div>
+      <AdpadzCard variant="featured" className="overflow-hidden p-4 sm:p-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.25fr)] lg:items-center">
+          <section aria-label="Saved Consumer Discovery creative preview" className="min-w-0">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Saved creative preview</p>
+                <p className="mt-1 text-xs font-bold text-[var(--text-secondary)]">Consumer Discovery · {resolved.format === 'card' ? 'Card' : resolved.format}</p>
+              </div>
+              <AdpadzBadge variant={savedPreviewReady ? 'verified' : 'status'}>{savedPreviewStatus}</AdpadzBadge>
+            </div>
+            <div
+              data-testid="saved-distribution-creative"
+              className="mx-auto aspect-square w-full max-w-[360px] overflow-hidden rounded-2xl border border-white/10 bg-black/25"
+              style={{ containerType: 'inline-size' }}
+            >
+              <CampaignTemplateRenderer
+                content={content}
+                settings={resolved.renderSettings}
+                destination={resolved.rendererDestination}
+                qrArtwork={exactQr ? <QRStudioPreview qr={exactQr} /> : undefined}
+              />
+            </div>
+            {resolved.issues.length > 0 && (
+              <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-[10px] font-bold leading-relaxed text-amber-100" role="status">
+                {resolved.issues.join(' ')}
+              </div>
+            )}
+          </section>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <AdpadzBadge variant="campaign">Distribution</AdpadzBadge>
+              <AdpadzBadge variant="status" className="capitalize">{creative.campaign.status}</AdpadzBadge>
+              <AdpadzBadge variant="status">Read-only</AdpadzBadge>
+            </div>
             <h1 className="mt-4 text-3xl font-black">{creative.campaign.title}</h1>
-            <p className="mt-3 max-w-2xl text-base text-[var(--text-secondary)]">Your campaign is prepared for every Adpadz destination. One campaign powers every output below.</p><AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/creative`} variant="secondary" size="sm" className="mt-4"><Sparkles className="h-4 w-4" /> Open Creative Workshop</AdpadzButton>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">Review the saved destination creative here. Design changes stay in Creative Workshop so every output continues from one approved campaign.</p>
+            <dl className="mt-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div><dt className="text-[var(--text-muted)]">Destination</dt><dd className="mt-1 font-black">Discovery</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Template</dt><dd className="mt-1 font-black">{templateLabel}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Format</dt><dd className="mt-1 font-black capitalize">{resolved.format}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Readiness</dt><dd className="mt-1 font-black">{savedPreviewStatus}</dd></div>
+            </dl>
+            <p className="mt-3 text-[10px] text-[var(--text-muted)]">{creativeSourceLabel(resolved.source, 'Discovery')} · saved Campaign creative</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/creative`} variant="secondary" size="sm"><Sparkles className="h-4 w-4" /> Open Creative Workshop</AdpadzButton>
+              <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/distribution/social`} variant="secondary" size="sm"><Download className="h-4 w-4" /> Export social asset</AdpadzButton>
+              <AdpadzButton
+                href={interactiveOutput?.enabled ? `/ad/${creative.campaign.id}` : `/app/business/campaigns/${creative.campaign.id}/edit?section=outputs`}
+                size="sm"
+              >
+                <ExternalLink className="h-4 w-4" /> {interactiveOutput?.enabled ? 'Open published campaign' : 'Prepare to publish'}
+              </AdpadzButton>
+            </div>
           </div>
         </div>
       </AdpadzCard>
-      <AdpadzSection eyebrow="One campaign Ã‚Â· many destinations" title="Where this campaign can go" description="Each destination reads the same approved campaign and Business Hub information.">
+      <AdpadzSection eyebrow="One campaign · many destinations" title="Where this campaign can go" description="Each destination reads the same approved campaign and Business Hub information.">
         <div className="grid gap-4 md:grid-cols-2">
           {destinations.map(destination => (
             <AdpadzCard key={destination.key} as="article" variant={destination.primary ? 'featured' : 'flat'} className={`p-5 ${destination.key === 'tv' ? 'opacity-70' : ''}`}>
@@ -92,20 +226,60 @@ function DistributionOverview({ creative, outputs, smartCard, readiness }: Pick<
     </div>
   );
 }
-
-function SocialDistributionWorkspace({ creative, output }: { creative: CampaignCreativeData; output?: CampaignOutputRecord }) {
-  const savedTemplateSettings = normalizeTemplateSettings(output?.metadata?.template_settings);
-  const [format, setFormat] = useState<SocialFormatKey>('square');
-  const [template, setTemplate] = useState<SocialTemplateKey>(savedTemplateSettings.template);
-  const [showQr, setShowQr] = useState(savedTemplateSettings.showQr || Boolean(creative.campaignUrl));
-  const [showExpiration, setShowExpiration] = useState(savedTemplateSettings.showExpiration && Boolean(creative.campaign.end_date));
-  const suggestedCaption = useMemo(() => buildSuggestedCaption(creative), [creative]);
+function SocialDistributionWorkspace({
+  creative,
+  output,
+  assets,
+  socialQr,
+}: {
+  creative: CampaignCreativeData;
+  output?: CampaignOutputRecord;
+  assets: CreativeAssetReference[];
+  socialQr: QRLinkRecord | null;
+}) {
+  const usableSocialQr = isDistributionQrUsable(socialQr) ? socialQr : null;
+  const qrPublicUrl = usableSocialQr ? `${window.location.origin}/q/${usableSocialQr.slug}` : null;
+  const savedSocial = useMemo(
+    () => resolveDestinationCreative(output?.metadata, 'social'),
+    [output?.metadata],
+  );
+  const resolved = useMemo(() => resolveDestinationCreative(output?.metadata, 'social', {
+    assets,
+    qrLinks: usableSocialQr ? [{ id: usableSocialQr.id, publicUrl: qrPublicUrl }] : [],
+    fallbackImageUrl: savedSocial.imageAssetId ? null : creative.campaignImageUrl,
+    fallbackDestinationUrl: creative.campaignUrl,
+  }), [assets, creative.campaignImageUrl, creative.campaignUrl, output?.metadata, qrPublicUrl, savedSocial.imageAssetId, usableSocialQr]);
+  const format = resolved.format as SocialFormatKey;
+  const preset = getSocialFormat(format);
+  const previewWidth = `min(100%, ${Math.round(7000 * preset.width / preset.height) / 100}vh)`;
+  const effectiveCreative = useMemo<CampaignCreativeData>(() => ({
+    ...creative,
+    campaignImageUrl: resolved.imageUrl,
+    campaignUrl: resolved.qrDestinationUrl ?? creative.campaignUrl,
+  }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
+  const content = useMemo(() => normalizeCampaignContent({
+    campaign: creative.campaign,
+    businessName: creative.businessName,
+    businessPhone: creative.phone,
+    businessWebsite: creative.website,
+    businessLogoUrl: creative.businessLogoUrl,
+    imageUrl: resolved.imageUrl,
+    destinationUrl: resolved.qrDestinationUrl,
+    primaryColor: creative.primaryColor,
+    accentColor: creative.accentColor,
+  }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
+  const suggestedCaption = useMemo(() => buildSuggestedCaption(effectiveCreative), [effectiveCreative]);
   const [caption, setCaption] = useState(suggestedCaption);
   const [message, setMessage] = useState('');
   const [exporting, setExporting] = useState(false);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const readiness = evaluateDistributionReadiness(creative, { template, showQr });
-  const preset = getSocialFormat(format);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const readiness = evaluateDistributionReadiness(effectiveCreative, {
+    template: resolved.settings.template,
+    showQr: resolved.renderSettings.showQr,
+  });
+  const deliveryReady = readiness.ready && resolved.issues.length === 0;
+  const exactQr = resolved.qrResolution === 'exact' ? usableSocialQr : null;
+  const templateLabel = CAMPAIGN_TEMPLATE_REGISTRY[resolved.settings.template].label;
 
   async function copyCaption() {
     try {
@@ -117,12 +291,17 @@ function SocialDistributionWorkspace({ creative, output }: { creative: CampaignC
   }
 
   async function download() {
-    if (!svgRef.current || !readiness.ready) return;
+    if (!previewRef.current || !deliveryReady) return;
     setExporting(true);
     setMessage('');
     try {
-      await exportSocialCreative(svgRef.current, format, creative.businessName, creative.campaign.title);
-      setMessage(`${preset.width} Ãƒâ€” ${preset.height} PNG downloaded.`);
+      await exportSocialCreativeElement(
+        previewRef.current,
+        format,
+        creative.businessName,
+        creative.campaign.title,
+      );
+      setMessage(`${preset.width} × ${preset.height} PNG downloaded from the saved Social creative.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not export the image.');
     } finally {
@@ -134,38 +313,58 @@ function SocialDistributionWorkspace({ creative, output }: { creative: CampaignC
     <div className="space-y-6">
       <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/distribution`} variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Distribution</AdpadzButton>
       <div>
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Social Media Ã‚Â· Manual posting</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Social Media · Manual posting</p>
         <h1 className="mt-1 text-2xl font-black">{creative.campaign.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">Choose a destination-ready layout, download the image, then copy the editable caption into the social account you already use.</p>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">Review the saved Social creative, download its exact rendered design, then copy the editable caption into the social account you already use.</p>
       </div>
       {message && <div role="status" aria-live="polite" className="rounded-2xl border border-neon/25 bg-neon/[0.08] p-4 text-sm font-bold text-neon">{message}</div>}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
-        <section aria-label="Creative preview" className="order-1 xl:sticky xl:top-6 xl:self-start">
+        <section aria-label="Saved creative preview" className="order-1 xl:sticky xl:top-6 xl:self-start">
           <AdpadzCard variant="featured" className="p-3 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-3 px-1"><div><p className="text-xs font-black">Live preview</p><p className="text-[10px] text-[var(--text-muted)]">{preset.width} Ãƒâ€” {preset.height} PNG</p></div><AdpadzBadge variant={readiness.ready ? 'verified' : 'status'}>{readiness.ready ? 'Ready' : 'Needs attention'}</AdpadzBadge></div>
-            <div className="mx-auto flex max-h-[70vh] justify-center overflow-hidden rounded-2xl bg-black/30">
-              <CampaignCreativeRenderer ref={svgRef} creative={creative} format={format} template={template} showQr={showQr} showExpiration={showExpiration} className="h-auto max-h-[70vh] w-auto max-w-full" />
+            <div className="mb-3 flex items-center justify-between gap-3 px-1">
+              <div><p className="text-xs font-black">Saved Social preview</p><p className="text-[10px] text-[var(--text-muted)]">{preset.width} × {preset.height} PNG</p></div>
+              <AdpadzBadge variant={deliveryReady ? 'verified' : 'status'}>{deliveryReady ? 'Ready' : 'Needs attention'}</AdpadzBadge>
             </div>
-            <AdpadzButton type="button" onClick={() => void download()} disabled={!readiness.ready || exporting} fullWidth size="lg" className="mt-4">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{exporting ? 'Creating PNG...' : 'Download image'}</AdpadzButton>
+            <div className="mx-auto flex max-h-[70vh] justify-center overflow-hidden rounded-2xl bg-black/30">
+              <div
+                ref={previewRef}
+                data-testid="saved-social-creative"
+                className="h-auto max-h-[70vh] max-w-full overflow-hidden rounded-2xl"
+                style={{ aspectRatio: `${preset.width} / ${preset.height}`, containerType: 'inline-size', width: previewWidth }}
+              >
+                <CampaignTemplateRenderer
+                  content={content}
+                  settings={resolved.renderSettings}
+                  destination={resolved.rendererDestination}
+                  qrArtwork={exactQr ? <QRStudioPreview qr={exactQr} /> : undefined}
+                  className="rounded-2xl"
+                />
+              </div>
+            </div>
+            <AdpadzButton type="button" onClick={() => void download()} disabled={!deliveryReady || exporting} fullWidth size="lg" className="mt-4">{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{exporting ? 'Creating PNG...' : 'Download image'}</AdpadzButton>
+            <p className="mt-3 text-[10px] leading-relaxed text-[var(--text-muted)]">The PNG is rasterized from this shared Campaign Template renderer. If an owned image cannot be embedded safely, export stops instead of substituting a different design.</p>
           </AdpadzCard>
         </section>
         <div className="order-2 space-y-5">
-          <Selector title="Format">
-            <div className="flex gap-2 overflow-x-auto pb-2 xl:grid xl:grid-cols-2">
-              {SOCIAL_FORMATS.map(option => <SelectionButton key={option.key} selected={format === option.key} onClick={() => setFormat(option.key)} title={option.label} detail={`${option.width} Ãƒâ€” ${option.height}`} />)}
+          <AdpadzCard variant="flat" className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Saved creative</p><h2 className="mt-1 text-base font-black">{templateLabel}</h2></div>
+              <AdpadzBadge variant="status">{creativeSourceLabel(resolved.source)}</AdpadzBadge>
             </div>
-          </Selector>
-          <Selector title="Template">
-            <div className="space-y-2">{SOCIAL_TEMPLATES.map(option => <SelectionButton key={option.key} selected={template === option.key} onClick={() => setTemplate(option.key)} title={option.label} detail={option.description} />)}</div>
-          </Selector>
-          <AdpadzCard variant="flat" className="space-y-3 p-5">
-            <Toggle checked={showQr} onChange={setShowQr} label="Show QR code" detail="Uses the campaign or CTA destination." />
-            <Toggle checked={showExpiration} onChange={setShowExpiration} disabled={!creative.campaign.end_date} label="Show expiration date" detail={creative.campaign.end_date ? 'Uses the campaign end date.' : 'No expiration date is set.'} />
+            <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+              <div><dt className="text-[var(--text-muted)]">Destination</dt><dd className="mt-1 font-black">Social</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Format</dt><dd className="mt-1 font-black">{preset.label}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">Image</dt><dd className="mt-1 font-black capitalize">{resolved.imageResolution}</dd></div>
+              <div><dt className="text-[var(--text-muted)]">QR</dt><dd className="mt-1 font-black capitalize">{resolved.settings.showQr ? resolved.qrResolution : 'Hidden'}</dd></div>
+            </dl>
+            <p className="mt-4 text-[10px] leading-relaxed text-[var(--text-muted)]">Creative settings are read-only in Distribution so the saved Workshop design remains the single source of truth.</p>
+            <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/creative`} variant="secondary" fullWidth className="mt-4"><Sparkles className="h-4 w-4" /> Open Creative Workshop</AdpadzButton>
           </AdpadzCard>
+          {resolved.issues.length > 0 && <AdpadzCard variant="flat" className="border-amber-400/30 bg-amber-400/[0.07] p-5" role="status"><h2 className="font-black text-amber-200">Saved creative needs attention</h2><ul className="mt-3 list-disc space-y-2 pl-4 text-xs text-amber-100">{resolved.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></AdpadzCard>}
           {!readiness.ready && <AdpadzCard variant="flat" className="border-amber-400/30 bg-amber-400/[0.07] p-5" role="status"><h2 className="font-black text-amber-200">Complete this campaign</h2><div className="mt-3 space-y-3">{readiness.issues.map(issue => <div key={issue.field} className="flex items-center justify-between gap-3"><p className="text-xs text-amber-100">{issue.message}</p><AdpadzButton href={issueHref(creative.campaign.id, issue.section)} variant="secondary" size="sm">{issue.action}</AdpadzButton></div>)}</div></AdpadzCard>}
           <AdpadzCard variant="flat" className="p-5">
             <label htmlFor="social-caption" className="text-sm font-black">Suggested caption</label>
-            <p className="mt-1 text-[10px] text-[var(--text-muted)]">Edit freely. Changes stay in this workspace and do not alter campaign copy.</p>
+            <p className="mt-1 text-[10px] text-[var(--text-muted)]">Edit freely. Changes stay in this workspace and do not alter campaign creative.</p>
             <textarea id="social-caption" value={caption} onChange={event => setCaption(event.target.value)} rows={12} className="input-field mt-3 resize-y text-sm leading-relaxed" />
             <div className="mt-3 flex flex-wrap gap-2">
               <AdpadzButton type="button" onClick={() => void copyCaption()} disabled={!caption.trim()}><Copy className="h-4 w-4" /> Copy caption</AdpadzButton>
@@ -178,16 +377,13 @@ function SocialDistributionWorkspace({ creative, output }: { creative: CampaignC
   );
 }
 
-function Selector({ title, children }: { title: string; children: React.ReactNode }) {
-  return <AdpadzCard variant="flat" className="p-5"><h2 className="mb-3 text-sm font-black">{title}</h2>{children}</AdpadzCard>;
-}
-
-function SelectionButton({ selected, onClick, title, detail }: { selected: boolean; onClick: () => void; title: string; detail: string }) {
-  return <button type="button" onClick={onClick} aria-pressed={selected} className={`min-w-[170px] rounded-2xl border p-3 text-left transition ${selected ? 'border-neon bg-neon/10' : 'border-white/10 bg-white/[0.025] hover:border-neon/40'}`}><span className="flex items-center justify-between gap-2 text-xs font-black">{title}{selected && <Check className="h-4 w-4 text-neon" />}</span><span className="mt-1 block text-[10px] leading-relaxed text-[var(--text-muted)]">{detail}</span></button>;
-}
-
-function Toggle({ checked, onChange, disabled = false, label, detail }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean; label: string; detail: string }) {
-  return <label className={`flex min-h-12 items-center justify-between gap-4 ${disabled ? 'opacity-50' : ''}`}><span><span className="block text-xs font-black">{label}</span><span className="text-[10px] text-[var(--text-muted)]">{detail}</span></span><input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} disabled={disabled} className="h-5 w-5 accent-[var(--neon)]" /></label>;
+function creativeSourceLabel(
+  source: ReturnType<typeof resolveDestinationCreative>['source'],
+  destination = 'Social',
+) {
+  if (source === 'workshop-override') return `${destination} override`;
+  if (source === 'workshop-global') return 'Global settings';
+  return 'Legacy settings';
 }
 
 function issueHref(campaignId: string, section: string) {
@@ -201,48 +397,147 @@ async function loadDistribution(campaignId: string): Promise<State> {
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError) throw new Error(authError.message);
     if (!auth.user) throw new Error('Sign in to open campaign distribution.');
-    const [campaignResult, outputsResult, cardResult, businessResult] = await Promise.all([
-      supabase.from('campaigns').select('*').eq('id', campaignId).eq('owner_id', auth.user.id).maybeSingle(),
-      supabase.from('campaign_outputs').select('*').eq('campaign_id', campaignId).order('sort_order'),
-      supabase.from('business_cards').select('id,business_name,slug,logo_url,cover_image_url,primary_color,accent_color,website,phone,address,is_published').eq('owner_user_id', auth.user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('businesses').select('name,category,service_area,address,website,phone,active').eq('owner_user_id', auth.user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-    ]);
+    const campaignResult = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('id', campaignId)
+      .eq('owner_id', auth.user.id)
+      .maybeSingle();
     if (campaignResult.error) throw new Error(campaignResult.error.message);
+    if (!campaignResult.data) throw new Error('Campaign not found.');
+
+    const campaign = campaignResult.data as CampaignRecord;
+    const cardRequest = campaign.business_id
+      ? supabase
+          .from('business_cards')
+          .select('id,business_name,slug,logo_url,cover_image_url,primary_color,accent_color,website,phone,address,is_published')
+          .eq('owner_user_id', auth.user.id)
+          .eq('business_id', campaign.business_id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null });
+    const businessRequest = campaign.business_id
+      ? supabase
+          .from('businesses')
+          .select('name,category,service_area,address,website,phone,active')
+          .eq('id', campaign.business_id)
+          .eq('owner_user_id', auth.user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null });
+    const [outputsResult, cardResult, businessResult] = await Promise.all([
+      supabase.from('campaign_outputs').select('*').eq('campaign_id', campaignId).order('sort_order'),
+      cardRequest,
+      businessRequest,
+    ]);
     if (outputsResult.error) throw new Error(outputsResult.error.message);
     if (cardResult.error) throw new Error(cardResult.error.message);
     if (businessResult.error) throw new Error(businessResult.error.message);
-    if (!campaignResult.data) throw new Error('Campaign not found.');
-    const campaign = campaignResult.data as CampaignRecord;
+
+    const outputs = (outputsResult.data ?? []) as CampaignOutputRecord[];
     const card = cardResult.data;
     const business = businessResult.data;
-    const assetResult = campaign.primary_image_id
-      ? await supabase.from('business_marketing_assets').select('file_url,external_url,thumbnail_url').eq('id', campaign.primary_image_id).maybeSingle()
-      : { data: null, error: null };
-    if (assetResult.error) throw new Error(assetResult.error.message);
-    const image = assetResult.data;
-    const campaignUrl = campaign.cta_url || (card?.slug ? `${window.location.origin}/c/${card.slug}#offers` : null);
+    const interactiveOutput = outputs.find(item => item.output_type === 'interactive_ad');
+    const unresolvedDiscovery = resolveDestinationCreative(interactiveOutput?.metadata, 'discovery');
+    const unresolvedSocial = resolveDestinationCreative(interactiveOutput?.metadata, 'social');
+    const assetIds = Array.from(new Set([
+      campaign.primary_image_id,
+      unresolvedDiscovery.imageAssetId,
+      unresolvedSocial.imageAssetId,
+    ].filter((id): id is string => Boolean(id))));
+    const discoveryQrId = unresolvedDiscovery.qrId
+      ?? (unresolvedDiscovery.source === 'legacy' ? campaign.primary_qr_id ?? null : null);
+    const socialQrId = unresolvedSocial.qrId
+      ?? (unresolvedSocial.source === 'legacy' ? campaign.primary_qr_id ?? null : null);
+    const qrIds = Array.from(new Set([
+      discoveryQrId,
+      socialQrId,
+    ].filter((id): id is string => Boolean(id))));
+
+    const [assetsResult, qrResult] = await Promise.all([
+      assetIds.length
+        ? supabase.from('business_marketing_assets').select('id,file_url,external_url,thumbnail_url').eq('owner_id', auth.user.id).in('id', assetIds)
+        : Promise.resolve({ data: [], error: null }),
+      qrIds.length
+        ? supabase.from('qr_links').select('*').eq('owner_user_id', auth.user.id).in('id', qrIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (assetsResult.error) throw new Error(assetsResult.error.message);
+    if (qrResult.error) throw new Error(qrResult.error.message);
+
+    const creativeAssets = (assetsResult.data ?? []) as CreativeAssetReference[];
+    const assetMap = new Map(creativeAssets.map(asset => [asset.id, asset]));
+    const primaryImage = campaign.primary_image_id ? assetMap.get(campaign.primary_image_id) : null;
+    const primaryImageUrl = primaryImage?.file_url
+      || primaryImage?.thumbnail_url
+      || primaryImage?.external_url
+      || card?.cover_image_url
+      || null;
+    const campaignUrl = absolutePublicUrl(
+      campaign.cta_url || (card?.slug ? `/c/${card.slug}#offers` : null),
+    );
+    const creativeQrLinks = (qrResult.data ?? []) as QRLinkRecord[];
+    const discoveryQr = creativeQrLinks.find(qr => qr.id === discoveryQrId) ?? null;
+    const socialQr = creativeQrLinks.find(qr => qr.id === socialQrId) ?? null;
+
     return {
       creative: {
         campaign,
         businessName: business?.name || card?.business_name || 'Your business',
         businessLogoUrl: card?.logo_url || null,
-        campaignImageUrl: image?.file_url || image?.thumbnail_url || image?.external_url || card?.cover_image_url || null,
+        campaignImageUrl: primaryImageUrl,
         primaryColor: card?.primary_color || '#14251b',
         accentColor: card?.accent_color || '#b0ff00',
-        website: card?.website || null,
-        phone: card?.phone || null,
-        category: null,
-        city: parseCity(card?.address),
+        website: business?.website || card?.website || null,
+        phone: business?.phone || card?.phone || null,
+        category: business?.category || null,
+        city: parseCity(business?.service_area || business?.address || card?.address),
         campaignUrl,
       },
-      outputs: (outputsResult.data ?? []) as CampaignOutputRecord[],
+      outputs,
       smartCard: card ? { slug: card.slug, is_published: card.is_published } : null,
-      readiness: evaluateCampaignReadiness({ campaign, campaignImageUrl: image?.file_url || image?.thumbnail_url || image?.external_url || card?.cover_image_url || null, outputs: (outputsResult.data ?? []) as CampaignOutputRecord[], business: { name: business?.name || card?.business_name, logoUrl: card?.logo_url, category: business?.category, location: business?.service_area || business?.address || card?.address, website: business?.website || card?.website, phone: business?.phone || card?.phone, profilePublished: card?.is_published ?? false, active: business?.active ?? false }, qr: campaign.primary_qr_id ? { exists: true, valid: Boolean(campaignUrl), publishable: campaign.status !== 'expired', publicRouteResolves: Boolean(campaignUrl) } : null }),
+      readiness: evaluateCampaignReadiness({
+        campaign,
+        campaignImageUrl: primaryImageUrl,
+        outputs,
+        business: {
+          name: business?.name || card?.business_name,
+          logoUrl: card?.logo_url,
+          category: business?.category,
+          location: business?.service_area || business?.address || card?.address,
+          website: business?.website || card?.website,
+          phone: business?.phone || card?.phone,
+          profilePublished: card?.is_published ?? false,
+          active: business?.active ?? false,
+        },
+        qr: campaign.primary_qr_id ? {
+          exists: true,
+          valid: Boolean(campaignUrl),
+          publishable: campaign.status !== 'expired',
+          publicRouteResolves: Boolean(campaignUrl),
+        } : null,
+      }),
+      creativeAssets,
+      discoveryQr,
+      socialQr,
       loading: false,
       error: null,
     };
   } catch (error) {
-    return { ...initialState, loading: false, error: error instanceof Error ? error.message : 'Could not load campaign distribution.' };
+    return {
+      ...initialState,
+      loading: false,
+      error: error instanceof Error ? error.message : 'Could not load campaign distribution.',
+    };
+  }
+}
+
+function absolutePublicUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value, window.location.origin).toString();
+  } catch {
+    return null;
   }
 }
 

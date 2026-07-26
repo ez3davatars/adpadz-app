@@ -35,10 +35,11 @@ async function signIn(page: Page, email: string, destination = '/app/business/da
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page).toHaveURL(/\/app\/business\/dashboard/);
-  await expect(page.getByText('Business Hub', { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL(destination);
+  if (destination === '/app/business/dashboard') {
+    await expect(page.getByText('Business Hub', { exact: true }).first()).toBeVisible();
+  }
   await page.waitForLoadState('networkidle');
-  if (destination !== '/app/business/dashboard') await page.goto(destination);
 }
 
 async function adminSignIn(page: Page) {
@@ -259,8 +260,34 @@ test('stored Production Candidate package has the complete revision-bound contra
   const manifest = JSON.parse(files.get('production-manifest.json')!.toString('utf8')) as Record<string, unknown>;
   expect(manifest.layoutRevision).toBe(10);
   expect(manifest.classification).toBe('Production Candidate');
-  const qrManifest = JSON.parse(files.get('qr-manifest.json')!.toString('utf8')) as unknown[];
+  expect(manifest).toMatchObject({
+    schema: 'adpadz.community-mailer.production-candidate.v2',
+    creativeRenderContractVersion: 1,
+    creativeRenderer: 'CampaignTemplateRenderer',
+    qrRenderer: 'QRStudioPreview/CircularPadQR',
+  });
+  const renderedPlacements = manifest.placements as Array<Record<string, unknown>>;
+  expect(renderedPlacements.length).toBeGreaterThan(0);
+  for (const placement of renderedPlacements) {
+    expect(placement.creativeRenderContractVersion).toBe(1);
+    expect(placement.resolvedImageAssetId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(placement.renderedCreativeChecksum).toMatch(/^[0-9a-f]{64}$/);
+    expect(placement.qrArtworkFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(placement.qrArtworkSnapshot).toMatchObject({
+      style_preset: expect.any(String),
+      ornament_style: expect.any(String),
+    });
+    expect(Number(placement.qrModuleFieldInches)).toBeGreaterThanOrEqual(0.75);
+  }
+  const qrManifest = JSON.parse(files.get('qr-manifest.json')!.toString('utf8')) as Array<Record<string, unknown>>;
   expect(qrManifest.length).toBeGreaterThan(0);
+  for (const qr of qrManifest) {
+    expect(qr.qrLinkId).toBe(qr.associatedQrLinkId);
+    expect(qr.destination).toBe(qr.associatedQrDestination);
+    expect(qr.encodedShortUrl).toMatch(/^https?:\/\/.+\/q\/[a-z0-9-]+$/);
+    expect(qr.artworkFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(Number(qr.renderedModuleFieldInches)).toBeGreaterThanOrEqual(0.75);
+  }
   expect(files.get('placement-manifest.csv')!.toString('utf8')).toContain('snapshot_fingerprint');
   expect(files.get('advertiser-manifest.csv')!.toString('utf8')).toContain('business_name');
   const checksums = Object.fromEntries([...files].map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]));
@@ -287,17 +314,17 @@ test('Creative Workshop preserves destination overrides and saved distribution s
   const failures = monitorReleasePage(page, testInfo);
   await expect(page.getByRole('heading', { name: 'Complete Approved Published Campaign' })).toBeVisible();
   await page.getByRole('button', { name: /Social Media/ }).click();
-  await page.getByRole('button', { name: 'Social Media', exact: true }).click();
+  await page.getByRole('button', { name: 'Social', exact: true }).click();
   await page.getByRole('button', { name: /Offer First/ }).click();
-  await page.getByRole('button', { name: 'Overlay' }).click();
+  await page.getByRole('button', { name: 'Overlay', exact: true }).click();
   await page.getByLabel('Opacity').press('ArrowRight');
   await page.getByRole('button', { name: 'QR', exact: true }).click();
-  const qrOptions = page.getByRole('option');
+  const qrOptions = page.getByRole('listbox', { name: 'Choose from QR Studio' }).locator('[role="option"]:not(:disabled)');
   if (await qrOptions.count()) await qrOptions.first().click();
   await page.getByRole('button', { name: 'Print Safety' }).click();
   await page.getByLabel('Safe area overlay').check();
   await page.getByRole('button', { name: 'Save Creative' }).click();
-  await expect(page.getByText('Creative saved.')).toBeVisible();
+  await expect(page.locator('[role="status"]:visible').filter({ hasText: /^Creative saved/ }).first()).toBeVisible();
   await page.getByRole('button', { name: /Community Mailer/ }).click();
   await page.getByRole('button', { name: 'Template' }).click();
   await expect(page.getByRole('button', { name: /Hero Visual/ })).toHaveAttribute('aria-pressed', 'true');

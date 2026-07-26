@@ -52,8 +52,16 @@ describe("campaign template engine", () => {
   });
 
   it("uses one content contract and applies family-specific readiness", () => {
-    const content = normalizeCampaignContent({ campaign, businessName: "Adpadz Test", imageUrl: "https://example.com/image.jpg" });
+    const content = normalizeCampaignContent({
+      campaign,
+      businessName: "Adpadz Test",
+      businessPhone: " 904-555-0199 ",
+      businessWebsite: " https://adpadz.co/local ",
+      imageUrl: "https://example.com/image.jpg",
+    });
     expect(content.offer).toBe("20% off");
+    expect(content.businessPhone).toBe("904-555-0199");
+    expect(content.businessWebsite).toBe("https://adpadz.co/local");
     expect(evaluateTemplateReadiness(content, { ...DEFAULT_TEMPLATE_SETTINGS, template: "offer-first" }).ready).toBe(true);
     expect(evaluateTemplateReadiness(content, { ...DEFAULT_TEMPLATE_SETTINGS, template: "brand-focus" }).blockers[0]?.field).toBe("logo");
     expect(evaluateTemplateReadiness(content, { ...DEFAULT_TEMPLATE_SETTINGS, showQr: true }).ready).toBe(true);

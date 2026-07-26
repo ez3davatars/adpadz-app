@@ -18,6 +18,8 @@ import {
 } from "../../lib/admin/communityMailers";
 import { runCommunityMailerPreflight } from "../../lib/communityMailerProduction";
 import { supabase } from "../../lib/supabase";
+import { normalizeQRStudioProductionArtwork } from "../../lib/qr/qrArtwork";
+import { buildShortUrl, getPublicAppUrl } from "../../lib/qr/qrUtils";
 
 type ExportRecord = {
   id: string;
@@ -80,13 +82,19 @@ export default function CommunityMailerCandidatePanel(
         throw refreshed.error || new Error("Production data could not be refreshed.");
       }
       const next = refreshed.data as AdminMailerDetail;
-      const snapshotByPlacement = new Map(next.production.snapshots.map((item) =>
-        [item.placement_id, item]
-      ));
+      const snapshotByPlacement = new Map(
+        next.production.snapshots
+          .filter((item) =>
+            item.layout_revision === next.mailer.layout_revision
+          )
+          .map((item) => [item.placement_id, item]),
+      );
       const associationByPlacement = new Map(
-        next.production.qr_associations.map((item) =>
-          [String(item.placement_id), item]
-        ),
+        next.production.qr_associations
+          .filter((item) =>
+            Number(item.layout_revision) === next.mailer.layout_revision
+          )
+          .map((item) => [String(item.placement_id), item]),
       );
       const input: CandidateInput = {
         mailerId: next.mailer.id,
@@ -109,9 +117,18 @@ export default function CommunityMailerCandidatePanel(
         ).map((placement) => {
           const production = snapshotByPlacement.get(placement.id);
           const snapshot = production?.snapshot || {};
-          const qr = associationByPlacement.get(placement.id) || {};
-          if (!production || !qr) {
-            throw new Error(`${placement.label} snapshot or QR association is incomplete.`);
+          const qr = associationByPlacement.get(placement.id);
+          const creativeAsset = snapshot.creative_asset && typeof snapshot.creative_asset === "object"
+            ? snapshot.creative_asset as Record<string, unknown>
+            : {};
+          const qrArtwork = normalizeQRStudioProductionArtwork(snapshot.qr_studio_artwork);
+          if (
+            !production || !qr || !qrArtwork
+            || String(qr.qr_link_id || "") !== qrArtwork.id
+            || String(qr.destination_url || "") !== qrArtwork.destination_url
+            || placement.qr_link_id !== qrArtwork.id
+          ) {
+            throw new Error(`${placement.label} snapshot or QR association is incomplete or inconsistent.`);
           }
           return {
             id: placement.id,
@@ -125,16 +142,52 @@ export default function CommunityMailerCandidatePanel(
             businessId: placement.business_id || "",
             businessName: String(snapshot.business_name || placement.business_name || ""),
             headline: String(snapshot.headline || ""),
+            description: String(snapshot.description || ""),
             offer: String(snapshot.offer || ""),
+            offerDetails: String(snapshot.offer_description || ""),
             cta: String(snapshot.cta || ""),
             phone: String(snapshot.phone || ""),
             website: String(snapshot.website || ""),
-            creativeAssetId: placement.creative_asset_id || "",
-            creativeUrl: placement.creative_asset_url || placement.ad_image_url || "",
-            qrLinkId: placement.qr_link_id || "",
-            qrDestination: String(qr.destination_url || ""),
+            expiration: String(snapshot.expiration || ""),
+            businessLogoUrl: String(snapshot.business_logo_url || snapshot.logo_asset_id || ""),
+            primaryColor: String(snapshot.primary_color || snapshot.brand_color || ""),
+            accentColor: String(snapshot.accent_color || ""),
+            creativeAssetId: String(creativeAsset.id || ""),
+            creativeUrl: String(creativeAsset.url || ""),
+            qrLinkId: qrArtwork.id,
+            qrDestination: qrArtwork.destination_url,
+            associatedQrLinkId: String(qr.qr_link_id || ""),
+            associatedQrDestination: String(qr.destination_url || ""),
+            qrShortUrl: buildShortUrl(qrArtwork.slug, getPublicAppUrl()),
+            qrForegroundColor: qrArtwork.foreground_color,
+            qrBackgroundColor: qrArtwork.inner_field_color,
+            qrArtwork,
             snapshotFingerprint: production.fingerprint,
-            templateSettings: snapshot.template_settings && typeof snapshot.template_settings === 'object' ? snapshot.template_settings as Record<string, unknown> : null,
+            creativeSettings: snapshot.creative_settings &&
+                typeof snapshot.creative_settings === "object"
+              ? snapshot.creative_settings as Record<string, unknown>
+              : snapshot.template_settings &&
+                  typeof snapshot.template_settings === "object"
+              ? snapshot.template_settings as Record<string, unknown>
+              : null,
+            creativeFormatKey:
+              typeof snapshot.creative_format_key === "string"
+                ? snapshot.creative_format_key
+                : "standard",
+            creativeVersionId: production.creative_version_id ||
+              (typeof snapshot.creative_version_id === "string"
+                ? snapshot.creative_version_id
+                : null),
+            creativeSnapshotContractVersion: Number(snapshot.creative_snapshot_contract_version || 0),
+            creativeRenderContractVersion: Number(snapshot.creative_render_contract_version || 0),
+            creativeSettingsFingerprint:
+              typeof snapshot.creative_settings_fingerprint === "string"
+                ? snapshot.creative_settings_fingerprint
+                : null,
+            templateSettings: snapshot.template_settings &&
+                typeof snapshot.template_settings === "object"
+              ? snapshot.template_settings as Record<string, unknown>
+              : null,
           };
         }),
       };

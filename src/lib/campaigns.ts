@@ -2,6 +2,11 @@ import { supabase } from './supabase';
 import { isCampaignPublicNow, normalizeCampaignOutput, type CampaignOutputMetadata, type CampaignOutputRecord, type CampaignRecord } from './ads';
 import { isUuid } from './ids';
 import { safeHttpUrl } from './urls';
+import { resolveDestinationCreative } from '../features/campaign-templates/creativeWorkshop';
+import {
+  normalizeQRStudioVisualArtwork,
+  type QRStudioVisualArtwork,
+} from './qr/qrArtwork';
 
 export type PublicBusinessSummary = {
   id: string;
@@ -10,6 +15,8 @@ export type PublicBusinessSummary = {
   tagline: string | null;
   logo_url: string | null;
   cover_image_url: string | null;
+  website: string | null;
+  phone: string | null;
   primary_color: string;
   accent_color: string;
   is_published: boolean;
@@ -29,9 +36,40 @@ export type PublicCampaignExperience = {
   output: CampaignOutputRecord & { metadata: CampaignOutputMetadata };
   business: PublicBusinessSummary | null;
   asset: PublicCampaignAsset | null;
+  creativeAssets: PublicCampaignAsset[];
+  creativeQrArtwork: PublicCampaignQrArtwork;
 };
 
 export type CampaignEventType = 'view' | 'reveal' | 'cta_click' | 'share' | 'save' | 'offer_claim';
+export type PublicCampaignQrDestination = 'discovery' | 'qr';
+export type PublicCampaignQrArtwork = Partial<
+  Record<PublicCampaignQrDestination, QRStudioVisualArtwork>
+>;
+export type PublicCampaignCreativeAssets = Partial<
+  Record<PublicCampaignQrDestination, PublicCampaignAsset>
+>;
+
+type PublicCampaignAssetProjectionRow = {
+  campaign_id?: unknown;
+  destination?: unknown;
+  asset?: unknown;
+};
+
+type PublicCampaignQrArtworkRow = {
+  campaign_id?: unknown;
+  destination?: unknown;
+  qr_artwork?: unknown;
+};
+
+type ExpectedPublicCampaignAssetIds = ReadonlyMap<
+  string,
+  Partial<Record<PublicCampaignQrDestination, string>>
+>;
+
+type ExpectedPublicCampaignQrIds = ReadonlyMap<
+  string,
+  Partial<Record<PublicCampaignQrDestination, string>>
+>;
 
 type JoinedCampaignOutput = CampaignOutputRecord & {
   campaigns?: CampaignRecord | CampaignRecord[] | null;
@@ -123,27 +161,81 @@ async function hydratePublicExperiences(rows: JoinedCampaignOutput[]): Promise<P
   if (normalized.length === 0) return [];
 
   const campaignIds = normalized.map(row => row.campaign.id);
-  const assetIds = Array.from(new Set(normalized
+  const creativeAssetIdsByCampaign = new Map<string, string[]>();
+  const expectedAssetIdsByCampaign = new Map<
+    string,
+    Partial<Record<PublicCampaignQrDestination, string>>
+  >();
+  const expectedQrIdsByCampaign = new Map<
+    string,
+    Partial<Record<PublicCampaignQrDestination, string>>
+  >();
+  for (const row of normalized) {
+    const expectedAssetIds: Partial<Record<PublicCampaignQrDestination, string>> = {};
+    const expectedQrIds: Partial<Record<PublicCampaignQrDestination, string>> = {};
+    for (const destination of PUBLIC_CREATIVE_DESTINATIONS) {
+      const creative = resolveDestinationCreative(row.metadata, destination);
+      if (creative.imageAssetId) {
+        expectedAssetIds[destination] = creative.imageAssetId;
+      }
+      if (creative.settings.showQr && creative.qrId) {
+        expectedQrIds[destination] = creative.qrId;
+      }
+    }
+
+    const assetIds = Array.from(new Set(Object.values(expectedAssetIds)));
+    creativeAssetIdsByCampaign.set(row.campaign.id, assetIds);
+    if (assetIds.length > 0) {
+      expectedAssetIdsByCampaign.set(row.campaign.id, expectedAssetIds);
+    }
+    if (Object.keys(expectedQrIds).length > 0) {
+      expectedQrIdsByCampaign.set(row.campaign.id, expectedQrIds);
+    }
+  }
+
+  const primaryAssetIds = Array.from(new Set(normalized
     .map(row => row.campaign.primary_image_id)
     .filter((value): value is string => Boolean(value))));
-
-  const [smartOutputsResult, assetsResult] = await Promise.all([
+  const assetCampaignIds = Array.from(expectedAssetIdsByCampaign.keys());
+  const qrCampaignIds = Array.from(expectedQrIdsByCampaign.keys());
+  const [
+    smartOutputsResult,
+    assetsResult,
+    qrArtworkResult,
+    creativeAssetsResult,
+  ] = await Promise.all([
     supabase
       .from('campaign_outputs')
       .select('campaign_id,metadata')
       .in('campaign_id', campaignIds)
       .eq('output_type', 'smart_card')
       .eq('enabled', true),
-    assetIds.length > 0
+    primaryAssetIds.length > 0
       ? supabase
           .from('business_marketing_assets')
           .select('id,title,file_url,external_url,thumbnail_url,asset_type')
-          .in('id', assetIds)
+          .in('id', primaryAssetIds)
+      : Promise.resolve({ data: [], error: null }),
+    qrCampaignIds.length > 0
+      ? supabase.rpc('get_public_campaign_qr_artwork', {
+          p_campaign_ids: qrCampaignIds,
+        })
+      : Promise.resolve({ data: [], error: null }),
+    assetCampaignIds.length > 0
+      ? supabase.rpc('get_public_campaign_creative_assets', {
+          p_campaign_ids: assetCampaignIds,
+        })
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (smartOutputsResult.error) throw new Error(smartOutputsResult.error.message);
   if (assetsResult.error) throw new Error(assetsResult.error.message);
+  if (qrArtworkResult.error && import.meta.env.DEV) {
+    console.error('[Campaigns] public QR artwork projection unavailable', qrArtworkResult.error);
+  }
+  if (creativeAssetsResult.error && import.meta.env.DEV) {
+    console.error('[Campaigns] public creative asset projection unavailable', creativeAssetsResult.error);
+  }
 
   const smartCardIdByCampaign = new Map<string, string>();
   for (const output of smartOutputsResult.data ?? []) {
@@ -157,7 +249,7 @@ async function hydratePublicExperiences(rows: JoinedCampaignOutput[]): Promise<P
   const { data: cards, error: cardsError } = smartCardIds.length > 0
     ? await supabase
         .from('business_cards')
-        .select('id,business_name,slug,tagline,logo_url,cover_image_url,primary_color,accent_color,is_published')
+        .select('id,business_name,slug,tagline,logo_url,cover_image_url,website,phone,primary_color,accent_color,is_published')
         .in('id', smartCardIds)
         .eq('is_published', true)
     : { data: [], error: null };
@@ -166,17 +258,118 @@ async function hydratePublicExperiences(rows: JoinedCampaignOutput[]): Promise<P
 
   const cardsById = new Map((cards ?? []).map(card => [card.id, card as PublicBusinessSummary]));
   const assetsById = new Map((assetsResult.data ?? []).map(asset => [asset.id, asset as PublicCampaignAsset]));
+  const creativeAssetsByCampaign = indexPublicCampaignCreativeAssets(
+    creativeAssetsResult.data ?? [],
+    expectedAssetIdsByCampaign,
+  );
+  const qrArtworkByCampaign = indexPublicCampaignQrArtwork(
+    qrArtworkResult.data ?? [],
+    expectedQrIdsByCampaign,
+  );
 
   return normalized.map(row => {
     const smartCardId = smartCardIdByCampaign.get(row.campaign.id);
     const assetId = row.campaign.primary_image_id ?? undefined;
+    const projectedAssets = creativeAssetsByCampaign.get(row.campaign.id) ?? {};
+    const creativeAssets = (creativeAssetIdsByCampaign.get(row.campaign.id) ?? [])
+      .map(id => Object.values(projectedAssets).find(asset => asset?.id === id)
+        ?? (id === assetId ? assetsById.get(id) : undefined))
+      .filter((asset): asset is PublicCampaignAsset => Boolean(asset));
     return {
       campaign: row.campaign,
       output: row,
       business: smartCardId ? cardsById.get(smartCardId) ?? null : null,
       asset: assetId ? assetsById.get(assetId) ?? null : null,
+      creativeAssets,
+      creativeQrArtwork: qrArtworkByCampaign.get(row.campaign.id) ?? {},
     };
   });
+}
+
+export function indexPublicCampaignCreativeAssets(
+  rows: readonly unknown[],
+  expectedAssetIdsByCampaign: ExpectedPublicCampaignAssetIds,
+): Map<string, PublicCampaignCreativeAssets> {
+  const indexed = new Map<string, PublicCampaignCreativeAssets>();
+  for (const value of rows) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as PublicCampaignAssetProjectionRow;
+    if (
+      typeof row.campaign_id !== 'string'
+      || (row.destination !== 'discovery' && row.destination !== 'qr')
+    ) continue;
+    const expectedAssetId = expectedAssetIdsByCampaign.get(row.campaign_id)?.[row.destination];
+    if (
+      !expectedAssetId
+      || !row.asset
+      || typeof row.asset !== 'object'
+      || Array.isArray(row.asset)
+    ) continue;
+
+    const payload = row.asset as Record<string, unknown>;
+    const title = cleanProjectedText(payload.title);
+    const assetType = cleanProjectedText(payload.asset_type);
+    if (!title || !assetType) continue;
+    const current = indexed.get(row.campaign_id) ?? {};
+    if (current[row.destination]) continue;
+    indexed.set(row.campaign_id, {
+      ...current,
+      [row.destination]: {
+        id: expectedAssetId,
+        title,
+        asset_type: assetType,
+        file_url: cleanProjectedAssetUrl(payload.file_url),
+        external_url: cleanProjectedAssetUrl(payload.external_url),
+        thumbnail_url: cleanProjectedAssetUrl(payload.thumbnail_url),
+      },
+    });
+  }
+  return indexed;
+}
+
+function cleanProjectedText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function cleanProjectedAssetUrl(value: unknown): string | null {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+export function indexPublicCampaignQrArtwork(
+  rows: readonly unknown[],
+  expectedQrIdsByCampaign: ExpectedPublicCampaignQrIds,
+): Map<string, PublicCampaignQrArtwork> {
+  const indexed = new Map<string, PublicCampaignQrArtwork>();
+  for (const value of rows) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as PublicCampaignQrArtworkRow;
+    if (
+      typeof row.campaign_id !== 'string'
+      || (row.destination !== 'discovery' && row.destination !== 'qr')
+    ) continue;
+    const expectedQrId = expectedQrIdsByCampaign.get(row.campaign_id)?.[row.destination];
+    if (
+      !expectedQrId
+      || !row.qr_artwork
+      || typeof row.qr_artwork !== 'object'
+      || Array.isArray(row.qr_artwork)
+    ) continue;
+    const current = indexed.get(row.campaign_id) ?? {};
+    if (current[row.destination]) continue;
+    const artwork = normalizeQRStudioVisualArtwork({
+      ...(row.qr_artwork as Record<string, unknown>),
+      id: expectedQrId,
+      title: 'Campaign QR code',
+    });
+    if (!artwork) continue;
+    indexed.set(row.campaign_id, {
+      ...current,
+      [row.destination]: artwork,
+    });
+  }
+  return indexed;
 }
 
 export function getCampaignImage(experience: PublicCampaignExperience): string | null {
@@ -233,3 +426,7 @@ export function readSavedCampaignIds(): Set<string> {
 export function writeSavedCampaignIds(ids: Set<string>): void {
   window.localStorage.setItem(savedCampaignStorageKey, JSON.stringify(Array.from(ids)));
 }
+const PUBLIC_CREATIVE_DESTINATIONS: readonly PublicCampaignQrDestination[] = [
+  'discovery',
+  'qr',
+];

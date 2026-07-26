@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, missingSupabaseEnvVars, supabase } from './lib/supabase';
-import { getSafeAuthDestination, isRecoveryRequest } from './lib/authRedirect';
+import { getAuthSignInPath, getSafeAuthDestination, isRecoveryRequest } from './lib/authRedirect';
 import { isPublicStandaloneRoute } from './lib/publicRoutes';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -86,13 +86,7 @@ export default function App() {
           <Route path="/terms" element={<LegalPage />} />
           <Route
             path="/auth"
-            element={
-              !isSupabaseConfigured
-                ? <MissingSupabaseConfig />
-                : session && !isRecoveryRequest(window.location.search, window.location.hash)
-                  ? <Navigate to={getSafeAuthDestination(window.location.search)} replace />
-                  : <AuthPage />
-            }
+            element={<AuthenticationRoute session={session} />}
           />
 
           <Route path="/admin/login" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : <AdminLogin session={session} />} />
@@ -115,7 +109,7 @@ export default function App() {
           <Route path="/ad/:adId" element={<AdView />} />
           <Route path="/redeem/:offerId" element={<RedeemOffer />} />
 
-          <Route path="/app/business" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <BusinessLayout session={session} /> : <Navigate to="/auth" replace />}>
+          <Route path="/app/business" element={<ProtectedBusinessRoute session={session} />}>
             <Route path="dashboard" element={<BizDashboard />} />
             <Route path="create-ad" element={<BizCreateAd />} />
             <Route path="campaigns" element={<BizCampaigns />} />
@@ -140,7 +134,7 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 
-          <Route path="/dashboard" element={!isSupabaseConfigured ? <MissingSupabaseConfig /> : session ? <BusinessLayout session={session} /> : <Navigate to="/auth" replace />}>
+          <Route path="/dashboard" element={<ProtectedBusinessRoute session={session} />}>
             <Route path="smart-cards" element={<BizSmartCards />} />
             <Route path="smart-cards/new" element={<BizSmartCards mode="new" />} />
             <Route path="smart-cards/:id/edit" element={<BizSmartCards mode="edit" />} />
@@ -153,6 +147,25 @@ export default function App() {
       </Suspense>
     </BrowserRouter>
   );
+}
+
+function AuthenticationRoute({ session }: { session: Session | null }) {
+  const location = useLocation();
+
+  if (!isSupabaseConfigured) return <MissingSupabaseConfig />;
+  if (session && !isRecoveryRequest(location.search, location.hash)) {
+    return <Navigate to={getSafeAuthDestination(location.search)} replace />;
+  }
+  return <AuthPage />;
+}
+
+function ProtectedBusinessRoute({ session }: { session: Session | null }) {
+  const location = useLocation();
+
+  if (!isSupabaseConfigured) return <MissingSupabaseConfig />;
+  if (session) return <BusinessLayout session={session} />;
+  const destination = `${location.pathname}${location.search}${location.hash}`;
+  return <Navigate to={getAuthSignInPath(destination)} replace />;
 }
 
 

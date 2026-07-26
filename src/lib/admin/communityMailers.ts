@@ -79,7 +79,24 @@ export type AdminMailerRecord = Omit<CommunityCardRecord, "owner_id"> & {
   production_version: number;
 };
 export type AdminMailerCampaign = { id: string; business_id: string; title: string; status: string; updated_at: string };
-export type AdminMailerProduction = { current_preflight_run_id: string | null; snapshots: Array<{ placement_id: string; layout_revision: number; campaign_id: string; fingerprint: string; snapshot: Record<string, unknown> }>; qr_associations: Array<Record<string, unknown>>; exports: Array<Record<string, unknown>> };
+export type AdminMailerProduction = {
+  current_preflight_run_id: string | null;
+  snapshots: Array<{
+    placement_id: string;
+    layout_revision: number;
+    campaign_id: string;
+    creative_version_id: string | null;
+    fingerprint: string;
+    snapshot: Record<string, unknown>;
+  }>;
+  qr_associations: Array<
+    Record<string, unknown> & {
+      placement_id: string;
+      layout_revision: number;
+    }
+  >;
+  exports: Array<Record<string, unknown>>;
+};
 export type AdminMailerDetail = {
   mailer: AdminMailerRecord;
   placements: AdminPlacement[];

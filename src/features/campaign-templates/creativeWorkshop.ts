@@ -8,12 +8,39 @@ import type {
 } from "./types";
 
 export type CreativeDestination = "mailer" | "discovery" | "qr" | "social";
+export type CreativeScope = "global" | "destination";
+export type CreativeFormatKey =
+  | "standard"
+  | "combined"
+  | "featured"
+  | "card"
+  | "hero"
+  | "square"
+  | "portrait"
+  | "landscape"
+  | "story";
+export type CreativeFormatMap = Record<CreativeDestination, CreativeFormatKey>;
+export type CreativeElementKey =
+  | "image"
+  | "logo"
+  | "business-name"
+  | "headline"
+  | "offer"
+  | "cta"
+  | "qr"
+  | "expiration"
+  | "phone"
+  | "website"
+  | "sponsor-badge"
+  | "overlay"
+  | null;
 export type OverlayStyle = "solid" | "linear" | "radial" | "bottom-fade" | "top-fade";
 export type TextSize = "small" | "medium" | "large";
 export type TextAlignment = "left" | "center" | "right";
 export type TextPanel = "none" | "soft" | "solid" | "gradient";
 
 export type CreativeSettings = CampaignTemplateSettings & {
+  imageAssetId: string | null;
   rotation: number;
   brightness: number;
   contrast: number;
@@ -48,6 +75,50 @@ export type CreativeWorkshopState = {
   version: 1;
   global: CreativeSettings;
   overrides: Partial<Record<CreativeDestination, CreativeSettings>>;
+  formats: CreativeFormatMap;
+};
+
+export type CreativeAssetReference = {
+  id: string;
+  file_url?: string | null;
+  thumbnail_url?: string | null;
+  external_url?: string | null;
+  is_active?: boolean;
+};
+
+export type CreativeAssetRendition = "full" | "thumbnail";
+
+export type CreativeQrReference = {
+  id: string;
+  publicUrl: string | null;
+};
+
+export type DestinationCreativeSource =
+  | "workshop-override"
+  | "workshop-global"
+  | "legacy";
+
+export type DestinationCreativeResolution = {
+  source: DestinationCreativeSource;
+  state: CreativeWorkshopState;
+  settings: CreativeSettings;
+  renderSettings: CreativeSettings;
+  format: CreativeFormatKey;
+  rendererDestination: CampaignTemplateDestination;
+  imageAssetId: string | null;
+  qrId: string | null;
+  imageUrl: string | null;
+  qrDestinationUrl: string | null;
+  imageResolution: "exact" | "fallback" | "none";
+  qrResolution: "exact" | "fallback" | "none";
+  issues: string[];
+};
+
+export type DestinationCreativeResources = {
+  assets?: readonly CreativeAssetReference[];
+  qrLinks?: readonly CreativeQrReference[];
+  fallbackImageUrl?: string | null;
+  fallbackDestinationUrl?: string | null;
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -57,6 +128,7 @@ const clamp = (value: unknown, min: number, max: number, fallback: number) => {
 
 export const DEFAULT_CREATIVE_SETTINGS: CreativeSettings = Object.freeze({
   ...DEFAULT_TEMPLATE_SETTINGS,
+  imageAssetId: null,
   rotation: 0,
   brightness: 100,
   contrast: 100,
@@ -87,10 +159,25 @@ export const DEFAULT_CREATIVE_SETTINGS: CreativeSettings = Object.freeze({
   qrMinimumVisible: false,
 });
 
+export const CREATIVE_FORMAT_KEYS: Readonly<Record<CreativeDestination, readonly CreativeFormatKey[]>> = Object.freeze({
+  mailer: Object.freeze(["standard", "combined", "featured"] as const),
+  discovery: Object.freeze(["card"] as const),
+  qr: Object.freeze(["hero"] as const),
+  social: Object.freeze(["square", "portrait", "landscape", "story"] as const),
+});
+
+export const DEFAULT_CREATIVE_FORMATS: CreativeFormatMap = Object.freeze({
+  mailer: "standard",
+  discovery: "card",
+  qr: "hero",
+  social: "square",
+});
+
 export const DEFAULT_WORKSHOP_STATE: CreativeWorkshopState = Object.freeze({
   version: 1,
   global: DEFAULT_CREATIVE_SETTINGS,
   overrides: {},
+  formats: DEFAULT_CREATIVE_FORMATS,
 });
 
 export function normalizeCreativeSettings(value: unknown): CreativeSettings {
@@ -103,6 +190,7 @@ export function normalizeCreativeSettings(value: unknown): CreativeSettings {
   return {
     ...DEFAULT_CREATIVE_SETTINGS,
     ...base,
+    imageAssetId: typeof input.imageAssetId === "string" && input.imageAssetId.trim() ? input.imageAssetId : null,
     rotation: clamp(input.rotation, -5, 5, 0),
     brightness: clamp(input.brightness, 25, 175, 100),
     contrast: clamp(input.contrast, 25, 175, 100),
@@ -134,6 +222,22 @@ export function normalizeCreativeSettings(value: unknown): CreativeSettings {
   };
 }
 
+export function normalizeCreativeFormat(destination: CreativeDestination, value: unknown): CreativeFormatKey {
+  return typeof value === "string" && CREATIVE_FORMAT_KEYS[destination].includes(value as CreativeFormatKey)
+    ? value as CreativeFormatKey
+    : DEFAULT_CREATIVE_FORMATS[destination];
+}
+
+export function normalizeCreativeFormats(value: unknown): CreativeFormatMap {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    mailer: normalizeCreativeFormat("mailer", input.mailer),
+    discovery: normalizeCreativeFormat("discovery", input.discovery),
+    qr: normalizeCreativeFormat("qr", input.qr),
+    social: normalizeCreativeFormat("social", input.social),
+  };
+}
+
 export function normalizeWorkshopState(value: unknown): CreativeWorkshopState {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const overridesInput = input.overrides && typeof input.overrides === "object"
@@ -147,11 +251,91 @@ export function normalizeWorkshopState(value: unknown): CreativeWorkshopState {
     version: 1,
     global: normalizeCreativeSettings(input.global ?? input),
     overrides,
+    formats: normalizeCreativeFormats(input.formats),
   };
 }
 
 export function resolveCreativeSettings(state: CreativeWorkshopState, destination: CreativeDestination) {
   return state.overrides[destination] ?? state.global;
+}
+
+/**
+ * Resolves one saved Campaign creative into the exact settings and format used
+ * by a destination. Resource records are supplied by the caller so this pure
+ * resolver never bypasses the authorization boundary of the current surface.
+ */
+export function resolveDestinationCreative(
+  metadata: unknown,
+  destination: CreativeDestination,
+  resources: DestinationCreativeResources = {},
+): DestinationCreativeResolution {
+  const metadataRecord = asRecord(metadata);
+  const workshopRecord = asRecord(metadataRecord.creative_workshop);
+  const hasWorkshop = Object.keys(workshopRecord).length > 0;
+  const state = normalizeWorkshopState(
+    hasWorkshop ? workshopRecord : metadataRecord.template_settings,
+  );
+  const hasOverride = hasWorkshop
+    && Object.prototype.hasOwnProperty.call(asRecord(workshopRecord.overrides), destination);
+  const source: DestinationCreativeSource = hasWorkshop
+    ? hasOverride ? "workshop-override" : "workshop-global"
+    : "legacy";
+  const settings = resolveCreativeSettings(state, destination);
+  const format = normalizeCreativeFormat(destination, state.formats[destination]);
+  const issues: string[] = [];
+
+  const fallbackImageUrl = cleanResourceUrl(resources.fallbackImageUrl);
+  const selectedAsset = settings.imageAssetId
+    ? resources.assets?.find(asset => asset.id === settings.imageAssetId)
+    : undefined;
+  const selectedImageUrl = selectedAsset ? resolveCreativeAssetUrl(selectedAsset) : null;
+  const imageUrl = settings.imageAssetId
+    ? selectedImageUrl ?? fallbackImageUrl
+    : fallbackImageUrl;
+  const imageResolution: DestinationCreativeResolution["imageResolution"] = settings.imageAssetId
+    ? selectedImageUrl ? "exact" : fallbackImageUrl ? "fallback" : "none"
+    : fallbackImageUrl ? "fallback" : "none";
+  if (settings.imageAssetId && !selectedImageUrl) {
+    issues.push(fallbackImageUrl
+      ? "The selected Workshop image is not available to this destination. The campaign fallback image is shown."
+      : "The selected Workshop image is not available to this destination.");
+  }
+
+  const fallbackDestinationUrl = cleanDestinationUrl(resources.fallbackDestinationUrl);
+  const selectedQr = settings.qrId
+    ? resources.qrLinks?.find(qr => qr.id === settings.qrId)
+    : undefined;
+  const selectedQrUrl = selectedQr ? cleanDestinationUrl(selectedQr.publicUrl) : null;
+  const qrDestinationUrl = settings.showQr
+    ? settings.qrId ? selectedQrUrl : fallbackDestinationUrl
+    : null;
+  const qrResolution: DestinationCreativeResolution["qrResolution"] = settings.showQr
+    ? settings.qrId
+      ? selectedQrUrl ? "exact" : "none"
+      : fallbackDestinationUrl ? "fallback" : "none"
+    : "none";
+  if (settings.showQr && settings.qrId && !selectedQrUrl) {
+    issues.push("The selected QR Studio artwork is not available to this destination, so no substitute QR is shown.");
+  }
+  if (settings.showQr && !settings.qrId && !qrDestinationUrl) {
+    issues.push("A public campaign destination is required before the QR code can be shown.");
+  }
+
+  return {
+    source,
+    state,
+    settings,
+    renderSettings: qrDestinationUrl ? settings : { ...settings, showQr: false },
+    format,
+    rendererDestination: destinationToRenderer(destination, format),
+    imageAssetId: settings.imageAssetId,
+    qrId: settings.qrId,
+    imageUrl,
+    qrDestinationUrl,
+    imageResolution,
+    qrResolution,
+    issues,
+  };
 }
 
 export function updateCreativeSettings(
@@ -171,17 +355,34 @@ export function updateCreativeSettings(
 export function resetCreativeDestination(state: CreativeWorkshopState, destination: CreativeDestination) {
   const overrides = { ...state.overrides };
   delete overrides[destination];
-  return { ...state, overrides };
+  return {
+    ...state,
+    overrides,
+    formats: {
+      ...state.formats,
+      [destination]: DEFAULT_CREATIVE_FORMATS[destination],
+    },
+  };
 }
 
-export function destinationToRenderer(destination: CreativeDestination): CampaignTemplateDestination {
-  if (destination === "social") return "social-square";
+export function destinationToRenderer(
+  destination: CreativeDestination,
+  format: CreativeFormatKey = DEFAULT_CREATIVE_FORMATS[destination],
+): CampaignTemplateDestination {
+  if (destination === "social") {
+    if (format === "portrait") return "social-portrait";
+    if (format === "landscape") return "social-landscape";
+    if (format === "story") return "social-story";
+    return "social-square";
+  }
   return destination;
 }
 
 export function affectsPrint(previous: CreativeWorkshopState, next: CreativeWorkshopState) {
   return JSON.stringify(resolveCreativeSettings(previous, "mailer"))
-    !== JSON.stringify(resolveCreativeSettings(next, "mailer"));
+      !== JSON.stringify(resolveCreativeSettings(next, "mailer"))
+    || normalizeCreativeFormat("mailer", previous.formats?.mailer)
+      !== normalizeCreativeFormat("mailer", next.formats?.mailer);
 }
 
 export function createHistory<T>(initial: T) {
@@ -203,4 +404,42 @@ export function redoHistory<T>(history: ReturnType<typeof createHistory<T>>) {
   const next = history.future[0];
   if (!next) return history;
   return { past: [...history.past, history.present], present: next, future: history.future.slice(1) };
+}
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+export function resolveCreativeAssetUrl(
+  asset: CreativeAssetReference | null | undefined,
+  rendition: CreativeAssetRendition = "full",
+): string | null {
+  if (!asset) return null;
+  const preferred = rendition === "thumbnail"
+    ? [asset.thumbnail_url, asset.file_url, asset.external_url]
+    : [asset.file_url, asset.thumbnail_url, asset.external_url];
+  for (const candidate of preferred) {
+    const url = cleanResourceUrl(candidate);
+    if (url) return url;
+  }
+  return null;
+}
+
+export function listActiveCreativeAssetOptions<T extends CreativeAssetReference>(
+  assets: readonly T[],
+): T[] {
+  return assets.filter(asset => asset.is_active === true);
+}
+
+function cleanResourceUrl(value: unknown): string | null {
+  return typeof value === "string" && /^(?:https?:|data:image\/|blob:)/i.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+function cleanDestinationUrl(value: unknown): string | null {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim())
+    ? value.trim()
+    : null;
 }
