@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const status = spawnSync('supabase', ['status', '-o', 'json'], {
   encoding: 'utf8',
@@ -37,6 +39,7 @@ const result = spawnSync(process.execPath, ['node_modules/@playwright/test/cli.j
   stdio: 'inherit',
   env: {
     ...process.env,
+    PLAYWRIGHT_ARTIFACT_ROOT: process.env.PLAYWRIGHT_ARTIFACT_ROOT ?? join(tmpdir(), 'adpadz-e2e'),
     VITE_SUPABASE_URL: local.API_URL,
     VITE_SUPABASE_ANON_KEY: local.ANON_KEY,
     VITE_PUBLIC_APP_URL: 'http://127.0.0.1:5173',

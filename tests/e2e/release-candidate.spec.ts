@@ -316,9 +316,13 @@ test('Creative Workshop preserves destination overrides and saved distribution s
   await page.getByRole('button', { name: /Social Media/ }).click();
   await page.getByRole('button', { name: 'Social', exact: true }).click();
   await page.getByRole('button', { name: /Offer First/ }).click();
-  await page.getByRole('button', { name: 'Overlay', exact: true }).click();
-  await page.getByLabel('Opacity').press('ArrowRight');
-  await page.getByRole('button', { name: 'QR', exact: true }).click();
+  // Dismiss the direct-element onboarding tooltip if present (first visit per fixture user)
+  await page.getByRole('button', { name: 'Got it' }).click({ timeout: 3000 }).catch(() => {});
+  // Section buttons include an override-count badge when fields differ from Global (e.g. "Overlay 1").
+  // Use the stable section IDs to avoid ambiguity with destination card buttons.
+  await page.locator('#inspector-overlay').click();
+  await page.getByRole('slider', { name: 'Opacity' }).press('ArrowRight');
+  await page.locator('#inspector-qr').click();
   const qrOptions = page.getByRole('listbox', { name: 'Choose from QR Studio' }).locator('[role="option"]:not(:disabled)');
   if (await qrOptions.count()) await qrOptions.first().click();
   await page.getByRole('button', { name: 'Print Safety' }).click();
@@ -328,7 +332,9 @@ test('Creative Workshop preserves destination overrides and saved distribution s
   await page.getByRole('button', { name: /Community Mailer/ }).click();
   await page.getByRole('button', { name: 'Template' }).click();
   await expect(page.getByRole('button', { name: /Hero Visual/ })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('link', { name: 'Continue to Distribution' }).click();
+  await page.getByRole('link', { name: 'Continue to Review' }).click();
+  await expect(page.getByRole('heading', { name: 'Review every destination' })).toBeVisible();
+  await page.getByRole('link', { name: /Continue to Publish/ }).click();
   await expect(page.getByRole('heading', { name: 'Complete Approved Published Campaign' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open Creative Workshop' })).toBeVisible();
   expect(failures, 'Creative Workshop browser failures').toEqual([]);
