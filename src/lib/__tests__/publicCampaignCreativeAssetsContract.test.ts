@@ -8,6 +8,10 @@ const migration = readFileSync(new URL(
 const campaigns = readFileSync(new URL("../campaigns.ts", import.meta.url), "utf8");
 const feed = readFileSync(new URL("../../pages/consumer/Feed.tsx", import.meta.url), "utf8");
 const adView = readFileSync(new URL("../../pages/consumer/AdView.tsx", import.meta.url), "utf8");
+const creativeView = readFileSync(new URL(
+  "../../features/campaign-templates/destinationCreativeView.ts",
+  import.meta.url,
+), "utf8");
 const projection = migration.match(
   /jsonb_build_object\(([\s\S]*?)\)\s+AS asset/,
 )?.[1] ?? "";
@@ -100,11 +104,12 @@ describe("public Campaign creative asset security contract", () => {
     expect(campaigns).toContain("PUBLIC_CREATIVE_DESTINATIONS");
     expect(campaigns).toContain("'discovery',\n  'qr'");
     expect(campaigns).not.toContain("if (creativeAssetsResult.error) throw");
-    expect(feed).toContain(
-      "fallbackImageUrl: savedCreative.imageAssetId ? null : image",
+    expect(creativeView).toContain(
+      "fallbackImageUrl: saved.imageAssetId ? null : input.fallbackImageUrl",
     );
-    expect(adView).toContain(
-      "fallbackImageUrl: savedCreative?.imageAssetId ? null : image",
-    );
+    expect(feed).toContain("buildDestinationCreativeView({");
+    expect(feed).toContain("fallbackImageUrl: image");
+    expect(adView).toContain("buildDestinationCreativeView({");
+    expect(adView).toContain("fallbackImageUrl: image");
   });
 });

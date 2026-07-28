@@ -506,3 +506,37 @@ describe("Creative Workshop history restore and QR safety", () => {
     expect(isCreativeQrUsable(digitalUrlQr, campaign.ownerId, 1_000)).toBe(true);
   });
 });
+
+describe("override visibility helpers", () => {
+  it("exposes the material keys owned by each inspector section", async () => {
+    const { creativeSectionKeys } = await import("../../features/campaign-templates/creativeWorkshopState");
+    expect(creativeSectionKeys("image")).toContain("imageAssetId");
+    expect(creativeSectionKeys("image")).toContain("imageZoom");
+    expect(creativeSectionKeys("text")).toEqual(["headlineSize", "textAlign", "textPanel"]);
+    expect(creativeSectionKeys("visibility")).toContain("showQr");
+  });
+
+  it("lists exactly the material fields an override detaches from Global", async () => {
+    const { listOverriddenCreativeSettingKeys } = await import("../../features/campaign-templates/creativeWorkshopState");
+    const baseline = normalizeCreativeSettings(DEFAULT_CREATIVE_SETTINGS);
+    const identical = listOverriddenCreativeSettingKeys(baseline, baseline);
+    expect(identical).toEqual([]);
+
+    const override = normalizeCreativeSettings({
+      ...baseline,
+      imageZoom: 1.6,
+      overlayColor: "#112233",
+      showPhone: true,
+      safeAreaVisible: true,
+      bleedVisible: true,
+    });
+    const keys = listOverriddenCreativeSettingKeys(override, baseline);
+    expect(keys).toContain("imageZoom");
+    expect(keys).toContain("overlayColor");
+    expect(keys).toContain("showPhone");
+    expect(keys).not.toContain("safeAreaVisible");
+    expect(keys).not.toContain("bleedVisible");
+    expect(keys).not.toContain("version");
+    expect(keys).toHaveLength(3);
+  });
+});

@@ -13,18 +13,18 @@ import { CampaignReadinessSummary } from '../../components/campaign-readiness/Ca
 import { uploadSmartCardImage } from '../../lib/cloudflareImages';
 import { clampImagePosition, clampImageZoom, normalizeImageFit, type ImageFitMode } from '../../lib/smartCards';
 import QRStudioPreview from '../../components/qr/QRStudioPreview';
+import { useCampaignShell } from '../../components/campaign-shell/campaignShellContext';
 import { buildShortUrl } from '../../lib/qr/qrUtils';
 import type { QRLinkRecord } from '../../lib/qr/qrTypes';
 import {
+  buildDestinationCreativeView,
   CAMPAIGN_TEMPLATES,
   CampaignTemplateRenderer,
   DEFAULT_TEMPLATE_SETTINGS,
   evaluateTemplateReadiness,
   normalizeCampaignContent,
   normalizeTemplateSettings,
-  resolveDestinationCreative,
   type CampaignTemplateContent,
-  type CampaignTemplateKey,
   type CampaignTemplateSettings,
 } from '../../features/campaign-templates';
 
@@ -96,6 +96,7 @@ const defaultOutputs: Record<OutputType, boolean> = {
 export default function BizCreateAd() {
   const { campaignId } = useParams();
   const navigate = useNavigate();
+  const shell = useCampaignShell();
   const editing = Boolean(campaignId);
   const [step, setStep] = useState(1);
   const [campaignName, setCampaignName] = useState('');
@@ -393,7 +394,9 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
       if (reloadCampaign.error) throw new Error(reloadCampaign.error.message);
       if (reloadOutputs.error) throw new Error(reloadOutputs.error.message);
 
-      navigate(`/app/business/campaigns/${savedId}/content`);
+      // Setup flows into the Studio: define the campaign, then design it.
+      shell?.refreshShell();
+      navigate(`/app/business/campaigns/${savedId}/creative`);
     } catch (saveFailure) {
       setError(saveFailure instanceof Error ? saveFailure.message : 'Could not save the campaign.');
     } finally {
@@ -425,14 +428,15 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Campaign Engine</p>
-          <h1 className="text-2xl font-black">{editing ? 'Edit Campaign' : 'Create Campaign'}</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Enter the promotion once, then choose every customer experience it should power.</p>
+      {!editing && (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neon">Campaign Engine</p>
+            <h1 className="text-2xl font-black">Create Campaign</h1>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Enter the promotion once, then choose every customer experience it should power.</p>
+          </div>
         </div>
-        {editing && campaignId && <div className="flex flex-wrap gap-2"><AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`}>Design Creative</AdpadzButton><AdpadzButton href={`/app/business/campaigns/${campaignId}/content`} variant="secondary">Marketing Package</AdpadzButton></div>}
-      </div>
+      )}
 
       {error && <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-4 text-sm font-bold text-red-100" role="alert">{error}</AdpadzCard>}
 
@@ -503,34 +507,17 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
             </div>
             <AdpadzCard variant="flat" className="mt-4 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="text-sm font-black">Offer image framing</p><p className="mt-1 text-xs text-[var(--text-muted)]">Upload once to Asset Library, then position and zoom it for this offer.</p></div>
+                <div><p className="text-sm font-black">Campaign image</p><p className="mt-1 text-xs text-[var(--text-muted)]">Upload once to Asset Library. Framing, zoom, and treatment live in the Studio.</p></div>
                 <label className={`btn-secondary cursor-pointer px-4 py-2.5 text-sm ${uploadingImage ? 'pointer-events-none opacity-60' : ''}`}>
                   {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {uploadingImage ? uploadProgress : 'Upload image'}
                   <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploadingImage} onChange={event => void uploadCampaignImage(event)} />
                 </label>
               </div>
-              {previewImage && (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <p className="mb-2 text-xs font-bold text-[var(--text-secondary)]">Image fit</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => setImageFit('cover')} className={`rounded-xl border px-3 py-2 text-xs font-bold ${imageFit === 'cover' ? 'border-neon bg-neon/10 text-neon' : 'border-[var(--border-default)] text-[var(--text-secondary)]'}`}>Fill frame</button>
-                      <button type="button" onClick={() => { setImageFit('contain'); setImageZoom(1); }} className={`rounded-xl border px-3 py-2 text-xs font-bold ${imageFit === 'contain' ? 'border-neon bg-neon/10 text-neon' : 'border-[var(--border-default)] text-[var(--text-secondary)]'}`}>Show entire image</button>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <RangeControl label="Horizontal position" value={imagePositionX} display={`${Math.round(imagePositionX)}%`} min={0} max={100} step={1} onChange={value => setImagePositionX(clampImagePosition(value))} />
-                    <RangeControl label="Vertical position" value={imagePositionY} display={`${Math.round(imagePositionY)}%`} min={0} max={100} step={1} onChange={value => setImagePositionY(clampImagePosition(value))} />
-                    <RangeControl label="Zoom" value={imageZoom} display={`${imageZoom.toFixed(2)}x`} min={1} max={3} step={0.05} onChange={value => setImageZoom(clampImageZoom(value))} />
-                    <button type="button" className="btn-secondary px-3 py-2 text-xs md:col-span-3" onClick={() => { setImageFit('cover'); setImagePositionX(50); setImagePositionY(50); setImageZoom(1); }}>Reset image framing</button>
-                  </div>
-                </div>
-              )}
             </AdpadzCard>
             {format === 'before_after' && <Field label="After image URL" className="mt-4"><input type="url" value={secondaryImageUrl} onChange={event => setSecondaryImageUrl(event.target.value)} className="input-field" placeholder="https://..." /><span className="mt-1 block text-[10px] text-[var(--text-muted)]">The primary asset is used as the before image.</span></Field>}
             <div className="mt-6 flex gap-2"><AdpadzButton type="button" variant="secondary" onClick={() => setStep(1)}>Back</AdpadzButton><AdpadzButton type="button" onClick={nextStep}>Choose outputs</AdpadzButton></div>
           </AdpadzSection>
-          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <StudioIntroPanel content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
 
@@ -578,7 +565,7 @@ const selectedOutputCount = Object.values(outputs).filter(Boolean).length;
               <AdpadzButton type="button" onClick={() => void saveCampaign()} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {editing ? 'Save Campaign' : 'Create Campaign'}</AdpadzButton>
             </div>
           </AdpadzSection>
-          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <TemplateStudioPreview content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} onChange={setTemplateSettings} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
+          {editing && campaignId ? <CreativeSummary campaignId={campaignId} content={templateContent} metadata={savedCreativeMetadata} assets={assets} qrLinks={qrLinks} /> : <StudioIntroPanel content={templateContent} settings={{ ...templateSettings, imageFit: imageFit === 'contain' ? 'contain' : 'cover', imagePositionX, imagePositionY, imageZoom }} ready={templateReadiness.ready} issues={[...templateReadiness.blockers, ...templateReadiness.warnings].map(issue => issue.message)} />}
         </div>
       )}
     </div>
@@ -606,7 +593,10 @@ function CreativeSummary({
   assets: AssetChoice[];
   qrLinks: QRLinkRecord[];
 }) {
-  const creative = resolveDestinationCreative(metadata, 'discovery', {
+  const { resolved: creative } = buildDestinationCreativeView({
+    metadata,
+    destination: 'discovery',
+    campaign: content.campaign,
     assets,
     qrLinks: qrLinks.map(qr => ({ id: qr.id, publicUrl: buildShortUrl(qr.slug) })),
     fallbackImageUrl: content.imageUrl,
@@ -637,35 +627,25 @@ function CreativeSummary({
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neon">Discovery creative summary</p>
         <p className="mt-1 text-sm font-black">{CAMPAIGN_TEMPLATES.find(item => item.key === creative.settings.template)?.label}</p>
         <p className="mt-1 text-[10px] text-[var(--text-muted)]">This summary uses the canonical saved Workshop creative. Open the dedicated workspace to refine every destination.</p>
-        <AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`} fullWidth className="mt-4">Design Creative</AdpadzButton>
+        <AdpadzButton href={`/app/business/campaigns/${campaignId}/creative`} fullWidth className="mt-4">Open Studio</AdpadzButton>
       </div>
     </AdpadzCard>
   );
 }
-function TemplateStudioPreview({ content, settings, onChange, ready, issues }: { content: CampaignTemplateContent; settings: CampaignTemplateSettings; onChange: (settings: CampaignTemplateSettings) => void; ready: boolean; issues: string[] }) {
-  const destinations = [
-    { key: 'mailer' as const, label: 'Mailer', ratio: 'aspect-[4/3]' },
-    { key: 'discovery' as const, label: 'Discovery', ratio: 'aspect-square' },
-    { key: 'qr' as const, label: 'QR landing', ratio: 'aspect-[3/4]' },
-    { key: 'social-square' as const, label: 'Social', ratio: 'aspect-square' },
-  ];
-  const update = (patch: Partial<CampaignTemplateSettings>) => onChange({ ...settings, ...patch });
-  return <div className="space-y-4">
+function StudioIntroPanel({ content, settings, ready, issues }: { content: CampaignTemplateContent; settings: CampaignTemplateSettings; ready: boolean; issues: string[] }) {
+  return (
     <AdpadzCard variant="featured" className="p-4">
-      <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black">Live destination previews</p><p className="text-[10px] text-[var(--text-muted)]">Unsaved campaign state Â· one canonical template</p></div><AdpadzBadge variant={ready ? 'verified' : 'status'}>{ready ? 'Ready' : 'Needs attention'}</AdpadzBadge></div>
-      <div className="mt-4 grid grid-cols-2 gap-3">{destinations.map(destination => <div key={destination.key}><p className="mb-1 text-[10px] font-bold text-[var(--text-muted)]">{destination.label}</p><div className={`${destination.ratio} container-type-inline-size overflow-hidden rounded-xl border border-white/10`} style={{ containerType: 'inline-size' }}><CampaignTemplateRenderer content={content} settings={settings} destination={destination.key} /></div></div>)}</div>
-      {issues.length > 0 && <ul className="mt-3 space-y-1 text-[10px] text-amber-200">{issues.map(message => <li key={message}>â€¢ {message}</li>)}</ul>}
+      <div className="flex items-center justify-between gap-3">
+        <div><p className="text-sm font-black">Creative preview</p><p className="text-[11px] text-[var(--text-muted)]">A professional layout is applied automatically.</p></div>
+        <AdpadzBadge variant={ready ? 'verified' : 'status'}>{ready ? 'Ready' : 'Needs attention'}</AdpadzBadge>
+      </div>
+      <div className="mx-auto mt-4 aspect-square w-full max-w-[320px] overflow-hidden rounded-2xl border border-white/10" style={{ containerType: 'inline-size' }}>
+        <CampaignTemplateRenderer content={content} settings={settings} destination="discovery" />
+      </div>
+      {issues.length > 0 && <ul className="mt-3 space-y-1 text-[11px] text-amber-200">{issues.map(message => <li key={message}>{message}</li>)}</ul>}
+      <p className="mt-4 text-xs leading-relaxed text-[var(--text-muted)]">The full design workspace — templates, image treatment, overlays, QR, and per-destination overrides — opens in the Studio after you create the campaign.</p>
     </AdpadzCard>
-    <AdpadzCard variant="flat" className="space-y-4 p-4">
-      <div><p className="mb-2 text-xs font-black">Template family</p><div className="grid gap-2">{CAMPAIGN_TEMPLATES.map(template => <button key={template.key} type="button" onClick={() => update({ template: template.key as CampaignTemplateKey })} aria-pressed={settings.template === template.key} className={`rounded-xl border p-3 text-left ${settings.template === template.key ? 'border-neon bg-neon/10' : 'border-white/10'}`}><span className="block text-xs font-black">{template.label}</span><span className="mt-1 block text-[10px] text-[var(--text-muted)]">{template.description}</span></button>)}</div></div>
-      <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => update({ theme: 'dark' })} className={`rounded-xl border p-2 text-xs font-bold ${settings.theme === 'dark' ? 'border-neon text-neon' : 'border-white/10'}`}>Dark</button><button type="button" onClick={() => update({ theme: 'light' })} className={`rounded-xl border p-2 text-xs font-bold ${settings.theme === 'light' ? 'border-neon text-neon' : 'border-white/10'}`}>Light</button></div>
-      <label className="flex items-center justify-between gap-3 text-xs font-bold"><span>Show QR code</span><input type="checkbox" checked={settings.showQr} onChange={event => update({ showQr: event.target.checked })} className="h-5 w-5 accent-[var(--neon)]" /></label>
-      <label className="flex items-center justify-between gap-3 text-xs font-bold"><span>Show expiration</span><input type="checkbox" checked={settings.showExpiration} onChange={event => update({ showExpiration: event.target.checked })} className="h-5 w-5 accent-[var(--neon)]" /></label>
-    </AdpadzCard>
-  </div>;
-}
-function RangeControl({ label, value, display, min, max, step, onChange }: { label: string; value: number; display: string; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="block"><span className="mb-2 flex justify-between gap-2 text-xs font-bold text-[var(--text-secondary)]"><span>{label}</span><span className="text-[var(--text-muted)]">{display}</span></span><input type="range" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.target.value))} className="w-full accent-[var(--brand-primary)]" /></label>;
+  );
 }
 function asImageNumber(value: unknown): number | string | undefined {
   return typeof value === 'number' || typeof value === 'string' ? value : undefined;

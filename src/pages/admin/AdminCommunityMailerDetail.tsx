@@ -38,6 +38,13 @@ import {
   type LayoutPlacement,
   validateMailerLayout,
 } from "../../lib/communityMailerLayout";
+import {
+  type CampaignTemplateSettings,
+  type CreativeSettings,
+  normalizeCreativeSettings,
+  resolveDestinationCreative,
+} from "../../features/campaign-templates";
+import { supabase } from "../../lib/supabase";
 
 export default function AdminCommunityMailerDetail() {
   const { profile } = useOutletContext<AdminOutletContext>();
@@ -146,6 +153,82 @@ export default function AdminCommunityMailerDetail() {
   const selected = useMemo(() => draft.find((item) => item.id === selectedId), [
     draft,
     selectedId,
+  ]);
+  // The campaign's saved Mailer creative, resolved from the same Creative
+  // Workshop source the production snapshot freezes. RLS may hide another
+  // tenant's non-public campaign output from this client; the current-revision
+  // production snapshot (admin projection) then supplies identical settings.
+  const [savedMailerCreativeByCampaign, setSavedMailerCreativeByCampaign] =
+    useState<Record<string, CreativeSettings>>({});
+  useEffect(() => {
+    const campaignIds = Array.from(
+      new Set(
+        draft
+          .map((placement) => placement.campaign_id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    if (campaignIds.length === 0) {
+      setSavedMailerCreativeByCampaign({});
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from("campaign_outputs")
+      .select("campaign_id,metadata")
+      .in("campaign_id", campaignIds)
+      .eq("output_type", "interactive_ad")
+      .then(({ data: rows }) => {
+        if (cancelled) return;
+        const next: Record<string, CreativeSettings> = {};
+        for (const row of rows || []) {
+          if (typeof row.campaign_id !== "string") continue;
+          next[row.campaign_id] =
+            resolveDestinationCreative(row.metadata, "mailer").settings;
+        }
+        setSavedMailerCreativeByCampaign(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft]);
+  const creativeSettingsByPlacement = useMemo(() => {
+    const snapshotByPlacement = new Map(
+      (data?.production.snapshots || [])
+        .filter((item) =>
+          item.layout_revision === data?.mailer.layout_revision
+        )
+        .map((item) => [item.placement_id, item.snapshot]),
+    );
+    const map: Record<string, CampaignTemplateSettings> = {};
+    for (const placement of draft) {
+      if (!placement.campaign_id) continue;
+      const snapshot = snapshotByPlacement.get(placement.id);
+      const snapshotRaw = snapshot &&
+          typeof snapshot.creative_settings === "object" &&
+          snapshot.creative_settings
+        ? snapshot.creative_settings
+        : snapshot && typeof snapshot.template_settings === "object" &&
+            snapshot.template_settings
+        ? snapshot.template_settings
+        : null;
+      const snapshotSettings = snapshotRaw
+        ? normalizeCreativeSettings(snapshotRaw)
+        : undefined;
+      const saved = savedMailerCreativeByCampaign[placement.campaign_id] ??
+        snapshotSettings;
+      if (!saved) continue;
+      map[placement.id] = {
+        ...saved,
+        showQr: saved.showQr && Boolean(placement.qr_destination_url),
+      };
+    }
+    return map;
+  }, [
+    data?.mailer.layout_revision,
+    data?.production.snapshots,
+    draft,
+    savedMailerCreativeByCampaign,
   ]);
   const issues = useMemo(
     () =>
@@ -420,6 +503,7 @@ export default function AdminCommunityMailerDetail() {
             mode="admin-edit"
             selectedId={selectedId}
             onSelect={(placement) => setSelectedId(placement.id)}
+            creativeSettingsById={creativeSettingsByPlacement}
           />
           <p className="text-center text-[10px] text-[var(--text-muted)]">
             Approved fixed-template preview /{" "}
@@ -641,6 +725,7 @@ export default function AdminCommunityMailerDetail() {
                 side="front"
                 mode="print-preview"
                 showProductionGuides={showProductionGuides}
+                creativeSettingsById={creativeSettingsByPlacement}
               />
             </div>
             <div>
@@ -653,6 +738,7 @@ export default function AdminCommunityMailerDetail() {
                 side="back"
                 mode="print-preview"
                 showProductionGuides={showProductionGuides}
+                creativeSettingsById={creativeSettingsByPlacement}
               />
             </div>
           </div>

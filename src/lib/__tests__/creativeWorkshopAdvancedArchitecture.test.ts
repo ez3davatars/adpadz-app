@@ -10,6 +10,7 @@ const history = read("../../components/campaign-creative/CreativeHistoryDrawer.t
 const compare = read("../../components/campaign-creative/CreativeCompareView.tsx");
 const modal = read("../../components/campaign-creative/CreativeModal.tsx");
 const preview = read("../../components/campaign-creative/CreativePreviewCanvas.tsx");
+const dialogBehavior = read("../../components/campaign-creative/dialogBehavior.ts");
 
 describe("Creative Workshop Advanced component contracts", () => {
   it("keeps History lazy, retained, retryable, and keyboard-modal", () => {
@@ -18,7 +19,8 @@ describe("Creative Workshop Advanced component contracts", () => {
     expect(workshop).toContain("beforeId: lastVersion.id");
     expect(history).toContain('role="dialog"');
     expect(history).toContain('aria-modal="true"');
-    expect(history).toContain("trapFocus");
+    expect(history).toContain("trapDialogFocus");
+    expect(history).toContain("useDialogBehavior");
     expect(history).toContain("Retry history");
     expect(history).toContain("Load more history");
   });
@@ -63,7 +65,29 @@ describe("Creative Workshop Advanced component contracts", () => {
     expect(inspector).toContain("Overflow:");
     expect(workshop).toContain("projectOriginalCreativeTreatment(settings)");
     expect(workshop).toContain("selection cleared because it is hidden in this preview");
-    expect(inspector).toContain("event.stopPropagation()");
+    expect(inspector).toContain("trapDialogFocus as trapInspectorFocus");
+    expect(dialogBehavior).toContain("event.stopPropagation()");
+  });
+
+  it("keeps destination overrides explicit, visible, and reversible per field", () => {
+    expect(workshop).toContain("listOverriddenCreativeSettingKeys");
+    expect(workshop).toContain('baselineSettings={scope === "destination" && hasOverride ? state.global : null}');
+    expect(workshop).toContain("override created");
+    expect(workshop).toContain("Remove override · use Global");
+    expect(workshop).toContain('if (scope === "destination" && !state.overrides[destination]) setScope("global")');
+    expect(inspector).toContain("OverrideMark");
+    expect(inspector).toContain("Revert ${meta.label} to Global");
+    expect(inspector).toContain("listOverriddenCreativeSettingKeys");
+    expect(inspector).toContain("pinnedActive");
+  });
+
+  it("coalesces gestures, offers shortcuts, and confirms leaving through the shared dialog", () => {
+    expect(workshop).toContain('dispatch({ type: event.shiftKey ? "redo" : "undo" })');
+    expect(workshop).toContain("shortcutRef.current.save()");
+    expect(workshop).toContain('confirmLabel="Leave without saving"');
+    expect(workshop).not.toContain("window.confirm");
+    expect(workshop).toContain('type: "preview"');
+    expect(inspector).toContain("onPointerUp={onCommit}");
   });
 
   it("provides full-viewport exact-state preview and scoped reset confirmations", () => {
@@ -73,11 +97,11 @@ describe("Creative Workshop Advanced component contracts", () => {
     expect(workshop).toContain("fullScreenGuides");
     expect(preview).toContain("safeAreaOverride ?? applied.safeAreaVisible");
     expect(modal).toContain("fullViewport");
-    expect(modal).toContain("trapFocus");
-    expect(modal).toContain("document.activeElement === container");
-    expect(history).toContain("document.activeElement === container");
-    expect(history).toContain("event.stopPropagation()");
-    expect(modal).toContain("event.stopPropagation()");
+    expect(modal).toContain("trapDialogFocus");
+    expect(modal).toContain("useDialogBehavior");
+    expect(dialogBehavior).toContain("document.activeElement === container");
+    expect(dialogBehavior).toContain("previouslyFocused?.focus()");
+    expect(dialogBehavior).toContain('document.body.style.overflow = "hidden"');
     expect(inspector).toContain("0.75 in module field minimum");
     expect(workshop).toContain("sectionResetRequiresMailerQrPreservation(resetSection, destination, scope)");
     expect(workshop).toContain('title={resetTitle(pendingReset, destination, scope)}');

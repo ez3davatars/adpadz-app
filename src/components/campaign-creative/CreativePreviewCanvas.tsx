@@ -1,8 +1,9 @@
-import { useMemo, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import {
   CampaignTemplateRenderer,
 } from "../../features/campaign-templates";
 import {
+  destinationToRenderer,
   type CreativeDestination,
   type CreativeElementKey,
   type CreativeFormatKey,
@@ -28,9 +29,16 @@ type CreativePreviewCanvasProps = {
   showGuides?: boolean;
   safeAreaOverride?: boolean;
   className?: string;
+  /**
+   * When set, the canvas measures whether this element's rendered content
+   * overflows its layout box and reports it. The canvas owns this DOM read so
+   * no other component has to reach into the preview subtree.
+   */
+  measureOverflowElement?: CreativeElementKey;
+  onOverflowChange?: (overflows: boolean | null) => void;
 };
 
-export default function CreativePreviewCanvas({
+function CreativePreviewCanvasBase({
   content,
   settings,
   destination,
@@ -44,7 +52,10 @@ export default function CreativePreviewCanvas({
   showGuides = true,
   safeAreaOverride,
   className = "",
+  measureOverflowElement = null,
+  onOverflowChange,
 }: CreativePreviewCanvasProps) {
+  const canvasRef = useRef<HTMLDivElement>(null);
   const applied = useMemo(
     () => showOriginal ? projectOriginalCreativeTreatment(settings) : settings,
     [settings, showOriginal],
@@ -66,8 +77,39 @@ export default function CreativePreviewCanvas({
   );
   const qrGuideStyle = useMemo(() => boxStyle(layout.qr), [layout.qr]);
 
+  useEffect(() => {
+    if (!onOverflowChange) return;
+    if (!measureOverflowElement) {
+      onOverflowChange(null);
+      return;
+    }
+    const container = canvasRef.current;
+    if (!container) return;
+    let frame = 0;
+    const measure = () => {
+      const target = container.querySelector<HTMLElement>(
+        `[data-creative-element="${measureOverflowElement}"]`,
+      );
+      onOverflowChange(target
+        ? target.scrollHeight > target.clientHeight + 1 || target.scrollWidth > target.clientWidth + 1
+        : null);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    schedule();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [measureOverflowElement, onOverflowChange, rendererSettings, content]);
+
   return (
     <div
+      ref={canvasRef}
       data-testid="creative-preview-canvas"
       data-original-treatment={showOriginal ? "true" : "false"}
       className={`relative isolate h-full w-full overflow-hidden rounded-2xl bg-black ${className}`}
@@ -76,29 +118,32 @@ export default function CreativePreviewCanvas({
       <CampaignTemplateRenderer
         content={content}
         settings={rendererSettings}
-        destination={rendererDestination(destination, formatKey)}
+        destination={destinationToRenderer(destination, formatKey)}
         inspection={inspection}
         qrArtwork={selectedQr ? <QRStudioPreview qr={selectedQr} /> : undefined}
         className="rounded-2xl"
       />
 
       {showGuides && applied.bleedVisible && (
-        <div className="pointer-events-none absolute inset-[2%] z-40 rounded-xl border border-dashed border-red-400" aria-label="Bleed overlay" />
+        <div className="pointer-events-none absolute inset-[2%] z-40 rounded-xl border border-dashed border-red-400" data-guide="bleed" aria-hidden="true" />
       )}
       {showGuides && (safeAreaOverride ?? applied.safeAreaVisible) && (
-        <div className="pointer-events-none absolute inset-[7%] z-40 rounded-xl border border-dashed border-amber-300" aria-label="Safe area overlay" />
+        <div className="pointer-events-none absolute inset-[7%] z-40 rounded-xl border border-dashed border-amber-300" data-guide="safe-area" aria-hidden="true" />
       )}
       {showGuides && applied.qrMinimumVisible && (
-        <div className="pointer-events-none absolute z-40 rounded-lg border-2 border-dashed border-neon" style={qrGuideStyle} aria-label="Minimum QR size overlay" />
+        <div className="pointer-events-none absolute z-40 rounded-lg border-2 border-dashed border-neon" style={qrGuideStyle} data-guide="qr-minimum" aria-hidden="true" />
       )}
       {showOriginal && (
-        <span className="pointer-events-none absolute left-3 top-3 z-50 rounded-full bg-black/75 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-white">
+        <span className="pointer-events-none absolute left-3 top-3 z-50 rounded-full bg-black/75 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
           Before · original treatment
         </span>
       )}
     </div>
   );
 }
+
+const CreativePreviewCanvas = memo(CreativePreviewCanvasBase);
+export default CreativePreviewCanvas;
 
 function boxStyle(box: NormalizedBox): CSSProperties {
   return {
@@ -107,12 +152,4 @@ function boxStyle(box: NormalizedBox): CSSProperties {
     width: `${box.width * 100}%`,
     height: `${box.height * 100}%`,
   };
-}
-
-function rendererDestination(destination: CreativeDestination, formatKey?: CreativeFormatKey) {
-  if (destination !== "social") return destination;
-  if (formatKey === "portrait") return "social-portrait";
-  if (formatKey === "landscape") return "social-landscape";
-  if (formatKey === "story") return "social-story";
-  return "social-square";
 }

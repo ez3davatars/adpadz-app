@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { AdpadzButton } from "../adpadz-ui";
+import { trapDialogFocus, useDialogBehavior } from "./dialogBehavior";
 
 type CreativeModalProps = {
   open: boolean;
@@ -28,18 +29,7 @@ export default function CreativeModal({
   fullViewport = false,
 }: CreativeModalProps) {
   const dialogRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    requestAnimationFrame(() => dialogRef.current?.focus());
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previous?.focus();
-    };
-  }, [open]);
+  useDialogBehavior({ active: open, containerRef: dialogRef });
 
   if (!open) return null;
 
@@ -52,7 +42,7 @@ export default function CreativeModal({
         aria-labelledby="creative-modal-title"
         aria-describedby={description ? "creative-modal-description" : undefined}
         tabIndex={-1}
-        onKeyDown={event => trapFocus(event, dialogRef.current, onClose)}
+        onKeyDown={event => trapDialogFocus(event, dialogRef.current, onClose)}
         className={`${fullViewport ? "h-[100dvh] w-screen rounded-none" : "h-[100dvh] w-screen rounded-none sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-6xl sm:rounded-3xl"} flex flex-col overflow-hidden border border-white/10 bg-[var(--bg-base)] shadow-2xl`}
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
@@ -112,34 +102,4 @@ export function CreativeConfirmDialog({
       </div>
     </CreativeModal>
   );
-}
-
-function trapFocus(event: KeyboardEvent, container: HTMLElement | null, onClose: () => void) {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
-    return;
-  }
-  if (event.key !== "Tab" || !container) return;
-  const focusable = [...container.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-  )].filter(element => !element.hasAttribute("hidden"));
-  if (!focusable.length) {
-    event.preventDefault();
-    container.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (document.activeElement === container) {
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus();
-  } else if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
 }

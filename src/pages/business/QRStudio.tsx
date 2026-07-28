@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
+  ArrowLeft,
   BarChart3,
   Copy,
   Download,
@@ -113,14 +115,41 @@ const STYLE_OPTIONS: Array<{ value: QRStylePreset; label: string; description: s
   },
 ];
 
+/**
+ * Campaign round-trip: QR Studio can be opened from a Campaign stage with
+ * ?campaign=<id>&return=<stage segment>. The return target is always rebuilt
+ * from the allowed stage list, never taken verbatim from the query string.
+ */
+const CAMPAIGN_RETURN_SEGMENTS = ['setup', 'creative', 'review', 'distribution'] as const;
+type CampaignReturnSegment = (typeof CAMPAIGN_RETURN_SEGMENTS)[number];
+
+function resolveCampaignReturnSegment(value: string | null): CampaignReturnSegment {
+  return CAMPAIGN_RETURN_SEGMENTS.includes(value as CampaignReturnSegment)
+    ? value as CampaignReturnSegment
+    : 'creative';
+}
+
+function isSafeCampaignId(value: string | null): value is string {
+  return typeof value === 'string' && /^[0-9a-f-]{16,40}$/i.test(value);
+}
+
 export default function QRStudio() {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [searchParams] = useSearchParams();
+  const contextCampaignId = isSafeCampaignId(searchParams.get('campaign')) ? searchParams.get('campaign') : null;
+  const contextReturnPath = contextCampaignId
+    ? `/app/business/campaigns/${contextCampaignId}/${resolveCampaignReturnSegment(searchParams.get('return'))}`
+    : null;
   const [form, setForm] = useState<QRFormState>(DEFAULT_FORM);
   const [links, setLinks] = useState<QRLinkRecord[]>([]);
   const [businessCards, setBusinessCards] = useState<BusinessCardRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignChoice[]>([]);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [publicAppUrl] = useState(getPublicAppUrl());
+  const contextCampaign = useMemo(
+    () => contextCampaignId ? campaigns.find(campaign => campaign.id === contextCampaignId) ?? null : null,
+    [campaigns, contextCampaignId],
+  );
   const [advancedBaseUrlOpen, setAdvancedBaseUrlOpen] = useState(false);
   const [manualBaseUrl, setManualBaseUrl] = useState('');
   const [loadingLinks, setLoadingLinks] = useState(true);
@@ -626,6 +655,20 @@ export default function QRStudio() {
 
   return (
     <div>
+      {contextReturnPath && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <p className="min-w-0 text-sm text-[var(--text-secondary)]">
+            Working on <span className="font-semibold text-white">{contextCampaign?.title ?? 'your campaign'}</span>
+            <span className="text-[var(--text-muted)]"> · choose or create its QR, then head back.</span>
+          </p>
+          <Link
+            to={contextReturnPath}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-neon px-4 text-sm font-bold text-black transition hover:brightness-95"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to Campaign
+          </Link>
+        </div>
+      )}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-2 mb-2">

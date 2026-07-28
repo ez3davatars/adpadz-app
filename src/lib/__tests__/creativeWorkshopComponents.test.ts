@@ -267,7 +267,7 @@ describe("Creative preview and template rendering", () => {
     expect(html).not.toContain("data-selected");
     expect(html).not.toContain('aria-label="Edit ');
     expect(html).not.toContain("cursor-pointer");
-    expect(html).not.toContain("Safe area overlay");
+    expect(html).not.toContain("data-guide");
     expect(html).not.toContain("Campaign QR code");
   });
 
@@ -292,9 +292,10 @@ describe("Creative preview and template rendering", () => {
     expect(html).toContain('data-original-treatment="true"');
     expect(html).toContain("Before");
     expect(html).toContain("original treatment");
-    expect(html).toContain('aria-label="Bleed overlay"');
-    expect(html).toContain('aria-label="Safe area overlay"');
-    expect(html).toContain('aria-label="Minimum QR size overlay"');
+    expect(html).toContain('data-guide="bleed"');
+    expect(html).toContain('data-guide="safe-area"');
+    expect(html).toContain('data-guide="qr-minimum"');
+    expect(html).toContain('data-guide="bleed" aria-hidden="true"');
     expect(html).toContain("transform:scale(1) rotate(0deg)");
     expect(html).toContain("brightness(100%)");
     expect(html).not.toContain("scale(1.8)");

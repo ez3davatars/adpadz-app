@@ -15,9 +15,9 @@ import { exportSocialCreativeElement } from '../../lib/socialCreativeExport';
 import { supabase } from '../../lib/supabase';
 import { evaluateCampaignReadiness, type CampaignReadinessResult } from '../../lib/campaignReadiness';
 import {
+  buildDestinationCreativeView,
   CAMPAIGN_TEMPLATE_REGISTRY,
   CampaignTemplateRenderer,
-  normalizeCampaignContent,
   resolveDestinationCreative,
   type CreativeAssetReference,
 } from '../../features/campaign-templates';
@@ -92,46 +92,26 @@ function DistributionOverview({
   assets: CreativeAssetReference[];
 }) {
   const interactiveOutput = outputs.find(item => item.output_type === 'interactive_ad');
-  const savedDiscovery = useMemo(
-    () => resolveDestinationCreative(interactiveOutput?.metadata, 'discovery'),
-    [interactiveOutput?.metadata],
-  );
   const usableDiscoveryQr = isDistributionQrUsable(discoveryQr) ? discoveryQr : null;
   const qrPublicUrl = usableDiscoveryQr
     ? `${window.location.origin}/q/${usableDiscoveryQr.slug}`
     : null;
-  const resolved = useMemo(() => resolveDestinationCreative(
-    interactiveOutput?.metadata,
-    'discovery',
-    {
-      assets,
-      qrLinks: usableDiscoveryQr
-        ? [{ id: usableDiscoveryQr.id, publicUrl: qrPublicUrl }]
-        : [],
-      fallbackImageUrl: savedDiscovery.imageAssetId ? null : creative.campaignImageUrl,
-      fallbackDestinationUrl: creative.campaignUrl,
-    },
-  ), [
-    assets,
-    creative.campaignImageUrl,
-    creative.campaignUrl,
-    interactiveOutput?.metadata,
-    qrPublicUrl,
-    savedDiscovery.imageAssetId,
-    usableDiscoveryQr,
-  ]);
-  const content = useMemo(() => normalizeCampaignContent({
+  const { resolved, content, exactQr } = useMemo(() => buildDestinationCreativeView({
+    metadata: interactiveOutput?.metadata,
+    destination: 'discovery',
     campaign: creative.campaign,
     businessName: creative.businessName,
     businessPhone: creative.phone,
     businessWebsite: creative.website,
     businessLogoUrl: creative.businessLogoUrl,
-    imageUrl: resolved.imageUrl,
-    destinationUrl: resolved.qrDestinationUrl,
     primaryColor: creative.primaryColor,
     accentColor: creative.accentColor,
-  }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
-  const exactQr = resolved.qrResolution === 'exact' ? usableDiscoveryQr : null;
+    assets,
+    qr: usableDiscoveryQr,
+    qrPublicUrl,
+    fallbackImageUrl: creative.campaignImageUrl,
+    fallbackDestinationUrl: creative.campaignUrl,
+  }), [assets, creative, interactiveOutput?.metadata, qrPublicUrl, usableDiscoveryQr]);
   const discoveryReadiness = readiness?.sections.find(section => section.key === 'discovery')?.status;
   const savedPreviewReady = discoveryReadiness === 'ready' && resolved.issues.length === 0;
   const savedPreviewStatus = savedPreviewReady
@@ -150,7 +130,6 @@ function DistributionOverview({
   ];
   return (
     <div className="space-y-7">
-      <AdpadzButton href="/app/business/campaigns" variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Campaigns</AdpadzButton>
       <AdpadzCard variant="featured" className="overflow-hidden p-4 sm:p-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(260px,0.75fr)_minmax(0,1.25fr)] lg:items-center">
           <section aria-label="Saved Consumer Discovery creative preview" className="min-w-0">
@@ -181,11 +160,10 @@ function DistributionOverview({
           </section>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <AdpadzBadge variant="campaign">Distribution</AdpadzBadge>
-              <AdpadzBadge variant="status" className="capitalize">{creative.campaign.status}</AdpadzBadge>
+              <AdpadzBadge variant="campaign">Publish</AdpadzBadge>
               <AdpadzBadge variant="status">Read-only</AdpadzBadge>
             </div>
-            <h1 className="mt-4 text-3xl font-black">{creative.campaign.title}</h1>
+            <h2 className="mt-4 text-2xl font-bold">Hand this campaign to its destinations</h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">Review the saved destination creative here. Design changes stay in Creative Workshop so every output continues from one approved campaign.</p>
             <dl className="mt-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
               <div><dt className="text-[var(--text-muted)]">Destination</dt><dd className="mt-1 font-black">Discovery</dd></div>
@@ -239,16 +217,22 @@ function SocialDistributionWorkspace({
 }) {
   const usableSocialQr = isDistributionQrUsable(socialQr) ? socialQr : null;
   const qrPublicUrl = usableSocialQr ? `${window.location.origin}/q/${usableSocialQr.slug}` : null;
-  const savedSocial = useMemo(
-    () => resolveDestinationCreative(output?.metadata, 'social'),
-    [output?.metadata],
-  );
-  const resolved = useMemo(() => resolveDestinationCreative(output?.metadata, 'social', {
+  const { resolved, content, exactQr } = useMemo(() => buildDestinationCreativeView({
+    metadata: output?.metadata,
+    destination: 'social',
+    campaign: creative.campaign,
+    businessName: creative.businessName,
+    businessPhone: creative.phone,
+    businessWebsite: creative.website,
+    businessLogoUrl: creative.businessLogoUrl,
+    primaryColor: creative.primaryColor,
+    accentColor: creative.accentColor,
     assets,
-    qrLinks: usableSocialQr ? [{ id: usableSocialQr.id, publicUrl: qrPublicUrl }] : [],
-    fallbackImageUrl: savedSocial.imageAssetId ? null : creative.campaignImageUrl,
+    qr: usableSocialQr,
+    qrPublicUrl,
+    fallbackImageUrl: creative.campaignImageUrl,
     fallbackDestinationUrl: creative.campaignUrl,
-  }), [assets, creative.campaignImageUrl, creative.campaignUrl, output?.metadata, qrPublicUrl, savedSocial.imageAssetId, usableSocialQr]);
+  }), [assets, creative, output?.metadata, qrPublicUrl, usableSocialQr]);
   const format = resolved.format as SocialFormatKey;
   const preset = getSocialFormat(format);
   const previewWidth = `min(100%, ${Math.round(7000 * preset.width / preset.height) / 100}vh)`;
@@ -256,17 +240,6 @@ function SocialDistributionWorkspace({
     ...creative,
     campaignImageUrl: resolved.imageUrl,
     campaignUrl: resolved.qrDestinationUrl ?? creative.campaignUrl,
-  }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
-  const content = useMemo(() => normalizeCampaignContent({
-    campaign: creative.campaign,
-    businessName: creative.businessName,
-    businessPhone: creative.phone,
-    businessWebsite: creative.website,
-    businessLogoUrl: creative.businessLogoUrl,
-    imageUrl: resolved.imageUrl,
-    destinationUrl: resolved.qrDestinationUrl,
-    primaryColor: creative.primaryColor,
-    accentColor: creative.accentColor,
   }), [creative, resolved.imageUrl, resolved.qrDestinationUrl]);
   const suggestedCaption = useMemo(() => buildSuggestedCaption(effectiveCreative), [effectiveCreative]);
   const [caption, setCaption] = useState(suggestedCaption);
@@ -278,7 +251,6 @@ function SocialDistributionWorkspace({
     showQr: resolved.renderSettings.showQr,
   });
   const deliveryReady = readiness.ready && resolved.issues.length === 0;
-  const exactQr = resolved.qrResolution === 'exact' ? usableSocialQr : null;
   const templateLabel = CAMPAIGN_TEMPLATE_REGISTRY[resolved.settings.template].label;
 
   async function copyCaption() {
@@ -313,8 +285,8 @@ function SocialDistributionWorkspace({
     <div className="space-y-6">
       <AdpadzButton href={`/app/business/campaigns/${creative.campaign.id}/distribution`} variant="ghost" size="sm"><ArrowLeft className="h-4 w-4" /> Distribution</AdpadzButton>
       <div>
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-neon">Social Media · Manual posting</p>
-        <h1 className="mt-1 text-2xl font-black">{creative.campaign.title}</h1>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neon">Social Media · Manual posting</p>
+        <h2 className="mt-1 text-2xl font-bold">Export social creative</h2>
         <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">Review the saved Social creative, download its exact rendered design, then copy the editable caption into the social account you already use.</p>
       </div>
       {message && <div role="status" aria-live="polite" className="rounded-2xl border border-neon/25 bg-neon/[0.08] p-4 text-sm font-bold text-neon">{message}</div>}

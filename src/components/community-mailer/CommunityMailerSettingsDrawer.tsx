@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { AdminMailerDetail } from "../../lib/admin/communityMailers";
 import { formatCommunityCardFormat } from "../../lib/communityCards";
@@ -46,7 +46,7 @@ export default function CommunityMailerSettingsDrawer({
     setDirty(true);
     onDirtyChange(true);
   }
-  function requestClose() {
+  const requestClose = useCallback(() => {
     if (
       !dirty ||
       window.confirm("Close campaign settings without saving your changes?")
@@ -56,14 +56,14 @@ export default function CommunityMailerSettingsDrawer({
       onDirtyChange(false);
       onClose();
     }
-  }
+  }, [dirty, onClose, onDirtyChange, storageKey]);
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  });
+  }, [requestClose]);
   async function submit() {
     setSaving(true);
     try {

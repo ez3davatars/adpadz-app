@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, CreditCard, Image, LayoutDashboard, Loader2, LogOut, Menu, QrCode, RefreshCcw,
-  Settings, Share2, Sparkles, Target, Users, Wrench, X, Zap,
+  BarChart3, CreditCard, Image, LayoutDashboard, Loader2, LogOut, Mail, Menu, QrCode, RefreshCcw,
+  Settings, Sparkles, Target, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -31,9 +31,7 @@ const navGroups: NavGroup[] = [
     label: 'Marketing',
     items: [
       { to: '/app/business/campaigns', icon: Target, label: 'Campaigns' },
-      { to: '/app/business/community-campaigns', icon: LayoutDashboard, label: 'Community Campaigns' },
-      { to: '/app/business/create-ad', icon: Zap, label: 'Campaign Studio' },
-      { to: '/app/business/campaigns', icon: Share2, label: 'Campaign Distribution' },
+      { to: '/app/business/community-campaigns', icon: Mail, label: 'Community Mailers' },
       { to: '/app/business/qr-studio', icon: QrCode, label: 'QR Studio' },
     ],
   },

@@ -1,11 +1,15 @@
 import { Clock3, CopyPlus, Eye, GitCompareArrows, RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
+  creativeDestinationLabel,
+  creativeFormatAspect,
+  isCreativeDestination,
   normalizeWorkshopState,
   resolveCreativeSettings,
 } from "../../features/campaign-templates/creativeWorkshop";
 import type { CampaignCreativeVersionRecord } from "../../lib/campaignCreativeHistory";
 import { AdpadzButton } from "../adpadz-ui";
+import { trapDialogFocus, useDialogBehavior } from "./dialogBehavior";
 
 type CreativeHistoryDrawerProps = {
   open: boolean;
@@ -43,18 +47,7 @@ export default function CreativeHistoryDrawer({
   renderThumbnail,
 }: CreativeHistoryDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    requestAnimationFrame(() => drawerRef.current?.focus());
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus();
-    };
-  }, [open]);
+  useDialogBehavior({ active: open, containerRef: drawerRef });
 
   if (!open) return null;
 
@@ -68,7 +61,7 @@ export default function CreativeHistoryDrawer({
         aria-modal="true"
         aria-labelledby="creative-history-title"
         tabIndex={-1}
-        onKeyDown={event => trapFocus(event, drawerRef.current, onClose)}
+        onKeyDown={event => trapDialogFocus(event, drawerRef.current, onClose)}
         className="absolute inset-y-0 right-0 flex w-full flex-col border-l border-white/10 bg-[var(--bg-base)] shadow-2xl sm:max-w-[30rem]"
       >
         <header className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
@@ -183,35 +176,6 @@ export default function CreativeHistoryDrawer({
   );
 }
 
-function trapFocus(event: KeyboardEvent, container: HTMLElement | null, onClose: () => void) {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
-    return;
-  }
-  if (event.key !== "Tab" || !container) return;
-  const focusable = [...container.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-  )].filter(element => !element.hasAttribute("hidden"));
-  if (!focusable.length) {
-    event.preventDefault();
-    container.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (document.activeElement === container) {
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus();
-  } else if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
 function HistoryAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
   return (
     <button
@@ -230,12 +194,9 @@ function VersionPill({ children }: { children: ReactNode }) {
 }
 
 function destinationLabel(destination: string) {
-  return {
-    mailer: "Mailer",
-    discovery: "Discovery",
-    qr: "QR Landing",
-    social: "Social",
-  }[destination] ?? destination;
+  return isCreativeDestination(destination)
+    ? creativeDestinationLabel(destination)
+    : destination;
 }
 
 function formatLabel(format: string) {
@@ -256,12 +217,7 @@ function formatVersionTime(value: string) {
 }
 
 function historyPreviewRatio(destination: string, format: string) {
-  if (destination === "mailer") return format === "combined" ? 16 / 9 : 4 / 3;
-  if (destination === "qr") return 3 / 4;
-  if (destination === "social") {
-    if (format === "portrait") return 4 / 5;
-    if (format === "landscape") return 1200 / 628;
-    if (format === "story") return 9 / 16;
-  }
-  return 1;
+  return isCreativeDestination(destination)
+    ? creativeFormatAspect(destination, format)
+    : 1;
 }

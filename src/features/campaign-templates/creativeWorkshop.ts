@@ -1,4 +1,12 @@
 import {
+  CREATIVE_DESTINATION_KEYS,
+  CREATIVE_DESTINATION_MAP,
+  destinationToRenderer,
+  PRINT_CREATIVE_DESTINATIONS,
+  type CreativeDestination,
+  type CreativeFormatKey,
+} from "./creativeDestinations";
+import {
   DEFAULT_TEMPLATE_SETTINGS,
   normalizeTemplateSettings,
 } from "./templateRegistry";
@@ -7,18 +15,29 @@ import type {
   CampaignTemplateSettings,
 } from "./types";
 
-export type CreativeDestination = "mailer" | "discovery" | "qr" | "social";
+export {
+  CREATIVE_DESTINATION_KEYS,
+  CREATIVE_DESTINATION_MAP,
+  CREATIVE_DESTINATIONS,
+  PRINT_CREATIVE_DESTINATIONS,
+  creativeDestinationLabel,
+  creativeFormatAspect,
+  creativeFormatRatio,
+  destinationToRenderer,
+  getCreativeDestination,
+  getCreativeDestinationCapabilities,
+  isCreativeDestination,
+  resolveCreativeFormatDefinition,
+} from "./creativeDestinations";
+export type {
+  CreativeDestination,
+  CreativeDestinationCapabilities,
+  CreativeDestinationDefinition,
+  CreativeFormatDefinition,
+  CreativeFormatKey,
+} from "./creativeDestinations";
+
 export type CreativeScope = "global" | "destination";
-export type CreativeFormatKey =
-  | "standard"
-  | "combined"
-  | "featured"
-  | "card"
-  | "hero"
-  | "square"
-  | "portrait"
-  | "landscape"
-  | "story";
 export type CreativeFormatMap = Record<CreativeDestination, CreativeFormatKey>;
 export type CreativeElementKey =
   | "image"
@@ -159,19 +178,19 @@ export const DEFAULT_CREATIVE_SETTINGS: CreativeSettings = Object.freeze({
   qrMinimumVisible: false,
 });
 
-export const CREATIVE_FORMAT_KEYS: Readonly<Record<CreativeDestination, readonly CreativeFormatKey[]>> = Object.freeze({
-  mailer: Object.freeze(["standard", "combined", "featured"] as const),
-  discovery: Object.freeze(["card"] as const),
-  qr: Object.freeze(["hero"] as const),
-  social: Object.freeze(["square", "portrait", "landscape", "story"] as const),
-});
+export const CREATIVE_FORMAT_KEYS: Readonly<Record<CreativeDestination, readonly CreativeFormatKey[]>> = Object.freeze(
+  Object.fromEntries(CREATIVE_DESTINATION_KEYS.map(destination => [
+    destination,
+    Object.freeze(CREATIVE_DESTINATION_MAP[destination].formats.map(format => format.key)),
+  ])) as Record<CreativeDestination, readonly CreativeFormatKey[]>,
+);
 
-export const DEFAULT_CREATIVE_FORMATS: CreativeFormatMap = Object.freeze({
-  mailer: "standard",
-  discovery: "card",
-  qr: "hero",
-  social: "square",
-});
+export const DEFAULT_CREATIVE_FORMATS: CreativeFormatMap = Object.freeze(
+  Object.fromEntries(CREATIVE_DESTINATION_KEYS.map(destination => [
+    destination,
+    CREATIVE_DESTINATION_MAP[destination].defaultFormat,
+  ])) as CreativeFormatMap,
+);
 
 export const DEFAULT_WORKSHOP_STATE: CreativeWorkshopState = Object.freeze({
   version: 1,
@@ -230,12 +249,10 @@ export function normalizeCreativeFormat(destination: CreativeDestination, value:
 
 export function normalizeCreativeFormats(value: unknown): CreativeFormatMap {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  return {
-    mailer: normalizeCreativeFormat("mailer", input.mailer),
-    discovery: normalizeCreativeFormat("discovery", input.discovery),
-    qr: normalizeCreativeFormat("qr", input.qr),
-    social: normalizeCreativeFormat("social", input.social),
-  };
+  return Object.fromEntries(CREATIVE_DESTINATION_KEYS.map(destination => [
+    destination,
+    normalizeCreativeFormat(destination, input[destination]),
+  ])) as CreativeFormatMap;
 }
 
 export function normalizeWorkshopState(value: unknown): CreativeWorkshopState {
@@ -244,7 +261,7 @@ export function normalizeWorkshopState(value: unknown): CreativeWorkshopState {
     ? input.overrides as Record<string, unknown>
     : {};
   const overrides: CreativeWorkshopState["overrides"] = {};
-  for (const destination of ["mailer", "discovery", "qr", "social"] as const) {
+  for (const destination of CREATIVE_DESTINATION_KEYS) {
     if (overridesInput[destination]) overrides[destination] = normalizeCreativeSettings(overridesInput[destination]);
   }
   return {
@@ -365,24 +382,12 @@ export function resetCreativeDestination(state: CreativeWorkshopState, destinati
   };
 }
 
-export function destinationToRenderer(
-  destination: CreativeDestination,
-  format: CreativeFormatKey = DEFAULT_CREATIVE_FORMATS[destination],
-): CampaignTemplateDestination {
-  if (destination === "social") {
-    if (format === "portrait") return "social-portrait";
-    if (format === "landscape") return "social-landscape";
-    if (format === "story") return "social-story";
-    return "social-square";
-  }
-  return destination;
-}
-
 export function affectsPrint(previous: CreativeWorkshopState, next: CreativeWorkshopState) {
-  return JSON.stringify(resolveCreativeSettings(previous, "mailer"))
-      !== JSON.stringify(resolveCreativeSettings(next, "mailer"))
-    || normalizeCreativeFormat("mailer", previous.formats?.mailer)
-      !== normalizeCreativeFormat("mailer", next.formats?.mailer);
+  return PRINT_CREATIVE_DESTINATIONS.some(destination =>
+    JSON.stringify(resolveCreativeSettings(previous, destination))
+      !== JSON.stringify(resolveCreativeSettings(next, destination))
+    || normalizeCreativeFormat(destination, previous.formats?.[destination])
+      !== normalizeCreativeFormat(destination, next.formats?.[destination]));
 }
 
 export function createHistory<T>(initial: T) {

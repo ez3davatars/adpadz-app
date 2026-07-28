@@ -7,6 +7,7 @@ import type { CampaignRecord } from '../../lib/ads';
 import { loadBusinessCampaignReadiness } from '../../lib/campaignReadinessData';
 import type { CampaignReadinessResult } from '../../lib/campaignReadiness';
 import { CampaignReadinessBadge } from '../../components/campaign-readiness/CampaignReadinessSummary';
+import { resolveCampaignStageAction } from '../../lib/campaignStages';
 
 type SmartCardSummary = { id: string; business_name: string; slug: string; is_published: boolean; updated_at: string | null };
 type LeadSummary = { id: string; lead_type: string | null; status: string; created_at: string; metadata?: Record<string, unknown> | null };
@@ -108,7 +109,9 @@ export default function BizDashboard() {
   const activeCampaigns = state.campaigns.filter(campaign => campaign.status === 'active');
   const upcomingCampaigns = state.campaigns.filter(campaign => campaign.status === 'scheduled' || (campaign.start_date && new Date(campaign.start_date) > new Date()));
   const qrScans = state.qrLinks.reduce((sum, link) => sum + (link.scan_count ?? 0), 0);
-  const recentCampaigns = [...state.campaigns].sort((a, b) => (state.readiness.get(a.id)?.completionPercent ?? 100) - (state.readiness.get(b.id)?.completionPercent ?? 100)).slice(0, 5);
+  const rankedCampaigns = [...state.campaigns].sort((a, b) => (state.readiness.get(a.id)?.completionPercent ?? 100) - (state.readiness.get(b.id)?.completionPercent ?? 100));
+  const urgentCampaign = rankedCampaigns[0] ?? null;
+  const recentCampaigns = rankedCampaigns.slice(0, 5);
   const recentLeads = state.leads.slice(0, 5);
 
   const quickActions = useMemo(() => [
@@ -131,6 +134,8 @@ export default function BizDashboard() {
 
       {state.error && <AdpadzCard variant="flat" className="border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100" role="alert">{state.error}</AdpadzCard>}
       {state.loading && <p className="flex items-center text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-4 w-4 animate-spin text-neon" /> Loading Business Hub...</p>}
+
+      {urgentCampaign && <UrgentCampaignCard campaign={urgentCampaign} readiness={state.readiness.get(urgentCampaign.id)} />}
 
       <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">What's active</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -167,7 +172,29 @@ export default function BizDashboard() {
 }
 
 function CampaignRow({ campaign, readiness }: { campaign: CampaignRecord; readiness?: CampaignReadinessResult }) {
-  return <Link to={readiness?.nextAction?.destination ?? `/app/business/campaigns/${campaign.id}/edit`} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 hover:border-neon/40"><div className="min-w-0"><p className="truncate text-sm font-black">{campaign.title}</p><p className="mt-0.5 text-xs text-[var(--text-muted)]">{readiness?.nextAction?.reason ?? formatCampaignWindow(campaign)}</p></div><div className="shrink-0 text-right">{readiness ? <><CampaignReadinessBadge result={readiness} /><p className="mt-1 text-[10px] font-black text-neon">{readiness.completionPercent}% complete</p></> : <AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge>}</div></Link>;
+  const action = resolveCampaignStageAction(campaign, readiness);
+  return <Link to={action.href} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 hover:border-neon/40"><div className="min-w-0"><p className="truncate text-sm font-bold">{campaign.title}</p><p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{action.reason}</p></div><div className="shrink-0 text-right">{action.stage && <span className="mb-1 block text-[11px] font-semibold capitalize text-neon">{action.stage}</span>}{readiness ? <CampaignReadinessBadge result={readiness} /> : <AdpadzBadge variant="status" className="capitalize">{campaign.status}</AdpadzBadge>}</div></Link>;
+}
+
+/** The single most urgent campaign, with its one recommended next action. */
+function UrgentCampaignCard({ campaign, readiness }: { campaign: CampaignRecord; readiness?: CampaignReadinessResult }) {
+  const action = resolveCampaignStageAction(campaign, readiness);
+  return (
+    <AdpadzCard variant="featured" className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neon">Needs you next</p>
+          <h2 className="mt-1 truncate text-lg font-bold">{campaign.title}</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">{action.reason}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {readiness && <><CampaignReadinessBadge result={readiness} /><span className="text-xs font-semibold text-[var(--text-muted)]">{readiness.completionPercent}% complete</span></>}
+            {action.stage && <span className="text-xs font-semibold capitalize text-neon">{action.stage} stage</span>}
+          </div>
+        </div>
+        <AdpadzButton href={action.href} size="lg" title={action.reason}>{action.label}</AdpadzButton>
+      </div>
+    </AdpadzCard>
+  );
 }
 
 function LeadRow({ lead }: { lead: LeadSummary }) {
@@ -176,10 +203,4 @@ function LeadRow({ lead }: { lead: LeadSummary }) {
 
 function EmptyLine({ text }: { text: string }) {
   return <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-[var(--text-muted)]">{text}</p>;
-}
-
-function formatCampaignWindow(campaign: CampaignRecord): string {
-  const start = campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : 'No start date';
-  const end = campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : 'No end date';
-  return `${start} â€“ ${end}`;
 }

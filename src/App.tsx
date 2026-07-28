@@ -21,8 +21,10 @@ const BizCreateAd = lazy(() => import('./pages/business/CreateAd'));
 const BizCampaigns = lazy(() => import('./pages/business/Campaigns'));
 const BizCommunityCampaigns = lazy(() => import('./pages/business/CommunityCampaigns'));
 const CommunityCardPublic = lazy(() => import('./pages/CommunityCardPublic'));
+const CampaignShell = lazy(() => import('./components/campaign-shell/CampaignShell'));
 const CampaignContentStudio = lazy(() => import('./pages/business/CampaignContentStudio'));
 const CampaignCreativeWorkshop = lazy(() => import('./pages/business/CampaignCreativeWorkshop'));
+const CampaignReview = lazy(() => import('./pages/business/CampaignReview'));
 const CampaignDistribution = lazy(() => import('./pages/business/CampaignDistribution'));
 const BizQRStudio = lazy(() => import('./pages/business/QRStudio'));
 const BizSmartCards = lazy(() => import('./pages/business/SmartCards'));
@@ -115,11 +117,17 @@ export default function App() {
             <Route path="campaigns" element={<BizCampaigns />} />
             <Route path="community-cards" element={<Navigate to="../community-campaigns" replace />} />
             <Route path="community-campaigns" element={<BizCommunityCampaigns />} />
-            <Route path="campaigns/:campaignId/edit" element={<BizCreateAd />} />
-            <Route path="campaigns/:campaignId/content" element={<CampaignContentStudio />} />
-            <Route path="campaigns/:campaignId/creative" element={<CampaignCreativeWorkshop />} />
-            <Route path="campaigns/:campaignId/distribution" element={<CampaignDistribution />} />
-            <Route path="campaigns/:campaignId/distribution/social" element={<CampaignDistribution />} />
+            {/* One Campaign shell: Setup → Studio → Review → Publish. */}
+            <Route path="campaigns/:campaignId" element={<CampaignShell />}>
+              <Route path="setup" element={<BizCreateAd />} />
+              <Route path="edit" element={<RedirectPreservingSearch to="../setup" />} />
+              <Route path="content" element={<CampaignContentStudio />} />
+              <Route path="creative" element={<CampaignCreativeWorkshop />} />
+              <Route path="review" element={<CampaignReview />} />
+              <Route path="distribution" element={<CampaignDistribution />} />
+              <Route path="distribution/social" element={<CampaignDistribution />} />
+              <Route index element={<Navigate to="setup" replace />} />
+            </Route>
             <Route path="qr-studio" element={<BizQRStudio />} />
             <Route path="smart-cards" element={<BizSmartCards />} />
             <Route path="smart-cards/new" element={<BizSmartCards mode="new" />} />
@@ -168,6 +176,12 @@ function ProtectedBusinessRoute({ session }: { session: Session | null }) {
   return <Navigate to={getAuthSignInPath(destination)} replace />;
 }
 
+
+/** Legacy deep links (for example /edit?section=media) keep their query intact. */
+function RedirectPreservingSearch({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();

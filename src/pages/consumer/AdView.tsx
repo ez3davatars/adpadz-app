@@ -17,7 +17,7 @@ import {
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getImageDisplayStyle, normalizeImageFit } from '../../lib/smartCards';
 import { buildShortUrl } from '../../lib/qr/qrUtils';
-import { CampaignTemplateRenderer, normalizeCampaignContent, resolveDestinationCreative } from '../../features/campaign-templates';
+import { buildDestinationCreativeView, CampaignTemplateRenderer } from '../../features/campaign-templates';
 
 export default function AdView() {
   const { adId = '' } = useParams();
@@ -81,17 +81,23 @@ export default function AdView() {
   const destination = experience ? getCampaignDestination(experience) : null;
   const imageMetadata = experience?.output.metadata;
   const qrArtwork = experience?.creativeQrArtwork.qr ?? null;
-  const savedCreative = experience
-    ? resolveDestinationCreative(experience.output.metadata, 'qr')
-    : null;
-  const creative = experience ? resolveDestinationCreative(experience.output.metadata, 'qr', {
+  const view = experience ? buildDestinationCreativeView({
+    metadata: experience.output.metadata,
+    destination: 'qr',
+    campaign: experience.campaign,
+    businessName: experience.business?.business_name,
+    businessPhone: experience.business?.phone,
+    businessWebsite: experience.business?.website,
+    businessLogoUrl: experience.business?.logo_url,
+    primaryColor: experience.business?.primary_color,
+    accentColor: experience.business?.accent_color,
     assets: experience.creativeAssets,
-    qrLinks: qrArtwork
-      ? [{ id: qrArtwork.id, publicUrl: buildShortUrl(qrArtwork.slug) }]
-      : [],
-    fallbackImageUrl: savedCreative?.imageAssetId ? null : image,
+    qr: qrArtwork,
+    qrPublicUrl: qrArtwork ? buildShortUrl(qrArtwork.slug) : null,
+    fallbackImageUrl: image,
     fallbackDestinationUrl: absolutePublicUrl(destination),
   }) : null;
+  const creative = view?.resolved ?? null;
   const imageStyle = getImageDisplayStyle({
     fit: normalizeImageFit(creative?.settings.imageFit ?? (typeof imageMetadata?.image_fit === 'string' ? imageMetadata.image_fit : undefined)),
     position_x: creative?.settings.imagePositionX ?? asImageNumber(imageMetadata?.image_position_x),
@@ -153,7 +159,7 @@ export default function AdView() {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--bg-base)] text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-5 w-5 animate-spin text-neon" /> Loading campaign...</div>;
   }
 
-  if (error || !experience || !creative) {
+  if (error || !experience || !view || !creative) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[var(--bg-base)] p-6">
         <div className="card-surface w-full max-w-lg p-8 text-center">
@@ -199,17 +205,7 @@ export default function AdView() {
         <section className="relative mx-4 aspect-[3/4] overflow-hidden rounded-[2rem] border border-neon/30 bg-black shadow-[var(--glow-sm)]" aria-live="polite">
           <CampaignTemplateRenderer
             destination={creative.rendererDestination}
-            content={normalizeCampaignContent({
-              campaign: experience.campaign,
-              businessName: experience.business?.business_name,
-              businessPhone: experience.business?.phone,
-              businessWebsite: experience.business?.website,
-              businessLogoUrl: experience.business?.logo_url,
-              imageUrl: creative.imageUrl,
-              destinationUrl: creative.qrDestinationUrl,
-              primaryColor: experience.business?.primary_color,
-              accentColor: experience.business?.accent_color,
-            })}
+            content={view.content}
             settings={creative.renderSettings}
             qrArtwork={qrArtwork ? <QRStudioPreview qr={qrArtwork} /> : undefined}
           />

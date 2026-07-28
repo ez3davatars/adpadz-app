@@ -1,5 +1,6 @@
 import { Check, ChevronDown, ExternalLink, QrCode, RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { trapDialogFocus as trapInspectorFocus, useDialogBehavior } from "./dialogBehavior";
 import {
   CAMPAIGN_TEMPLATES,
 } from "../../features/campaign-templates";
@@ -9,8 +10,11 @@ import type {
   CreativeSettings,
 } from "../../features/campaign-templates/creativeWorkshop";
 import {
+  creativeSectionKeys,
   isCreativeQrUsable,
   isCreativeQrUsableForCampaign,
+  listOverriddenCreativeSettingKeys,
+  type CreativeResetSection,
 } from "../../features/campaign-templates/creativeWorkshopState";
 import {
   MIN_PRODUCTION_QR_CONTRAST_RATIO,
@@ -40,6 +44,11 @@ export type CreativeAssetOption = {
 
 type CreativeInspectorProps = {
   settings: CreativeSettings;
+  /**
+   * Global settings supplied only while editing a destination override.
+   * Enables per-field override indicators and "Revert to Global".
+   */
+  baselineSettings?: CreativeSettings | null;
   destination: CreativeDestination;
   campaignId: string;
   campaignOwnerId: string;
@@ -48,10 +57,17 @@ type CreativeInspectorProps = {
   assets: CreativeAssetOption[];
   activeSection: CreativeInspectorSection;
   selectedElement: CreativeElementKey;
+  /** Reported by the preview canvas, which owns the overflow measurement. */
+  selectedTextOverflows?: boolean | null;
   mobileSheetOpen: boolean;
   onCloseMobileSheet: () => void;
   onSectionChange: (section: CreativeInspectorSection) => void;
-  onChange: (patch: Partial<CreativeSettings>) => void;
+  onChange: Change;
+  /**
+   * Called when a continuous gesture (slider drag) finishes so the parent can
+   * close the coalesced undo entry for that gesture.
+   */
+  onCommitGesture?: () => void;
   onResetSection: (section: CreativeInspectorSection) => void;
 };
 
@@ -77,8 +93,27 @@ const sections: CreativeInspectorSection[] = [
   "Print Safety",
 ];
 
+/** Print Safety is intentionally absent: guide toggles are editor preferences, not overrides. */
+const SECTION_TO_RESET: Partial<Record<CreativeInspectorSection, CreativeResetSection>> = {
+  Image: "image",
+  Overlay: "overlay",
+  QR: "qr",
+  Text: "text",
+  Branding: "branding",
+  Visibility: "visibility",
+};
+
+type FieldMeta = {
+  overridden: boolean;
+  label: string;
+  onRevert?: () => void;
+};
+
+type FieldFor = (keys: readonly (keyof CreativeSettings)[], label: string) => FieldMeta | undefined;
+
 export default function CreativeInspector({
   settings,
+  baselineSettings = null,
   destination,
   campaignId,
   campaignOwnerId,
@@ -87,55 +122,69 @@ export default function CreativeInspector({
   assets,
   activeSection,
   selectedElement,
+  selectedTextOverflows = null,
   mobileSheetOpen,
   onCloseMobileSheet,
   onSectionChange,
   onChange,
+  onCommitGesture,
   onResetSection,
 }: CreativeInspectorProps) {
   const selectedQr = qrs.find(qr => qr.id === settings.qrId) ?? null;
   const selectedLabel = selectedElement ? elementLabel(selectedElement) : null;
   const inspectorRef = useRef<HTMLElement>(null);
-  const [mobileViewport, setMobileViewport] = useState(false);
-  const [selectedTextOverflows, setSelectedTextOverflows] = useState<boolean | null>(null);
-  const sheetActive = mobileSheetOpen && mobileViewport;
+  const [viewportTier, setViewportTier] = useState<"phone" | "tablet" | "desktop">("desktop");
+  // Phones get a modal bottom sheet; tablets get a pinned, non-modal sheet so
+  // the preview stays visible and interactive while adjusting controls.
+  const sheetActive = mobileSheetOpen && viewportTier === "phone";
+  const pinnedActive = mobileSheetOpen && viewportTier === "tablet";
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 1279px)");
-    const sync = () => setMobileViewport(media.matches);
+    const phone = window.matchMedia("(max-width: 639px)");
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setViewportTier(desktop.matches ? "desktop" : phone.matches ? "phone" : "tablet");
     sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
+    phone.addEventListener("change", sync);
+    desktop.addEventListener("change", sync);
+    return () => {
+      phone.removeEventListener("change", sync);
+      desktop.removeEventListener("change", sync);
+    };
   }, []);
 
-  useEffect(() => {
-    if (!selectedElement || !TEXT_VISIBILITY_KEYS[selectedElement as keyof typeof TEXT_VISIBILITY_KEYS]) {
-      setSelectedTextOverflows(null);
-      return;
-    }
-    const measure = () => {
-      const target = document.querySelector<HTMLElement>(`[data-testid="creative-preview-canvas"] [data-creative-element="${selectedElement}"]`);
-      setSelectedTextOverflows(target ? target.scrollHeight > target.clientHeight + 1 || target.scrollWidth > target.clientWidth + 1 : null);
+  const overriddenKeys = useMemo(
+    () => baselineSettings
+      ? new Set(listOverriddenCreativeSettingKeys(settings, baselineSettings))
+      : null,
+    [baselineSettings, settings],
+  );
+  const field = (keys: readonly (keyof CreativeSettings)[], label: string): FieldMeta | undefined => {
+    if (!overriddenKeys || !baselineSettings) return undefined;
+    const overridden = keys.some(key => overriddenKeys.has(key));
+    return {
+      overridden,
+      label,
+      onRevert: overridden
+        ? () => onChange(Object.fromEntries(keys.map(key => [key, baselineSettings[key]])) as Partial<CreativeSettings>)
+        : undefined,
     };
-    const frame = requestAnimationFrame(measure);
-    window.addEventListener("resize", measure);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", measure);
-    };
-  }, [selectedElement, settings]);
+  };
+  const sectionOverriddenCount = (section: CreativeInspectorSection): number => {
+    if (!overriddenKeys) return 0;
+    const reset = SECTION_TO_RESET[section];
+    const keys: readonly (keyof CreativeSettings)[] = section === "Template"
+      ? ["template"]
+      : reset
+        ? creativeSectionKeys(reset)
+        : [];
+    return keys.filter(key => overriddenKeys.has(key)).length;
+  };
 
-  useEffect(() => {
-    if (!sheetActive) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    requestAnimationFrame(() => document.getElementById(`inspector-${activeSection.replace(" ", "-").toLowerCase()}`)?.focus());
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus();
-    };
-  }, [activeSection, sheetActive]);
+  useDialogBehavior({
+    active: sheetActive,
+    containerRef: inspectorRef,
+    initialFocusId: `inspector-${activeSection.replace(" ", "-").toLowerCase()}`,
+  });
 
   return (
     <>
@@ -147,7 +196,11 @@ export default function CreativeInspector({
         aria-label="Creative inspector"
         tabIndex={sheetActive ? -1 : undefined}
         onKeyDown={sheetActive ? event => trapInspectorFocus(event, inspectorRef.current, onCloseMobileSheet) : undefined}
-        className={`${sheetActive ? "fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto rounded-t-3xl border-t shadow-2xl" : "relative rounded-3xl border"} min-w-0 max-w-full border-white/10 bg-neutral-950/95 p-3 backdrop-blur-xl xl:static xl:max-h-none xl:overflow-visible xl:rounded-3xl xl:border`}
+        className={`${sheetActive
+          ? "fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto rounded-t-3xl border-t shadow-2xl"
+          : pinnedActive
+            ? "fixed inset-x-0 bottom-[4.5rem] z-40 max-h-[46dvh] overflow-y-auto rounded-t-3xl border-t shadow-2xl"
+            : "relative rounded-3xl border"} min-w-0 max-w-full border-white/10 bg-neutral-950/95 p-3 backdrop-blur-xl xl:static xl:max-h-none xl:overflow-visible xl:rounded-3xl xl:border`}
       >
         <div className="mb-2 flex items-center justify-between gap-3 px-1 xl:hidden">
           <div>
@@ -168,12 +221,13 @@ export default function CreativeInspector({
             key={section}
             title={section}
             open={activeSection === section}
+            overriddenCount={sectionOverriddenCount(section)}
             onToggle={() => onSectionChange(section)}
             onReset={() => onResetSection(section)}
           >
-            {section === "Template" && <TemplateControls settings={settings} change={onChange} destination={destination} />}
-            {section === "Image" && <ImageControls settings={settings} change={onChange} assets={assets} />}
-            {section === "Overlay" && <OverlayControls settings={settings} change={onChange} />}
+            {section === "Template" && <TemplateControls settings={settings} change={onChange} destination={destination} field={field} />}
+            {section === "Image" && <ImageControls settings={settings} change={onChange} commit={onCommitGesture} assets={assets} field={field} />}
+            {section === "Overlay" && <OverlayControls settings={settings} change={onChange} commit={onCommitGesture} field={field} />}
             {section === "QR" && (
               <QrControls
                 qrs={qrs}
@@ -184,11 +238,12 @@ export default function CreativeInspector({
                 campaignOwnerId={campaignOwnerId}
                 campaignBusinessId={campaignBusinessId}
                 destination={destination}
+                field={field}
               />
             )}
-            {section === "Text" && <TextControls settings={settings} change={onChange} selectedElement={selectedElement} overflows={selectedTextOverflows} />}
-            {section === "Branding" && <BrandControls settings={settings} change={onChange} />}
-            {section === "Visibility" && <VisibilityControls settings={settings} change={onChange} destination={destination} />}
+            {section === "Text" && <TextControls settings={settings} change={onChange} selectedElement={selectedElement} overflows={selectedTextOverflows} field={field} />}
+            {section === "Branding" && <BrandControls settings={settings} change={onChange} field={field} />}
+            {section === "Visibility" && <VisibilityControls settings={settings} change={onChange} destination={destination} field={field} />}
             {section === "Print Safety" && <PrintControls settings={settings} change={onChange} destination={destination} />}
           </InspectorSection>
         ))}
@@ -200,12 +255,14 @@ export default function CreativeInspector({
 function InspectorSection({
   title,
   open,
+  overriddenCount = 0,
   onToggle,
   onReset,
   children,
 }: {
   title: CreativeInspectorSection;
   open: boolean;
+  overriddenCount?: number;
   onToggle: () => void;
   onReset: () => void;
   children: ReactNode;
@@ -213,15 +270,22 @@ function InspectorSection({
   return (
     <section className="border-b border-white/10" aria-labelledby={`inspector-${title.replace(" ", "-").toLowerCase()}`}>
       <div className="flex min-h-12 items-center gap-2">
-        <h3 className="contents">
+        <h3 className="min-w-0 flex-1">
           <button
             id={`inspector-${title.replace(" ", "-").toLowerCase()}`}
             type="button"
-            className="flex min-h-12 min-w-0 flex-1 items-center justify-between text-left text-xs font-black"
+            className="flex min-h-12 w-full min-w-0 items-center justify-between text-left text-xs font-bold"
             aria-expanded={open}
             onClick={onToggle}
           >
-            <span>{title}</span>
+            <span className="flex items-center gap-1.5">
+              {title}
+              {overriddenCount > 0 && (
+                <span className="rounded-full bg-amber-300/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-300" title={`${overriddenCount} field${overriddenCount === 1 ? "" : "s"} differ from Global`}>
+                  {overriddenCount}
+                </span>
+              )}
+            </span>
             <ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180 text-neon" : "text-[var(--text-muted)]"}`} />
           </button>
         </h3>
@@ -241,9 +305,15 @@ function InspectorSection({
   );
 }
 
-function TemplateControls({ settings, change, destination }: { settings: CreativeSettings; change: Change; destination: CreativeDestination }) {
+function TemplateControls({ settings, change, destination, field }: { settings: CreativeSettings; change: Change; destination: CreativeDestination; field?: FieldFor }) {
+  const meta = field?.(["template"], "Template");
   return (
     <div className="grid gap-2">
+      {meta?.overridden && (
+        <p className="flex items-center gap-1.5 rounded-xl bg-amber-300/[0.07] px-2 py-1.5 text-[9px] font-bold text-amber-200">
+          Template differs from Global <OverrideMark meta={meta} />
+        </p>
+      )}
       {CAMPAIGN_TEMPLATES.filter(template => template.key !== "featured-sponsor" || destination === "mailer").map(template => (
         <button
           key={template.key}
@@ -263,11 +333,11 @@ function TemplateControls({ settings, change, destination }: { settings: Creativ
   );
 }
 
-function ImageControls({ settings, change, assets }: { settings: CreativeSettings; change: Change; assets: CreativeAssetOption[] }) {
+function ImageControls({ settings, change, commit, assets, field }: { settings: CreativeSettings; change: Change; commit?: () => void; assets: CreativeAssetOption[]; field?: FieldFor }) {
   return (
     <>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-black">Campaign image</p>
+        <p className="flex items-center gap-1.5 text-[10px] font-black">Campaign image<OverrideMark meta={field?.(["imageAssetId"], "Image asset")} /></p>
         <AdpadzButton href="/app/business/assets" variant="ghost" size="sm">Asset Library <ExternalLink className="h-3 w-3" /></AdpadzButton>
       </div>
       <div role="listbox" aria-label="Replace creative image from Asset Library" className="flex gap-2 overflow-x-auto pb-1">
@@ -298,28 +368,31 @@ function ImageControls({ settings, change, assets }: { settings: CreativeSetting
           );
         })}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Choice selected={settings.imageFit === "cover"} onClick={() => change({ imageFit: "cover" })}>Fill</Choice>
-        <Choice selected={settings.imageFit === "contain"} onClick={() => change({ imageFit: "contain", imageZoom: 1 })}>Contain</Choice>
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold">Image fit<OverrideMark meta={field?.(["imageFit"], "Image fit")} /></p>
+        <div className="grid grid-cols-2 gap-2">
+          <Choice selected={settings.imageFit === "cover"} onClick={() => change({ imageFit: "cover" })}>Fill</Choice>
+          <Choice selected={settings.imageFit === "contain"} onClick={() => change({ imageFit: "contain", imageZoom: 1 })}>Contain</Choice>
+        </div>
       </div>
-      <Range label="Horizontal position" value={settings.imagePositionX} min={0} max={100} suffix="%" onChange={imagePositionX => change({ imagePositionX })} />
-      <Range label="Vertical position" value={settings.imagePositionY} min={0} max={100} suffix="%" onChange={imagePositionY => change({ imagePositionY })} />
-      <Range label="Zoom" value={settings.imageZoom} min={1} max={3} step={0.05} suffix="×" onChange={imageZoom => change({ imageZoom })} />
-      <Range label="Rotation" value={settings.rotation} min={-5} max={5} step={0.5} suffix="°" onChange={rotation => change({ rotation })} />
-      <Range label="Brightness" value={settings.brightness} min={25} max={175} suffix="%" onChange={brightness => change({ brightness })} />
-      <Range label="Contrast" value={settings.contrast} min={25} max={175} suffix="%" onChange={contrast => change({ contrast })} />
-      <Range label="Saturation" value={settings.saturation} min={0} max={200} suffix="%" onChange={saturation => change({ saturation })} />
-      <Range label="Blur" value={settings.blur} min={0} max={12} step={0.5} suffix="px" onChange={blur => change({ blur })} />
+      <Range label="Horizontal position" value={settings.imagePositionX} min={0} max={100} suffix="%" meta={field?.(["imagePositionX"], "Horizontal position")} onCommit={commit} onChange={imagePositionX => change({ imagePositionX }, { transient: true })} />
+      <Range label="Vertical position" value={settings.imagePositionY} min={0} max={100} suffix="%" meta={field?.(["imagePositionY"], "Vertical position")} onCommit={commit} onChange={imagePositionY => change({ imagePositionY }, { transient: true })} />
+      <Range label="Zoom" value={settings.imageZoom} min={1} max={3} step={0.05} suffix="×" meta={field?.(["imageZoom"], "Zoom")} onCommit={commit} onChange={imageZoom => change({ imageZoom }, { transient: true })} />
+      <Range label="Rotation" value={settings.rotation} min={-5} max={5} step={0.5} suffix="°" meta={field?.(["rotation"], "Rotation")} onCommit={commit} onChange={rotation => change({ rotation }, { transient: true })} />
+      <Range label="Brightness" value={settings.brightness} min={25} max={175} suffix="%" meta={field?.(["brightness"], "Brightness")} onCommit={commit} onChange={brightness => change({ brightness }, { transient: true })} />
+      <Range label="Contrast" value={settings.contrast} min={25} max={175} suffix="%" meta={field?.(["contrast"], "Contrast")} onCommit={commit} onChange={contrast => change({ contrast }, { transient: true })} />
+      <Range label="Saturation" value={settings.saturation} min={0} max={200} suffix="%" meta={field?.(["saturation"], "Saturation")} onCommit={commit} onChange={saturation => change({ saturation }, { transient: true })} />
+      <Range label="Blur" value={settings.blur} min={0} max={12} step={0.5} suffix="px" meta={field?.(["blur"], "Blur")} onCommit={commit} onChange={blur => change({ blur }, { transient: true })} />
     </>
   );
 }
 
-function OverlayControls({ settings, change }: { settings: CreativeSettings; change: Change }) {
+function OverlayControls({ settings, change, commit, field }: { settings: CreativeSettings; change: Change; commit?: () => void; field?: FieldFor }) {
   return (
     <>
-      <Toggle label="Enable overlay" checked={settings.overlayEnabled} onChange={overlayEnabled => change({ overlayEnabled })} />
+      <Toggle label="Enable overlay" checked={settings.overlayEnabled} meta={field?.(["overlayEnabled"], "Overlay visibility")} onChange={overlayEnabled => change({ overlayEnabled })} />
       <label className="block text-[10px] font-bold">
-        Overlay style
+        <span className="flex items-center gap-1.5">Overlay style<OverrideMark meta={field?.(["overlayStyle"], "Overlay style")} /></span>
         <select className="input-field mt-1" value={settings.overlayStyle} onChange={event => change({ overlayStyle: event.target.value as CreativeSettings["overlayStyle"] })}>
           <option value="bottom-fade">Bottom fade</option>
           <option value="top-fade">Top fade</option>
@@ -329,12 +402,12 @@ function OverlayControls({ settings, change }: { settings: CreativeSettings; cha
         </select>
       </label>
       <label className="flex items-center justify-between text-[10px] font-bold">
-        Overlay color
+        <span className="flex items-center gap-1.5">Overlay color<OverrideMark meta={field?.(["overlayColor"], "Overlay color")} /></span>
         <input aria-label="Overlay color" type="color" value={settings.overlayColor} onChange={event => change({ overlayColor: event.target.value })} className="h-11 w-14 rounded-lg bg-transparent" />
       </label>
-      <Range label="Opacity" value={settings.overlayOpacity} min={0} max={100} suffix="%" onChange={overlayOpacity => change({ overlayOpacity })} />
-      <Range label="Direction" value={settings.overlayDirection} min={0} max={360} suffix="°" onChange={overlayDirection => change({ overlayDirection })} />
-      <Range label="Spread" value={settings.overlaySpread} min={0} max={100} suffix="%" onChange={overlaySpread => change({ overlaySpread })} />
+      <Range label="Opacity" value={settings.overlayOpacity} min={0} max={100} suffix="%" meta={field?.(["overlayOpacity"], "Overlay opacity")} onCommit={commit} onChange={overlayOpacity => change({ overlayOpacity }, { transient: true })} />
+      <Range label="Direction" value={settings.overlayDirection} min={0} max={360} suffix="°" meta={field?.(["overlayDirection"], "Overlay direction")} onCommit={commit} onChange={overlayDirection => change({ overlayDirection }, { transient: true })} />
+      <Range label="Spread" value={settings.overlaySpread} min={0} max={100} suffix="%" meta={field?.(["overlaySpread"], "Overlay spread")} onCommit={commit} onChange={overlaySpread => change({ overlaySpread }, { transient: true })} />
     </>
   );
 }
@@ -348,6 +421,7 @@ function QrControls({
   campaignOwnerId,
   campaignBusinessId,
   destination,
+  field,
 }: {
   qrs: QRLinkRecord[];
   selectedQr: QRLinkRecord | null;
@@ -357,6 +431,7 @@ function QrControls({
   campaignOwnerId: string;
   campaignBusinessId: string | null;
   destination: CreativeDestination;
+  field?: FieldFor;
 }) {
   const requiredForPrint = destination === "mailer";
   const campaignQrContext = {
@@ -385,7 +460,7 @@ function QrControls({
 
   return (
     <>
-      <Toggle label="Show QR for current destination" checked={settings.showQr} disabled={requiredForPrint} onChange={showQr => change({ showQr })} />
+      <Toggle label="Show QR for current destination" checked={settings.showQr} disabled={requiredForPrint} meta={field?.(["showQr"], "QR visibility")} onChange={showQr => change({ showQr })} />
       {requiredForPrint && <p className="text-[9px] text-amber-200">Mailer QR visibility is locked for print scannability.</p>}
       {selectedQr && (
         <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-3">
@@ -424,7 +499,7 @@ function QrControls({
         </div>
       )}
       {!selectedQr && <p className="rounded-xl bg-amber-400/[0.08] p-2 text-[9px] text-amber-100">Choose an active QR Studio code to make this destination scan-ready.</p>}
-      <p className="text-[10px] font-black">Replace with a QR Studio code</p>
+      <p className="flex items-center gap-1.5 text-[10px] font-black">Replace with a QR Studio code<OverrideMark meta={field?.(["qrId"], "QR selection")} /></p>
       <div role="listbox" aria-label="Choose from QR Studio" className="max-h-64 space-y-2 overflow-y-auto">
         {availableQrs.map(qr => {
           const selectable = isUsableForDestination(qr);
@@ -459,7 +534,7 @@ function QrControls({
           </p>
         )}
       </div>
-      <AdpadzButton href={`/app/business/qr-studio?campaign=${campaignId}`} variant="secondary" size="sm" fullWidth>
+      <AdpadzButton href={`/app/business/qr-studio?campaign=${campaignId}&return=creative`} variant="secondary" size="sm" fullWidth>
         <QrCode className="h-4 w-4" /> Open QR Studio
       </AdpadzButton>
     </>
@@ -471,11 +546,13 @@ function TextControls({
   change,
   selectedElement,
   overflows,
+  field,
 }: {
   settings: CreativeSettings;
   change: Change;
   selectedElement: CreativeElementKey;
   overflows: boolean | null;
+  field?: FieldFor;
 }) {
   const visibilityKey = selectedElement
     ? TEXT_VISIBILITY_KEYS[selectedElement as keyof typeof TEXT_VISIBILITY_KEYS]
@@ -484,23 +561,26 @@ function TextControls({
     <>
       {visibilityKey && selectedElement && (
         <>
-          <Toggle label={`${elementLabel(selectedElement)} visibility`} checked={Boolean(settings[visibilityKey])} onChange={visible => change({ [visibilityKey]: visible })} />
+          <Toggle label={`${elementLabel(selectedElement)} visibility`} checked={Boolean(settings[visibilityKey])} meta={field?.([visibilityKey], `${elementLabel(selectedElement)} visibility`)} onChange={visible => change({ [visibilityKey]: visible })} />
           <p role="status" className={`rounded-xl p-2 text-[9px] ${overflows ? "bg-amber-400/[0.08] text-amber-100" : "bg-white/[0.04] text-[var(--text-muted)]"}`}>
             Overflow: {overflows === null ? "Checking current template…" : overflows ? "Content may clip—shorten Campaign copy or choose a roomier treatment." : "Fits the current template."}
           </p>
         </>
       )}
       <label className="block text-[10px] font-bold">
-        Headline size
+        <span className="flex items-center gap-1.5">Headline size<OverrideMark meta={field?.(["headlineSize"], "Headline size")} /></span>
         <select className="input-field mt-1" value={settings.headlineSize} onChange={event => change({ headlineSize: event.target.value as CreativeSettings["headlineSize"] })}>
           <option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option>
         </select>
       </label>
-      <div className="grid grid-cols-3 gap-1">
-        {(["left", "center", "right"] as const).map(value => <Choice key={value} selected={settings.textAlign === value} onClick={() => change({ textAlign: value })}>{value}</Choice>)}
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold">Text alignment<OverrideMark meta={field?.(["textAlign"], "Text alignment")} /></p>
+        <div className="grid grid-cols-3 gap-1">
+          {(["left", "center", "right"] as const).map(value => <Choice key={value} selected={settings.textAlign === value} onClick={() => change({ textAlign: value })}>{value}</Choice>)}
+        </div>
       </div>
       <label className="block text-[10px] font-bold">
-        Text panel
+        <span className="flex items-center gap-1.5">Text panel<OverrideMark meta={field?.(["textPanel"], "Text treatment")} /></span>
         <select className="input-field mt-1" value={settings.textPanel} onChange={event => change({ textPanel: event.target.value as CreativeSettings["textPanel"] })}>
           <option value="none">None</option><option value="soft">Soft panel</option><option value="solid">Solid panel</option><option value="gradient">Gradient panel</option>
         </select>
@@ -509,21 +589,24 @@ function TextControls({
   );
 }
 
-function BrandControls({ settings, change }: { settings: CreativeSettings; change: Change }) {
+function BrandControls({ settings, change, field }: { settings: CreativeSettings; change: Change; field?: FieldFor }) {
   return (
     <>
       <p className="text-[9px] leading-relaxed text-[var(--text-muted)]">Defaults come from Business Hub. Overrides remain presentation metadata.</p>
-      <label className="flex items-center justify-between text-[10px] font-bold">Primary color<input aria-label="Primary color" type="color" value={settings.primaryColorOverride ?? "#14251b"} onChange={event => change({ primaryColorOverride: event.target.value })} className="h-11 w-14 rounded-lg bg-transparent" /></label>
-      <label className="flex items-center justify-between text-[10px] font-bold">Accent color<input aria-label="Accent color" type="color" value={settings.accentColorOverride ?? "#b6ff00"} onChange={event => change({ accentColorOverride: event.target.value })} className="h-11 w-14 rounded-lg bg-transparent" /></label>
-      <div className="grid grid-cols-2 gap-2">
-        <Choice selected={settings.theme === "dark"} onClick={() => change({ theme: "dark" })}>Light copy</Choice>
-        <Choice selected={settings.theme === "light"} onClick={() => change({ theme: "light" })}>Dark copy</Choice>
+      <label className="flex items-center justify-between text-[10px] font-bold"><span className="flex items-center gap-1.5">Primary color<OverrideMark meta={field?.(["primaryColorOverride"], "Primary color")} /></span><input aria-label="Primary color" type="color" value={settings.primaryColorOverride ?? "#14251b"} onChange={event => change({ primaryColorOverride: event.target.value })} className="h-11 w-14 rounded-lg bg-transparent" /></label>
+      <label className="flex items-center justify-between text-[10px] font-bold"><span className="flex items-center gap-1.5">Accent color<OverrideMark meta={field?.(["accentColorOverride"], "Accent color")} /></span><input aria-label="Accent color" type="color" value={settings.accentColorOverride ?? "#b6ff00"} onChange={event => change({ accentColorOverride: event.target.value })} className="h-11 w-14 rounded-lg bg-transparent" /></label>
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold">Color theme<OverrideMark meta={field?.(["theme"], "Color theme")} /></p>
+        <div className="grid grid-cols-2 gap-2">
+          <Choice selected={settings.theme === "dark"} onClick={() => change({ theme: "dark" })}>Light copy</Choice>
+          <Choice selected={settings.theme === "light"} onClick={() => change({ theme: "light" })}>Dark copy</Choice>
+        </div>
       </div>
     </>
   );
 }
 
-function VisibilityControls({ settings, change, destination }: { settings: CreativeSettings; change: Change; destination: CreativeDestination }) {
+function VisibilityControls({ settings, change, destination, field }: { settings: CreativeSettings; change: Change; destination: CreativeDestination; field?: FieldFor }) {
   const items: Array<[keyof CreativeSettings, string, boolean]> = [
     ["showLogo", "Logo", false],
     ["showBusinessName", "Business name", false],
@@ -540,7 +623,7 @@ function VisibilityControls({ settings, change, destination }: { settings: Creat
     <>
       {items.map(([key, label, required]) => (
         <div key={key}>
-          <Toggle label={label} checked={Boolean(settings[key])} disabled={required} onChange={value => change({ [key]: value })} />
+          <Toggle label={label} checked={Boolean(settings[key])} disabled={required} meta={field?.([key], `${label} visibility`)} onChange={value => change({ [key]: value })} />
           {required && <p className="mt-1 text-[9px] text-amber-200">Required for this print placement.</p>}
         </div>
       ))}
@@ -563,22 +646,58 @@ function PrintControls({ settings, change, destination }: { settings: CreativeSe
   );
 }
 
-type Change = (patch: Partial<CreativeSettings>) => void;
+type Change = (patch: Partial<CreativeSettings>, options?: { transient?: boolean }) => void;
 
-function Range({ label, value, min, max, step = 1, suffix, onChange }: { label: string; value: number; min: number; max: number; step?: number; suffix: string; onChange: (value: number) => void }) {
+/**
+ * Amber marker for a field whose override value differs from Global.
+ * Clicking it reverts the field to the Global value.
+ */
+function OverrideMark({ meta }: { meta?: FieldMeta }) {
+  if (!meta?.overridden) return null;
+  if (!meta.onRevert) {
+    return <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" role="img" aria-label={`${meta.label} differs from Global`} />;
+  }
+  return (
+    <button
+      type="button"
+      onClick={meta.onRevert}
+      title="Revert to Global"
+      aria-label={`Revert ${meta.label} to Global`}
+      className="inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-full bg-amber-300/10 px-1.5 text-amber-300 transition hover:bg-amber-300/20"
+    >
+      <span className="block h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden="true" />
+      <RotateCcw className="h-2.5 w-2.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+function Range({ label, value, min, max, step = 1, suffix, onChange, onCommit, meta }: { label: string; value: number; min: number; max: number; step?: number; suffix: string; onChange: (value: number) => void; onCommit?: () => void; meta?: FieldMeta }) {
   return (
     <label className="block">
       <span className="mb-1 flex justify-between text-[10px] font-bold">
-        <span>{label}</span>
+        <span className="flex items-center gap-1.5">{label}<OverrideMark meta={meta} /></span>
         <span className="text-[var(--text-muted)]">{value.toFixed(step < 1 ? 1 : 0)}{suffix}</span>
       </span>
-      <input aria-label={label} aria-valuetext={`${value}${suffix}`} type="range" className="h-11 w-full accent-[var(--brand-primary)]" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.target.value))} />
+      <input
+        aria-label={label}
+        aria-valuetext={`${value}${suffix}`}
+        type="range"
+        className="h-11 w-full accent-[var(--brand-primary)]"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={event => onChange(Number(event.target.value))}
+        onPointerUp={onCommit}
+        onKeyUp={onCommit}
+        onBlur={onCommit}
+      />
     </label>
   );
 }
 
-function Toggle({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
-  return <label className="flex min-h-11 items-center justify-between gap-3 text-[10px] font-bold"><span>{label}</span><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} className="h-5 w-5 accent-[var(--brand-primary)]" /></label>;
+function Toggle({ label, checked, disabled = false, onChange, meta }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void; meta?: FieldMeta }) {
+  return <label className="flex min-h-11 items-center justify-between gap-3 text-[10px] font-bold"><span className="flex items-center gap-1.5">{label}<OverrideMark meta={meta} /></span><input type="checkbox" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)} className="h-5 w-5 accent-[var(--brand-primary)]" /></label>;
 }
 
 function Choice({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
@@ -604,31 +723,4 @@ function elementLabel(element: Exclude<CreativeElementKey, null>) {
     "sponsor-badge": "Sponsor badge",
     overlay: "Overlay",
   }[element];
-}
-
-function trapInspectorFocus(event: KeyboardEvent, container: HTMLElement | null, onClose: () => void) {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
-    return;
-  }
-  if (event.key !== "Tab" || !container) return;
-  const focusable = [...container.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-  )].filter(element => !element.hasAttribute("hidden"));
-  if (!focusable.length) {
-    event.preventDefault();
-    container.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
 }

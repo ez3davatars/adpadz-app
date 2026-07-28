@@ -7,7 +7,6 @@ export type CampaignTemplateKey =
   | "featured-sponsor";
 
 export type CampaignTemplateDestination =
-  | "studio"
   | "mailer"
   | "discovery"
   | "qr"

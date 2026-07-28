@@ -14,7 +14,7 @@ import {
 } from '../../lib/campaigns';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { buildShortUrl } from '../../lib/qr/qrUtils';
-import { CampaignTemplateRenderer, normalizeCampaignContent, resolveDestinationCreative } from '../../features/campaign-templates';
+import { buildDestinationCreativeView, CampaignTemplateRenderer } from '../../features/campaign-templates';
 
 const filters = [
   { value: 'all', label: 'All' },
@@ -157,13 +157,20 @@ export default function Feed() {
               const format = getCampaignFormat(experience);
               const isSaved = saved.has(experience.campaign.id);
               const qrArtwork = experience.creativeQrArtwork.discovery ?? null;
-              const savedCreative = resolveDestinationCreative(experience.output.metadata, 'discovery');
-              const creative = resolveDestinationCreative(experience.output.metadata, 'discovery', {
+              const { resolved: creative, content } = buildDestinationCreativeView({
+                metadata: experience.output.metadata,
+                destination: 'discovery',
+                campaign: experience.campaign,
+                businessName: experience.business?.business_name,
+                businessPhone: experience.business?.phone,
+                businessWebsite: experience.business?.website,
+                businessLogoUrl: experience.business?.logo_url,
+                primaryColor: experience.business?.primary_color,
+                accentColor: experience.business?.accent_color,
                 assets: experience.creativeAssets,
-                qrLinks: qrArtwork
-                  ? [{ id: qrArtwork.id, publicUrl: buildShortUrl(qrArtwork.slug) }]
-                  : [],
-                fallbackImageUrl: savedCreative.imageAssetId ? null : image,
+                qr: qrArtwork,
+                qrPublicUrl: qrArtwork ? buildShortUrl(qrArtwork.slug) : null,
+                fallbackImageUrl: image,
                 fallbackDestinationUrl: new URL(`/ad/${experience.campaign.id}`, window.location.origin).toString(),
               });
               return (
@@ -181,17 +188,7 @@ export default function Feed() {
                     <div className="relative aspect-square overflow-hidden bg-[var(--bg-input)]" style={{ containerType: 'inline-size' }}>
                       <CampaignTemplateRenderer
                         destination={creative.rendererDestination}
-                        content={normalizeCampaignContent({
-                          campaign: experience.campaign,
-                          businessName: experience.business?.business_name,
-                          businessPhone: experience.business?.phone,
-                          businessWebsite: experience.business?.website,
-                          businessLogoUrl: experience.business?.logo_url,
-                          imageUrl: creative.imageUrl,
-                          destinationUrl: creative.qrDestinationUrl,
-                          primaryColor: experience.business?.primary_color,
-                          accentColor: experience.business?.accent_color,
-                        })}
+                        content={content}
                         settings={creative.renderSettings}
                         qrArtwork={qrArtwork ? <QRStudioPreview qr={qrArtwork} /> : undefined}
                       />

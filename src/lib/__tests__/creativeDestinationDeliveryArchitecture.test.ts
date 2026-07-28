@@ -9,10 +9,15 @@ const campaigns = read("../campaigns.ts");
 const renderer = read("../../features/campaign-templates/CampaignTemplateRenderer.tsx");
 
 describe("canonical creative destination delivery", () => {
-  it("uses the shared resolver for Discovery, QR Landing, and Campaign Studio", () => {
-    expect(feed).toContain("resolveDestinationCreative(experience.output.metadata, 'discovery'");
-    expect(adView).toContain("resolveDestinationCreative(experience.output.metadata, 'qr'");
-    expect(studio).toContain("resolveDestinationCreative(metadata, 'discovery'");
+  it("uses the shared destination creative view for Discovery, QR Landing, and Campaign Studio", () => {
+    expect(feed).toContain("buildDestinationCreativeView({");
+    expect(feed).toContain("metadata: experience.output.metadata");
+    expect(feed).toContain("destination: 'discovery'");
+    expect(adView).toContain("buildDestinationCreativeView({");
+    expect(adView).toContain("metadata: experience.output.metadata");
+    expect(adView).toContain("destination: 'qr'");
+    expect(studio).toContain("buildDestinationCreativeView({");
+    expect(studio).toContain("destination: 'discovery'");
     expect(feed).toContain("settings={creative.renderSettings}");
     expect(adView).toContain("settings={creative.renderSettings}");
   });

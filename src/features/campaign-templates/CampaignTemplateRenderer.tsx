@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useMemo,
   useState,
@@ -29,7 +30,12 @@ export type CampaignTemplateInspection = {
   onClear?: () => void;
 };
 
-export function CampaignTemplateRenderer({
+/**
+ * The single canonical campaign creative renderer. It owns its own
+ * container-query context (`container-type: inline-size`), so every `cqw`
+ * measurement resolves against the creative itself regardless of call site.
+ */
+export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
   content,
   settings,
   destination,
@@ -59,6 +65,7 @@ export function CampaignTemplateRenderer({
   const headlineSize = creative.headlineSize ?? "medium";
   const textPanel = creative.textPanel ?? "none";
   const rootStyle = {
+    containerType: "inline-size",
     "--campaign-primary": creative.primaryColorOverride || content.primaryColor,
     "--campaign-accent": creative.accentColorOverride || content.accentColor,
     "--campaign-ink": light ? "#10150f" : "#ffffff",
@@ -251,7 +258,7 @@ export function CampaignTemplateRenderer({
       <span className="sr-only">{CAMPAIGN_TEMPLATE_REGISTRY[settings.template].label} template</span>
     </article>
   );
-}
+});
 
 function QrMark({ destination, style, inspection }: { destination: string; style: CSSProperties; inspection?: CampaignTemplateInspection }) {
   const [src, setSrc] = useState("");

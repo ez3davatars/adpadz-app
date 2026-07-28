@@ -13,6 +13,9 @@ const renderer = readFileSync(
 describe("Creative Workshop distribution delivery", () => {
   it("replaces the overview thumbnail with a canonical read-only Discovery preview", () => {
     expect(distribution).toContain("resolveDestinationCreative(interactiveOutput?.metadata, 'discovery'");
+    expect(distribution).toContain("buildDestinationCreativeView({");
+    expect(distribution).toContain("metadata: interactiveOutput?.metadata");
+    expect(distribution).toContain("destination: 'discovery'");
     expect(distribution).toContain('data-testid="saved-distribution-creative"');
     expect(distribution).toContain('aria-label="Saved Consumer Discovery creative preview"');
     expect(distribution).toContain("businessPhone: creative.phone");
@@ -26,7 +29,8 @@ describe("Creative Workshop distribution delivery", () => {
   });
 
   it("renders the saved effective Social creative through the shared template renderer", () => {
-    expect(distribution).toContain("resolveDestinationCreative(output?.metadata, 'social'");
+    expect(distribution).toContain("metadata: output?.metadata");
+    expect(distribution).toContain("destination: 'social'");
     expect(distribution).toContain("<CampaignTemplateRenderer");
     expect(distribution).toContain("settings={resolved.renderSettings}");
     expect(distribution).toContain("destination={resolved.rendererDestination}");

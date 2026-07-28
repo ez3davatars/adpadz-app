@@ -1,4 +1,9 @@
 import {
+  CREATIVE_DESTINATION_KEYS,
+  getCreativeDestinationCapabilities,
+  isCreativeDestination,
+} from "./creativeDestinations";
+import {
   DEFAULT_CREATIVE_SETTINGS,
   DEFAULT_WORKSHOP_STATE,
   normalizeCreativeFormat,
@@ -67,7 +72,34 @@ export type CreativeRestoreOptions = {
   scope?: CreativeScope;
 };
 
-const DESTINATIONS: readonly CreativeDestination[] = ["mailer", "discovery", "qr", "social"];
+const DESTINATIONS: readonly CreativeDestination[] = CREATIVE_DESTINATION_KEYS;
+
+/**
+ * Editor view preferences stored alongside creative settings for continuity,
+ * but excluded from change accounting: toggling a guide overlay is not a
+ * creative change, must not dirty the session, and must never create a
+ * Creative History version.
+ */
+export const EPHEMERAL_CREATIVE_SETTING_KEYS = [
+  "safeAreaVisible",
+  "bleedVisible",
+  "qrMinimumVisible",
+] as const satisfies readonly (keyof CreativeSettings)[];
+
+function stripEphemeralCreativeSettings(settings: CreativeSettings): CreativeSettings {
+  const material = { ...settings };
+  for (const key of EPHEMERAL_CREATIVE_SETTING_KEYS) material[key] = DEFAULT_CREATIVE_SETTINGS[key];
+  return material;
+}
+
+function stripEphemeralWorkshopState(state: CreativeWorkshopState): CreativeWorkshopState {
+  const overrides: CreativeWorkshopState["overrides"] = {};
+  for (const destination of DESTINATIONS) {
+    const override = state.overrides[destination];
+    if (override) overrides[destination] = stripEphemeralCreativeSettings(override);
+  }
+  return { ...state, global: stripEphemeralCreativeSettings(state.global), overrides };
+}
 
 const ELEMENT_LABELS: Record<Exclude<CreativeElementKey, null>, string> = {
   image: "Image",
@@ -175,10 +207,33 @@ const SETTING_CHANGE_LABELS: readonly {
   { keys: ["showPhone"], label: "Phone visibility" },
   { keys: ["showWebsite"], label: "Website visibility" },
   { keys: ["showSponsorBadge"], label: "Sponsor-badge visibility" },
-  { keys: ["safeAreaVisible"], label: "Safe-area guide" },
-  { keys: ["bleedVisible"], label: "Bleed guide" },
-  { keys: ["qrMinimumVisible"], label: "QR minimum-size guide" },
 ];
+
+/** Material (non-ephemeral) setting keys owned by an inspector reset section. */
+export function creativeSectionKeys(
+  section: CreativeResetSection,
+): readonly (keyof CreativeSettings)[] {
+  return SECTION_KEYS[section];
+}
+
+/**
+ * Lists the material settings on a destination override that differ from the
+ * global baseline. Ephemeral editor preferences and the schema version are
+ * never reported, so the result is exactly the set of fields the override
+ * detaches from Global.
+ */
+export function listOverriddenCreativeSettingKeys(
+  override: CreativeSettings,
+  baseline: CreativeSettings,
+): (keyof CreativeSettings)[] {
+  const normalizedOverride = normalizeCreativeSettings(override);
+  const normalizedBaseline = normalizeCreativeSettings(baseline);
+  return (Object.keys(normalizedOverride) as (keyof CreativeSettings)[]).filter(key =>
+    key !== "version"
+    && !(EPHEMERAL_CREATIVE_SETTING_KEYS as readonly string[]).includes(key)
+    && stableSerializeCreativeValue(normalizedOverride[key])
+      !== stableSerializeCreativeValue(normalizedBaseline[key]));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -245,10 +300,14 @@ export function isEffectiveCreativeDestinationUnsaved(
   current: CreativeWorkshopState,
   destination: CreativeDestination,
 ) {
-  const definition = (state: CreativeWorkshopState) => ({
-    ...resolveEffectiveCreativeDestination(state, destination),
-    hasDestinationOverride: Object.prototype.hasOwnProperty.call(state.overrides, destination),
-  });
+  const definition = (state: CreativeWorkshopState) => {
+    const effective = resolveEffectiveCreativeDestination(state, destination);
+    return {
+      ...effective,
+      settings: stripEphemeralCreativeSettings(effective.settings),
+      hasDestinationOverride: Object.prototype.hasOwnProperty.call(state.overrides, destination),
+    };
+  };
   return stableSerializeCreativeValue(definition(saved))
     !== stableSerializeCreativeValue(definition(current));
 }
@@ -298,8 +357,8 @@ export function parseCreativeVersionSnapshot(value: unknown): CreativeVersionSna
   }
   if (!isRecord(input) || (input.version !== undefined && input.version !== 1)) return null;
   const destination = input.destination;
-  if (!DESTINATIONS.includes(destination as CreativeDestination)) return null;
-  const resolvedDestination = destination as CreativeDestination;
+  if (!isCreativeDestination(destination)) return null;
+  const resolvedDestination = destination;
   const scopeCandidate = input.scope ?? input.destination_scope;
   if (scopeCandidate !== "global" && scopeCandidate !== "destination") return null;
   const settingsCandidate = input.settings ?? input.settings_snapshot;
@@ -326,15 +385,19 @@ export function serializeCreativeVersionSnapshot(snapshot: CreativeVersionSnapsh
 }
 
 export function fingerprintCreativeSettings(settings: CreativeSettings) {
-  return fingerprintPayload(normalizeCreativeSettings(settings));
+  return fingerprintPayload(stripEphemeralCreativeSettings(normalizeCreativeSettings(settings)));
 }
 
 export function fingerprintCreativeSnapshot(snapshot: CreativeVersionSnapshot) {
-  return fingerprintPayload(JSON.parse(serializeCreativeVersionSnapshot(snapshot)) as unknown);
+  const canonical = JSON.parse(serializeCreativeVersionSnapshot(snapshot)) as CreativeVersionSnapshot;
+  return fingerprintPayload({
+    ...canonical,
+    settings: stripEphemeralCreativeSettings(normalizeCreativeSettings(canonical.settings)),
+  });
 }
 
 export function fingerprintCreativeWorkshopState(state: CreativeWorkshopState) {
-  return fingerprintPayload(normalizeWorkshopState(state));
+  return fingerprintPayload(stripEphemeralWorkshopState(normalizeWorkshopState(state)));
 }
 
 export function shouldCreateCreativeVersion(
@@ -379,10 +442,15 @@ export function classifyCreativeChanges(
   previous: CreativeWorkshopState,
   next: CreativeWorkshopState,
 ): CreativeChangeClassification {
+  const materialDefinition = (state: CreativeWorkshopState, destination: CreativeDestination) => {
+    const effective = resolveEffectiveCreativeDestination(state, destination);
+    return { ...effective, settings: stripEphemeralCreativeSettings(effective.settings) };
+  };
   const destinations = DESTINATIONS.filter(destination =>
-    stableSerializeCreativeValue(resolveEffectiveCreativeDestination(previous, destination))
-      !== stableSerializeCreativeValue(resolveEffectiveCreativeDestination(next, destination)));
-  const printChanged = destinations.includes("mailer");
+    stableSerializeCreativeValue(materialDefinition(previous, destination))
+      !== stableSerializeCreativeValue(materialDefinition(next, destination)));
+  const printChanged = destinations.some(destination =>
+    getCreativeDestinationCapabilities(destination).affectsPrint);
   const unchanged = destinations.length === 0;
   return {
     impact: unchanged ? "unchanged" : printChanged ? "print-affecting" : "digital-only",
@@ -449,7 +517,7 @@ export function sectionResetRequiresMailerQrPreservation(
   scope: CreativeScope,
 ) {
   return (section === "qr" || section === "visibility")
-    && (destination === "mailer" || scope === "global");
+    && (getCreativeDestinationCapabilities(destination).requiresQr || scope === "global");
 }
 
 export function resetCreativeSectionInState(
@@ -555,11 +623,11 @@ export function isCreativeWorkshopUnsaved(
 export const MIN_DIGITAL_QR_OPACITY = 60;
 
 export function canHideCreativeQr(destination: CreativeDestination) {
-  return destination !== "mailer";
+  return !getCreativeDestinationCapabilities(destination).requiresQr;
 }
 
 export function restrictCreativeQrOpacity(destination: CreativeDestination, value: unknown) {
-  if (destination === "mailer") return 100;
+  if (getCreativeDestinationCapabilities(destination).requiresQr) return 100;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 100;
   return Math.min(100, Math.max(MIN_DIGITAL_QR_OPACITY, numeric));
@@ -572,7 +640,8 @@ export function prepareCreativeSettingsForDestination(
   const normalized = normalizeCreativeSettings(settings);
   return enforceCreativeQrRestrictions({
     ...normalized,
-    template: destination !== "mailer" && normalized.template === "featured-sponsor"
+    template: !getCreativeDestinationCapabilities(destination).allowsFeaturedSponsor
+      && normalized.template === "featured-sponsor"
       ? DEFAULT_CREATIVE_SETTINGS.template
       : normalized.template,
   }, destination);
@@ -583,7 +652,11 @@ export function enforceCreativeQrRestrictions(
   destination: CreativeDestination,
 ) {
   const normalized = normalizeCreativeSettings(settings);
-  if (destination !== "mailer" || !normalized.qrId || normalized.showQr) return normalized;
+  if (
+    !getCreativeDestinationCapabilities(destination).requiresQr
+    || !normalized.qrId
+    || normalized.showQr
+  ) return normalized;
   return {
     ...normalized,
     showQr: true,

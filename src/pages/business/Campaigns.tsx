@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarDays, Eye, Layers3, Loader2, Pause, Pencil, Play, Plus, RadioTower, Search, Share2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Archive, CalendarDays, Eye, Layers3, Loader2, Pause, Play, Plus, RadioTower, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { AdpadzBadge, AdpadzButton, AdpadzCard, AdpadzMetricCard, AdpadzSection } from '../../components/adpadz-ui';
 import type { CampaignOutputRecord, CampaignRecord } from '../../lib/ads';
 import { loadBusinessCampaignReadiness } from '../../lib/campaignReadinessData';
 import type { CampaignReadinessResult } from '../../lib/campaignReadiness';
 import { CampaignReadinessBadge } from '../../components/campaign-readiness/CampaignReadinessSummary';
+import { CAMPAIGN_STAGES, campaignStagePath, resolveCampaignStageAction } from '../../lib/campaignStages';
 
 type CampaignState = {
   campaigns: CampaignRecord[];
@@ -143,6 +145,7 @@ export default function BizCampaigns() {
 function CampaignCard({ campaign, outputs, readiness, updating, onStatus }: { campaign: CampaignRecord; outputs: CampaignOutputRecord[]; readiness?: CampaignReadinessResult; updating: boolean; onStatus: (status: 'active' | 'draft' | 'expired') => void }) {
   const interactive = outputs.some(output => output.output_type === 'interactive_ad' && output.enabled);
   const isLive = campaign.status === 'active' || campaign.status === 'scheduled';
+  const stageAction = resolveCampaignStageAction(campaign, readiness);
   return (
     <AdpadzCard as="article" variant="flat" className="p-4 transition hover:border-neon/40">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -157,16 +160,26 @@ function CampaignCard({ campaign, outputs, readiness, updating, onStatus }: { ca
             {outputs.length > 0 ? outputs.map(output => <AdpadzBadge key={`${output.campaign_id}-${output.output_type}`} variant="campaign" className={output.enabled ? '' : 'opacity-45'}>{formatOutput(output.output_type)}</AdpadzBadge>) : <AdpadzBadge variant="status">No outputs</AdpadzBadge>}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 xl:max-w-sm xl:justify-end">
-          {readiness?.nextAction && <AdpadzButton href={readiness.nextAction.destination} size="sm">{readiness.nextAction.label}</AdpadzButton>}
-          <AdpadzButton href={`/app/business/campaigns/${campaign.id}/edit`} variant="secondary" size="sm"><Pencil className="h-3.5 w-3.5" /> Edit</AdpadzButton>
-          <AdpadzButton href={`/app/business/campaigns/${campaign.id}/content`} variant="secondary" size="sm">Package</AdpadzButton>
-          <AdpadzButton href={`/app/business/campaigns/${campaign.id}/distribution`} variant="secondary" size="sm"><Share2 className="h-3.5 w-3.5" /> Distribution</AdpadzButton>
-          {interactive && isLive && <AdpadzButton href={`/ad/${campaign.id}`} target="_blank" rel="noreferrer" variant="ghost" size="sm"><Eye className="h-3.5 w-3.5" /> Preview</AdpadzButton>}
-          {campaign.status === 'active'
-            ? <AdpadzButton type="button" onClick={() => onStatus('draft')} disabled={updating} variant="ghost" size="sm">{updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />} Pause</AdpadzButton>
-            : <AdpadzButton type="button" onClick={() => onStatus('active')} disabled={updating} variant="ghost" size="sm">{updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Activate</AdpadzButton>}
-          {campaign.status !== 'expired' && <AdpadzButton type="button" onClick={() => onStatus('expired')} disabled={updating} variant="ghost" size="sm"><Archive className="h-3.5 w-3.5" /> Archive</AdpadzButton>}
+        <div className="flex flex-col items-start gap-3 xl:max-w-sm xl:items-end">
+          <AdpadzButton href={stageAction.href} size="sm" title={stageAction.reason}>{stageAction.label}</AdpadzButton>
+          <nav aria-label={`${campaign.title} stages`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {CAMPAIGN_STAGES.map(stage => (
+              <Link
+                key={stage.key}
+                to={campaignStagePath(campaign.id, stage.key)}
+                className="inline-flex min-h-9 items-center text-xs font-semibold text-[var(--text-muted)] transition hover:text-neon focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon"
+              >
+                {stage.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            {interactive && isLive && <AdpadzButton href={`/ad/${campaign.id}`} target="_blank" rel="noreferrer" variant="ghost" size="sm"><Eye className="h-3.5 w-3.5" /> Preview</AdpadzButton>}
+            {campaign.status === 'active'
+              ? <AdpadzButton type="button" onClick={() => onStatus('draft')} disabled={updating} variant="ghost" size="sm">{updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />} Pause</AdpadzButton>
+              : <AdpadzButton type="button" onClick={() => onStatus('active')} disabled={updating} variant="ghost" size="sm">{updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Activate</AdpadzButton>}
+            {campaign.status !== 'expired' && <AdpadzButton type="button" onClick={() => onStatus('expired')} disabled={updating} variant="ghost" size="sm"><Archive className="h-3.5 w-3.5" /> Archive</AdpadzButton>}
+          </div>
         </div>
       </div>
     </AdpadzCard>

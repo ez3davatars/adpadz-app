@@ -1,15 +1,12 @@
-import { type PointerEvent, useRef } from "react";
+import type { CampaignTemplateSettings } from "../../features/campaign-templates";
 import type { CommunityCardSide } from "../../lib/communityCards";
 import {
-  canEditPlacement,
   canSelectPlacement,
   EDDM_12X9_PERCENTAGES,
   type CommunityMailerMode,
   type CommunityMailerRenderRecord,
   type LayoutPlacement,
-  movePlacement,
   placementsForSide,
-  resizePlacement,
 } from "../../lib/communityMailerLayout";
 import CommunityMailerPlacement from "./CommunityMailerPlacement";
 import CommunityMailerProductionGuides from "./CommunityMailerProductionGuides";
@@ -24,8 +21,13 @@ type Props = {
   highlightIds?: string[];
   bookingSelection?: string[];
   onSelect?: (placement: LayoutPlacement) => void;
-  onChange?: (placement: LayoutPlacement) => void;
   showProductionGuides?: boolean;
+  /**
+   * Saved Mailer creative settings keyed by placement id, resolved by
+   * surfaces that are authorized to read them. Placements without an entry
+   * keep the synthesized presentation fallback.
+   */
+  creativeSettingsById?: Record<string, CampaignTemplateSettings>;
 };
 export default function CommunityMailerCanvas(
   {
@@ -37,62 +39,19 @@ export default function CommunityMailerCanvas(
     highlightIds = [],
     bookingSelection = [],
     onSelect,
-    onChange,
     showProductionGuides = false,
+    creativeSettingsById,
   }: Props,
 ) {
-  const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<
-    { placement: LayoutPlacement; x: number; y: number; resize: boolean }
-  >();
-  function start(
-    event: PointerEvent,
-    placement: LayoutPlacement,
-    resize = false,
-  ) {
-    if (
-      !ref.current || !canEditPlacement(mode, placement, mailer.layout_locked)
-    ) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { placement, x: event.clientX, y: event.clientY, resize };
-  }
-  function move(event: PointerEvent) {
-    const current = drag.current, box = ref.current?.getBoundingClientRect();
-    if (!current || !box) return;
-    const dx = (event.clientX - current.x) / box.width * 100,
-      dy = (event.clientY - current.y) / box.height * 100;
-    onChange?.(
-      current.resize
-        ? resizePlacement(
-          current.placement,
-          current.placement.width + dx,
-          current.placement.height + dy,
-        )
-        : movePlacement(
-          current.placement,
-          current.placement.x + dx,
-          current.placement.y + dy,
-        ),
-    );
-  }
   const aspect = mailer.format === "postcard_9x12"
     ? "aspect-[4/3]"
     : "aspect-[11/6]";
   const canvas = (
     <div
-      ref={ref}
       data-format={mailer.format}
-      onPointerMove={move}
-      onPointerUp={() => {
-        drag.current = undefined;
-      }}
-      onPointerCancel={() => {
-        drag.current = undefined;
-      }}
-      className={`community-mailer-canvas relative mx-auto w-full max-w-5xl overflow-hidden border-[6px] border-[#1d4378] bg-[#f5f0df] shadow-2xl ${aspect} ${
-        mode === "admin-edit" ? "touch-none" : "touch-pan-y"
-      } ${mode === "print-preview" ? "border-0 shadow-none" : ""}`}
+      className={`community-mailer-canvas relative mx-auto w-full max-w-5xl touch-pan-y overflow-hidden border-[6px] border-[#1d4378] bg-[#f5f0df] shadow-2xl ${aspect} ${
+        mode === "print-preview" ? "border-0 shadow-none" : ""
+      }`}
       aria-label={`${side} side of ${mailer.title}`}
     >
       <MailerBrandArea
@@ -110,15 +69,10 @@ export default function CommunityMailerCanvas(
           selected={selectedId === placement.id ||
             bookingSelection.includes(placement.id)}
           highlighted={highlightIds.includes(placement.id)}
-          editable={Boolean(onChange) &&
-            canEditPlacement(mode, placement, mailer.layout_locked)}
           selectable={Boolean(onSelect) &&
             canSelectPlacement(mode, placement, mailer.sales_open)}
           onSelect={onSelect}
-          onPointerDown={(event, item) => start(event, item)}
-          onResizePointerDown={(event, item) => start(event, item, true)}
-          onKeyboardMove={(item, dx, dy) =>
-            onChange?.(movePlacement(item, item.x + dx, item.y + dy))}
+          creativeSettings={creativeSettingsById?.[placement.id] ?? null}
         />
       ))}
     </div>

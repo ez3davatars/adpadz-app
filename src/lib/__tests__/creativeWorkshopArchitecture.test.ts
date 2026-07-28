@@ -14,8 +14,9 @@ const distribution = readFileSync(
 );
 
 describe("Creative Workshop component architecture", () => {
-  it("owns the dedicated campaign creative route", () => {
-    expect(app).toContain('path="campaigns/:campaignId/creative"');
+  it("owns the dedicated campaign creative route inside the Campaign shell", () => {
+    expect(app).toContain('path="campaigns/:campaignId" element={<CampaignShell />}');
+    expect(app).toContain('path="creative"');
     expect(app).toContain("<CampaignCreativeWorkshop />");
   });
 
@@ -38,7 +39,7 @@ describe("Creative Workshop component architecture", () => {
 
   it("keeps Campaign Studio and Distribution as summaries rather than duplicate editors", () => {
     expect(studio).toContain("CreativeSummary");
-    expect(studio).toContain("Design Creative");
+    expect(studio).toContain("Open Studio");
     expect(distribution).toContain("Open Creative Workshop");
     expect(distribution).not.toContain("OverlayControls");
   });

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useReducer,
@@ -8,7 +9,6 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft,
   Eye,
   Grid2X2,
   History as HistoryIcon,
@@ -20,6 +20,7 @@ import {
   Save,
   Smartphone,
   Undo2,
+  type LucideIcon,
 } from "lucide-react";
 import CreativeCompareView from "../../components/campaign-creative/CreativeCompareView";
 import CreativeHistoryDrawer from "../../components/campaign-creative/CreativeHistoryDrawer";
@@ -30,14 +31,19 @@ import CreativeModal, {
   CreativeConfirmDialog,
 } from "../../components/campaign-creative/CreativeModal";
 import CreativePreviewCanvas from "../../components/campaign-creative/CreativePreviewCanvas";
+import { useCampaignShell } from "../../components/campaign-shell/campaignShellContext";
 import { AdpadzButton, AdpadzCard } from "../../components/adpadz-ui";
 import {
   normalizeCampaignContent,
 } from "../../features/campaign-templates";
 import {
+  CREATIVE_DESTINATIONS,
+  creativeDestinationLabel,
+  creativeFormatRatio,
   DEFAULT_CREATIVE_SETTINGS,
   DEFAULT_WORKSHOP_STATE,
   createHistory,
+  getCreativeDestination,
   listActiveCreativeAssetOptions,
   normalizeWorkshopState,
   pushHistory,
@@ -64,6 +70,7 @@ import {
   projectOriginalCreativeTreatment,
   isCreativeWorkshopUnsaved,
   listMaterialCreativeChanges,
+  listOverriddenCreativeSettingKeys,
   reconcileCreativeSelection,
   resetAllCreativeSettings,
   resetCreativeSectionInState,
@@ -125,28 +132,22 @@ type CreativeComparePair =
   | "history-saved"
   | "saved-session";
 
-const destinations = [
-  { key: "mailer", name: "Community Mailer", shortName: "Mailer", icon: Grid2X2, detail: "Print-safe neighborhood placement" },
-  { key: "discovery", name: "Consumer Discovery", shortName: "Discovery", icon: Eye, detail: "Campaign-first browsing" },
-  { key: "qr", name: "QR Landing", shortName: "QR Landing", icon: QrCode, detail: "Scan destination experience" },
-  { key: "social", name: "Social Media", shortName: "Social", icon: Smartphone, detail: "Square, portrait, landscape, story" },
-] as const;
-
-const formats: Record<CreativeDestination, Array<{ key: CreativeFormatKey; label: string; detail: string; ratio: string }>> = {
-  mailer: [
-    { key: "standard", label: "Standard", detail: "Everyday placement", ratio: "4 / 3" },
-    { key: "combined", label: "Combined", detail: "Wide print placement", ratio: "16 / 9" },
-    { key: "featured", label: "Featured Sponsor", detail: "Eligible premium placement", ratio: "4 / 3" },
-  ],
-  discovery: [{ key: "card", label: "Discovery Card", detail: "Campaign feed", ratio: "1 / 1" }],
-  qr: [{ key: "hero", label: "Landing Hero", detail: "Mobile destination", ratio: "3 / 4" }],
-  social: [
-    { key: "square", label: "Square", detail: "1080 × 1080", ratio: "1 / 1" },
-    { key: "portrait", label: "Portrait", detail: "1080 × 1350", ratio: "4 / 5" },
-    { key: "landscape", label: "Landscape", detail: "1200 × 628", ratio: "1200 / 628" },
-    { key: "story", label: "Story", detail: "1080 × 1920", ratio: "9 / 16" },
-  ],
+const DESTINATION_ICONS: Record<CreativeDestination, LucideIcon> = {
+  mailer: Grid2X2,
+  discovery: Eye,
+  qr: QrCode,
+  social: Smartphone,
 };
+
+const TEXT_MEASURE_ELEMENTS: readonly NonNullable<CreativeElementKey>[] = [
+  "business-name",
+  "headline",
+  "offer",
+  "cta",
+  "expiration",
+  "phone",
+  "website",
+];
 
 const sectionResetMap: Partial<Record<CreativeInspectorSection, CreativeResetSection>> = {
   Image: "image",
@@ -161,6 +162,7 @@ const sectionResetMap: Partial<Record<CreativeInspectorSection, CreativeResetSec
 export default function CampaignCreativeWorkshopAdvanced() {
   const { campaignId = "" } = useParams();
   const navigate = useNavigate();
+  const shell = useCampaignShell();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [history, dispatch] = useReducer(historyReducer, createHistory(DEFAULT_WORKSHOP_STATE));
   const [saved, setSaved] = useState(DEFAULT_WORKSHOP_STATE);
@@ -169,6 +171,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
   const [zoom, setZoom] = useState<"fit" | "50" | "100">("fit");
   const [activeInspector, setActiveInspector] = useState<CreativeInspectorSection>("Template");
   const [selectedElement, setSelectedElement] = useState<CreativeElementKey>(null);
+  const [selectedTextOverflows, setSelectedTextOverflows] = useState<boolean | null>(null);
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
@@ -190,7 +193,9 @@ export default function CampaignCreativeWorkshopAdvanced() {
   const [message, setMessage] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [error, setError] = useState("");
+  const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null);
   const historyRequestRef = useRef(0);
+  const gestureRef = useRef(false);
 
   const refreshHistory = useCallback(async () => {
     const requestId = ++historyRequestRef.current;
@@ -214,6 +219,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
   useEffect(() => {
     let cancelled = false;
     historyRequestRef.current += 1;
+    gestureRef.current = false;
     setLoaded(null);
     setSaved(DEFAULT_WORKSHOP_STATE);
     dispatch({ type: "replace", value: DEFAULT_WORKSHOP_STATE });
@@ -233,6 +239,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
     setComparePair("history-session");
     setRestoreVersion(null);
     setPendingReset(null);
+    setPendingLeaveHref(null);
     setMessage("");
     setError("");
     void loadWorkshop(campaignId).then(result => {
@@ -253,11 +260,34 @@ export default function CampaignCreativeWorkshopAdvanced() {
   }, [historyOpen, historyLoaded, historyLoading, refreshHistory]);
 
   const state = history.present;
+  const railState = useDeferredValue(state);
   const settings = scope === "global" ? state.global : resolveCreativeSettings(state, destination);
   const format = resolveCreativeFormat(state, destination);
-  const currentFormat = formats[destination].find(item => item.key === format) ?? formats[destination][0];
+  const destinationDefinition = getCreativeDestination(destination);
+  const currentFormat = destinationDefinition.formats.find(item => item.key === format)
+    ?? destinationDefinition.formats[0];
   const dirty = isCreativeWorkshopUnsaved(saved, state);
   const printImpact = classifyCreativeChanges(saved, state).affectsPrint;
+  const hasOverride = Boolean(state.overrides[destination]);
+  const overriddenCount = useMemo(
+    () => hasOverride
+      ? listOverriddenCreativeSettingKeys(resolveCreativeSettings(state, destination), state.global).length
+      : 0,
+    [destination, hasOverride, state],
+  );
+
+  // Destination scope only exists while an override exists; undoing the
+  // override creation (or removing it) drops the session back to Global.
+  useEffect(() => {
+    if (scope === "destination" && !state.overrides[destination]) setScope("global");
+  }, [destination, scope, state.overrides]);
+
+  // Confirmations are transient; they dismiss themselves.
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -270,12 +300,10 @@ export default function CampaignCreativeWorkshopAdvanced() {
       const anchor = event.target.closest("a[href]") as HTMLAnchorElement | null;
       if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
       const destinationUrl = new URL(anchor.href, window.location.href);
-      if (
-        destinationUrl.origin === window.location.origin
-        && !window.confirm("Leave Creative Workshop without saving your changes?")
-      ) {
+      if (destinationUrl.origin === window.location.origin) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        setPendingLeaveHref(`${destinationUrl.pathname}${destinationUrl.search}${destinationUrl.hash}`);
       }
     };
     window.addEventListener("beforeunload", warn);
@@ -333,9 +361,10 @@ export default function CampaignCreativeWorkshopAdvanced() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [compareVersion, fullScreen, historyOpen, pendingReset, previewVersion, restoreVersion, selectedElement]);
 
-  function change(patch: Partial<CreativeSettings>) {
+  function change(patch: Partial<CreativeSettings>, options: { transient?: boolean } = {}) {
     setMessage("");
     if (patch.template === "featured-sponsor" && scope === "global") {
+      gestureRef.current = false;
       dispatch({ type: "push", value: updateCreativeSettings(state, "mailer", "destination", patch) });
       setScope("destination");
       setMessage("Featured Sponsor is applied only to Mailer so digital destinations keep a supported template.");
@@ -346,16 +375,104 @@ export default function CampaignCreativeWorkshopAdvanced() {
       return;
     }
     if (destination !== "mailer" && scope === "global" && patch.showQr === false) {
+      gestureRef.current = false;
       dispatch({ type: "push", value: updateCreativeSettings(state, destination, "destination", patch) });
       setScope("destination");
       setMessage(`QR hidden only for ${destinationLabel(destination)} so Mailer remains scannable.`);
       return;
     }
-    dispatch({ type: "push", value: updateCreativeSettings(state, destination, scope, patch) });
+    const next = updateCreativeSettings(state, destination, scope, patch);
+    if (options.transient) {
+      // A continuous gesture (slider drag) coalesces into one undo entry: the
+      // first tick records the pre-gesture baseline, later ticks replace it.
+      if (gestureRef.current) {
+        dispatch({ type: "preview", value: next });
+      } else {
+        gestureRef.current = true;
+        dispatch({ type: "push", value: next });
+      }
+      return;
+    }
+    gestureRef.current = false;
+    dispatch({ type: "push", value: next });
   }
+
+  const commitGesture = useCallback(() => {
+    gestureRef.current = false;
+  }, []);
+
+  function selectScope(next: CreativeScope) {
+    if (next === scope) return;
+    if (next === "destination" && !hasOverride) {
+      // Explicit override creation: a destination detaches from Global only
+      // through this deliberate, announced, undoable act.
+      gestureRef.current = false;
+      dispatch({ type: "push", value: updateCreativeSettings(state, destination, "destination", {}) });
+      setScope("destination");
+      setMessage(`${destinationLabel(destination)} is now customized. Global edits no longer reach ${destinationLabel(destination)} until you remove the override.`);
+      setAnnouncement(`${destinationLabel(destination)} override created. Undo is available.`);
+      return;
+    }
+    setScope(next);
+  }
+
+  const handleOverflowChange = useCallback((value: boolean | null) => {
+    setSelectedTextOverflows(value);
+  }, []);
+
+  const shortcutRef = useRef({ save: () => {}, blockFullScreen: false });
+  shortcutRef.current = {
+    save: () => { void save(); },
+    blockFullScreen: Boolean(
+      historyOpen || previewVersion || compareVersion || restoreVersion || pendingReset
+      || pendingLeaveHref || mobileInspectorOpen,
+    ),
+  };
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = Boolean(target && (
+        target.tagName === "INPUT"
+        || target.tagName === "TEXTAREA"
+        || target.tagName === "SELECT"
+        || target.isContentEditable
+      ));
+      const modifier = event.metaKey || event.ctrlKey;
+      if (modifier && !event.altKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        gestureRef.current = false;
+        dispatch({ type: event.shiftKey ? "redo" : "undo" });
+        setMessage("");
+        setAnnouncement(event.shiftKey ? "Creative change redone." : "Creative change undone.");
+        return;
+      }
+      if (modifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        gestureRef.current = false;
+        dispatch({ type: "redo" });
+        setMessage("");
+        setAnnouncement("Creative change redone.");
+        return;
+      }
+      if (modifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        shortcutRef.current.save();
+        return;
+      }
+      if (!modifier && !event.altKey && !typing && (event.key === "f" || event.key === "F")) {
+        if (shortcutRef.current.blockFullScreen) return;
+        event.preventDefault();
+        setFullScreen(value => !value);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
 
   function selectDestination(next: CreativeDestination) {
     setMessage("");
+    gestureRef.current = false;
     setDestination(next);
     setMobileInspectorOpen(false);
     setShowOriginal(false);
@@ -455,6 +572,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
           ? "Creative saved to History."
           : "Creative saved. No duplicate History entry was created.");
       setAnnouncement("Creative saved successfully.");
+      shell?.refreshShell();
       if (historyOpen) await refreshHistory();
       else setHistoryLoaded(false);
     } catch (reason) {
@@ -591,26 +709,21 @@ export default function CampaignCreativeWorkshopAdvanced() {
     return <p className="flex min-h-64 items-center justify-center text-sm text-[var(--text-muted)]"><Loader2 className="mr-2 h-5 w-5 animate-spin text-neon" /> Opening Creative Workshop…</p>;
   }
 
-  const previewScale = zoom === "50" ? "max-w-[360px]" : zoom === "100" ? "max-w-[720px]" : "max-w-[620px]";
+  const previewScale = zoom === "50" ? "max-w-[380px]" : zoom === "100" ? "max-w-[860px]" : "max-w-[720px]";
   const context = `${destinationLabel(destination)} · ${currentFormat.label} · ${templateLabel(settings.template)} · ${scope === "global" ? `Global settings${state.overrides[destination] ? " (override preserved)" : ""}` : `${destinationLabel(destination)} override`}`;
   const compareModel = compareVersion
     ? createCreativeCompareModel(comparePair, compareVersion, saved, state, loaded)
     : null;
+  const measureElement = selectedElement && TEXT_MEASURE_ELEMENTS.includes(selectedElement)
+    ? selectedElement
+    : null;
 
   return (
-    <div className="min-h-[calc(100vh-7rem)] min-w-0 max-w-full space-y-4">
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[var(--bg-base)]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <AdpadzButton type="button" variant="icon" size="sm" aria-label="Back to campaign" onClick={() => { if (!dirty || window.confirm("Leave Creative Workshop without saving your changes?")) navigate(`/app/business/campaigns/${campaignId}/edit`); }}>
-            <ArrowLeft className="h-4 w-4" />
-          </AdpadzButton>
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-neon">Campaign Creative Workshop</p>
-            <h1 className="truncate text-lg font-black sm:text-xl">{loaded.campaign.title}</h1>
-          </div>
-        </div>
+    <div className="min-h-[calc(100vh-7rem)] min-w-0 max-w-full space-y-5">
+      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <p className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Campaign Creative Workshop</p>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span role="status" aria-live="polite" className={`text-xs font-bold ${dirty ? "text-amber-300" : "text-[var(--text-muted)]"}`}>{dirty ? "Unsaved changes" : "Saved"}</span>
+          <span role="status" aria-live="polite" className={`rounded-full px-3 py-1 text-[11px] font-semibold ${dirty ? "bg-amber-300/10 text-amber-300" : "bg-white/[0.05] text-[var(--text-muted)]"}`}>{dirty ? "Unsaved changes" : "Saved"}</span>
           <AdpadzButton type="button" variant="secondary" size="sm" aria-label="Open Creative History" onClick={() => {
             setHistoryOpen(true);
             if (!historyLoaded && !historyLoading) void refreshHistory();
@@ -618,6 +731,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
             <HistoryIcon className="h-4 w-4" /> <span className="hidden sm:inline">History</span>
           </AdpadzButton>
           <AdpadzButton type="button" variant="icon" size="sm" aria-label="Undo creative change" disabled={!history.past.length} onClick={() => {
+            gestureRef.current = false;
             dispatch({ type: "undo" });
             setMessage("");
             setAnnouncement("Creative change undone.");
@@ -625,6 +739,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
             <Undo2 className="h-4 w-4" />
           </AdpadzButton>
           <AdpadzButton type="button" variant="icon" size="sm" aria-label="Redo creative change" disabled={!history.future.length} onClick={() => {
+            gestureRef.current = false;
             dispatch({ type: "redo" });
             setMessage("");
             setAnnouncement("Creative change redone.");
@@ -638,130 +753,181 @@ export default function CampaignCreativeWorkshopAdvanced() {
       </header>
 
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
-      {(error || message) && (
-        <div role={error ? "alert" : "status"} className={`mx-4 rounded-2xl border p-3 text-sm font-bold sm:mx-6 ${error ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-neon/25 bg-neon/[0.08] text-neon"}`}>
-          {error || message}
+      {error && (
+        <div role="alert" className="mx-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm font-semibold text-red-100 sm:mx-6">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div role="status" aria-live="polite" className="fixed bottom-24 right-4 z-[60] max-w-sm rounded-2xl border border-neon/25 bg-neutral-950/95 p-4 text-sm font-semibold text-neon shadow-2xl backdrop-blur-xl xl:bottom-6">
+          {message}
         </div>
       )}
 
-      <div className="grid gap-4 px-4 pb-24 sm:px-6 xl:grid-cols-[220px_minmax(440px,1fr)_340px] xl:pb-6">
+      <div className="grid gap-5 px-4 pb-24 sm:px-6 xl:grid-cols-[248px_minmax(440px,1fr)_360px] xl:pb-8">
         <nav aria-label="Creative destinations" className="order-2 min-w-0 max-w-full xl:order-1">
-          <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Destination</p>
-          <div className="flex gap-2 overflow-x-auto pb-2 xl:block xl:space-y-2">
-            {destinations.map(item => {
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Destinations</p>
+          <div className="flex gap-2 overflow-x-auto pb-2 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
+            {CREATIVE_DESTINATIONS.map(item => {
               const active = destination === item.key;
               const overridden = Boolean(state.overrides[item.key]);
+              const Icon = DESTINATION_ICONS[item.key];
+              const railFormat = resolveCreativeFormat(railState, item.key);
               return (
                 <button
                   key={item.key}
                   type="button"
                   aria-pressed={active}
                   onClick={() => selectDestination(item.key)}
-                  className={`min-w-[190px] rounded-2xl border p-3 text-left transition duration-200 xl:w-full ${active ? "border-neon bg-neon/[0.09]" : "border-white/10 bg-white/[0.025] hover:bg-white/[0.06]"}`}
+                  className={`group min-w-[200px] rounded-2xl border p-2.5 text-left transition duration-200 xl:w-full ${active ? "border-neon/70 bg-neon/[0.06] shadow-[0_0_0_1px_rgba(182,255,0,0.25)]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]"}`}
                 >
-                  <span className="flex items-center gap-2"><item.icon className={`h-4 w-4 ${active ? "text-neon" : "text-[var(--text-muted)]"}`} /><span className="text-xs font-black">{item.name}</span></span>
-                  <span className="mt-1 block text-[10px] text-[var(--text-muted)]">{item.detail}</span>
-                  <span className={`mt-2 block text-[10px] font-bold ${overridden ? "text-amber-300" : "text-neon"}`}>{overridden ? "Custom override" : "Ready · Global"}</span>
+                  <span
+                    className="pointer-events-none mx-auto block max-h-24 overflow-hidden rounded-xl border border-white/[0.06] bg-black/40"
+                    style={{ aspectRatio: creativeFormatRatio(item.key, railFormat), maxWidth: "9.5rem" }}
+                    aria-hidden="true"
+                  >
+                    {renderStatePreview(railState, item.key, loaded, false)}
+                  </span>
+                  <span className="mt-2 flex items-center gap-1.5 px-0.5">
+                    <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-neon" : "text-[var(--text-muted)]"}`} />
+                    <span className="truncate text-xs font-bold">{item.name}</span>
+                  </span>
+                  <span className={`mt-1 block px-0.5 text-[10px] font-semibold ${overridden ? "text-amber-300" : "text-[var(--text-muted)]"}`}>{overridden ? "Customized" : "Global"}</span>
                 </button>
               );
             })}
           </div>
           <div className="mt-3 space-y-2">
-            <AdpadzButton href={`/app/business/campaigns/${campaignId}/distribution`} variant="secondary" size="sm" fullWidth>Continue to Distribution</AdpadzButton>
+            <AdpadzButton href={`/app/business/campaigns/${campaignId}/review`} variant="secondary" size="sm" fullWidth>Continue to Review</AdpadzButton>
             <AdpadzButton type="button" variant="ghost" size="sm" fullWidth onClick={() => setPendingReset({ type: "destination" })}><RotateCcw className="h-4 w-4" /> Reset current destination</AdpadzButton>
             <AdpadzButton type="button" variant="ghost" size="sm" fullWidth onClick={() => setPendingReset({ type: "all" })}>Reset all creative settings</AdpadzButton>
           </div>
         </nav>
 
         <main className="order-1 min-w-0 xl:order-2">
-          <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-2 overflow-x-auto" role="listbox" aria-label={`${destination} format`}>
-                {formats[destination].map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="option"
-                    aria-selected={currentFormat.key === item.key}
-                    onClick={() => {
-                      setMessage("");
-                      dispatch({ type: "push", value: updateCreativeFormat(state, destination, item.key) });
-                    }}
-                    className={`min-w-28 rounded-xl border px-3 py-2 text-left ${currentFormat.key === item.key ? "border-neon bg-neon/10" : "border-white/10"}`}
-                  >
-                    <span className="block text-[11px] font-black">{item.label}</span>
-                    <span className="block text-[9px] text-[var(--text-muted)]">{item.detail}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-1">
-                <button type="button" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)} className={`min-h-11 rounded-full px-3 text-[10px] font-black ${showOriginal ? "bg-amber-300 text-black" : "bg-white/[0.06]"}`}>{showOriginal ? "Showing before" : "Before / After"}</button>
-                <AdpadzButton type="button" variant="icon" size="sm" aria-label="Open full-screen preview" onClick={() => setFullScreen(true)}><Maximize2 className="h-4 w-4" /></AdpadzButton>
-                <div className="flex gap-1" aria-label="Preview zoom">
-                  {(["fit", "50", "100"] as const).map(value => (
-                    <button key={value} type="button" aria-pressed={zoom === value} onClick={() => setZoom(value)} className={`min-h-11 rounded-full px-3 text-[10px] font-black ${zoom === value ? "bg-neon text-black" : "bg-white/[0.06]"}`}>{value === "fit" ? "Fit" : `${value}%`}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2 text-[10px]">
-              <p className="font-black text-[var(--text-secondary)]">{context}</p>
-              <span className={dirty ? "font-black text-amber-300" : "text-[var(--text-muted)]"}>{dirty ? "Unsaved" : "Saved"}</span>
-            </div>
-          </div>
-
-          <AdpadzCard
-            variant="featured"
+          <div
             data-testid="creative-preview-stage"
-            className="relative flex min-h-[520px] items-center justify-center p-4 sm:p-8"
+            className="relative flex min-h-[560px] flex-col overflow-hidden rounded-3xl border border-white/[0.05] bg-[#070907]"
             onClick={event => {
               if (event.target !== event.currentTarget) return;
               setSelectedElement(null);
               setMobileInspectorOpen(false);
             }}
           >
-            {showInspectorHint && (
-              <div className="absolute left-4 top-4 z-20 max-w-[18rem] rounded-2xl border border-neon/20 bg-neutral-950/95 p-3 shadow-xl">
-                <p className="text-xs font-black">Click any element in the preview to edit it.</p>
-                <button type="button" className="mt-2 inline-flex min-h-11 items-center rounded-full px-2 text-[9px] font-black text-neon" onClick={() => {
-                  localStorage.setItem(`adpadz-creative-inspector-hint:${loaded.campaign.owner_id}`, "dismissed");
-                  setShowInspectorHint(false);
-                }}>Got it</button>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]" aria-hidden="true" />
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] bg-black/25 px-3 py-2 backdrop-blur-sm">
+              <div className="flex gap-1.5 overflow-x-auto" role="listbox" aria-label={`${destinationDefinition.name} format`}>
+                {destinationDefinition.formats.map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="option"
+                    aria-selected={currentFormat.key === item.key}
+                    title={item.detail}
+                    onClick={() => {
+                      setMessage("");
+                      gestureRef.current = false;
+                      dispatch({ type: "push", value: updateCreativeFormat(state, destination, item.key) });
+                    }}
+                    className={`flex min-h-11 items-center gap-2 rounded-xl border px-2.5 text-left transition ${currentFormat.key === item.key ? "border-neon/60 bg-neon/[0.08]" : "border-white/[0.07] hover:border-white/20"}`}
+                  >
+                    <span
+                      className={`block h-[18px] rounded-[3px] border ${currentFormat.key === item.key ? "border-neon/80 bg-neon/20" : "border-white/30 bg-white/[0.06]"}`}
+                      style={{ width: `${Math.round(18 * Math.min(2, Math.max(0.45, item.aspect)))}px` }}
+                      aria-hidden="true"
+                    />
+                    <span className="whitespace-nowrap text-[11px] font-semibold">{item.label}</span>
+                  </button>
+                ))}
               </div>
-            )}
-            <div className={`w-full transition-all duration-200 ${previewScale}`} style={{ aspectRatio: currentFormat.ratio }}>
-              <CreativePreviewCanvas
-                content={content}
-                settings={settings}
-                destination={destination}
-                formatKey={format}
-                selectedQr={selectedQr}
-                selectedElement={selectedElement}
-                onSelectElement={selectElement}
-                onClearSelection={() => {
-                  setSelectedElement(null);
-                  setMobileInspectorOpen(false);
-                }}
-                showOriginal={showOriginal}
-              />
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <button type="button" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold transition ${showOriginal ? "bg-amber-300 text-black" : "bg-white/[0.06] text-[var(--text-secondary)] hover:bg-white/[0.1]"}`}>{showOriginal ? "Showing before" : "Before / After"}</button>
+                <div className="flex gap-1" aria-label="Preview zoom">
+                  {(["fit", "50", "100"] as const).map(value => (
+                    <button key={value} type="button" aria-pressed={zoom === value} onClick={() => setZoom(value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold transition ${zoom === value ? "bg-white/[0.14] text-white" : "bg-white/[0.05] text-[var(--text-muted)] hover:bg-white/[0.1]"}`}>{value === "fit" ? "Fit" : `${value}%`}</button>
+                  ))}
+                </div>
+                <AdpadzButton type="button" variant="icon" size="sm" aria-label="Open full-screen preview" onClick={() => setFullScreen(true)}><Maximize2 className="h-4 w-4" /></AdpadzButton>
+              </div>
             </div>
-          </AdpadzCard>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[var(--text-muted)]">
-            <span>{context}</span>
-            <span>{printImpact ? "Print readiness will require reconfirmation" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
+
+            <div
+              className="relative z-10 flex flex-1 items-center justify-center p-5 sm:p-10"
+              onClick={event => {
+                if (event.target !== event.currentTarget) return;
+                setSelectedElement(null);
+                setMobileInspectorOpen(false);
+              }}
+            >
+              {showInspectorHint && (
+                <div className="absolute left-4 top-4 z-20 max-w-[18rem] rounded-2xl border border-neon/20 bg-neutral-950/95 p-3 shadow-xl">
+                  <p className="text-xs font-bold">Click any element in the preview to edit it.</p>
+                  <button type="button" className="mt-2 inline-flex min-h-11 items-center rounded-full px-2 text-[10px] font-bold text-neon" onClick={() => {
+                    localStorage.setItem(`adpadz-creative-inspector-hint:${loaded.campaign.owner_id}`, "dismissed");
+                    setShowInspectorHint(false);
+                  }}>Got it</button>
+                </div>
+              )}
+              <div
+                className={`w-full transition-all duration-200 ${previewScale} shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]`}
+                style={{ aspectRatio: currentFormat.ratio }}
+              >
+                <CreativePreviewCanvas
+                  content={content}
+                  settings={settings}
+                  destination={destination}
+                  formatKey={format}
+                  selectedQr={selectedQr}
+                  selectedElement={selectedElement}
+                  onSelectElement={selectElement}
+                  onClearSelection={() => {
+                    setSelectedElement(null);
+                    setMobileInspectorOpen(false);
+                  }}
+                  showOriginal={showOriginal}
+                  measureOverflowElement={measureElement}
+                  onOverflowChange={handleOverflowChange}
+                />
+              </div>
+            </div>
+
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
+              <span className="font-semibold text-[var(--text-secondary)]">{context}</span>
+              <span className={printImpact ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
+            </div>
           </div>
         </main>
 
         <div className="order-3 min-w-0 xl:order-3">
-          <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-muted)]">Edit scope</p>
-            <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-black/30 p-1">
-              <button type="button" aria-pressed={scope === "global"} onClick={() => setScope("global")} className={`min-h-11 rounded-lg text-[10px] font-black ${scope === "global" ? "bg-neon text-black" : ""}`}>All destinations</button>
-              <button type="button" aria-pressed={scope === "destination"} onClick={() => setScope("destination")} className={`min-h-11 rounded-lg text-[10px] font-black ${scope === "destination" ? "bg-neon text-black" : ""}`}>{destinationLabel(destination)}</button>
+          <div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Edit scope</p>
+              {hasOverride && (
+                <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                  {overriddenCount > 0 ? `${overriddenCount} field${overriddenCount === 1 ? "" : "s"} customized` : "Customized"}
+                </span>
+              )}
             </div>
+            <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-black/30 p-1">
+              <button type="button" aria-pressed={scope === "global"} onClick={() => selectScope("global")} className={`min-h-11 rounded-lg text-[11px] font-semibold transition ${scope === "global" ? "bg-neon text-black" : "text-[var(--text-secondary)] hover:bg-white/[0.05]"}`}>All destinations</button>
+              <button type="button" aria-pressed={scope === "destination"} onClick={() => selectScope("destination")} className={`min-h-11 rounded-lg text-[11px] font-semibold transition ${scope === "destination" ? "bg-neon text-black" : "text-[var(--text-secondary)] hover:bg-white/[0.05]"}`}>{destinationLabel(destination)}</button>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+              {!hasOverride
+                ? `Edits apply to every destination. Selecting ${destinationLabel(destination)} creates a separate copy you can shape independently.`
+                : scope === "destination"
+                  ? `Editing the ${destinationLabel(destination)} override. Amber marks show fields that differ from Global — click one to revert it.`
+                  : `${destinationLabel(destination)} keeps its own copy — Global edits will not change it.`}
+            </p>
+            {hasOverride && (
+              <AdpadzButton type="button" variant="ghost" size="sm" fullWidth className="mt-2" onClick={() => setPendingReset({ type: "destination" })}>
+                <RotateCcw className="h-4 w-4" /> Remove override · use Global
+              </AdpadzButton>
+            )}
           </div>
           <CreativeInspector
             settings={settings}
+            baselineSettings={scope === "destination" && hasOverride ? state.global : null}
             destination={destination}
             campaignId={campaignId}
             campaignOwnerId={loaded.campaign.owner_id}
@@ -770,10 +936,12 @@ export default function CampaignCreativeWorkshopAdvanced() {
             assets={loaded.pickerAssets}
             activeSection={activeInspector}
             selectedElement={selectedElement}
+            selectedTextOverflows={selectedTextOverflows}
             mobileSheetOpen={mobileInspectorOpen}
             onCloseMobileSheet={() => setMobileInspectorOpen(false)}
             onSectionChange={setActiveInspector}
             onChange={change}
+            onCommitGesture={commitGesture}
             onResetSection={section => setPendingReset({ type: "section", section })}
           />
         </div>
@@ -782,6 +950,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-neutral-950/95 p-3 backdrop-blur-xl xl:hidden">
         <div className="mx-auto flex max-w-lg gap-2">
           <AdpadzButton type="button" variant="secondary" aria-label="Undo creative change" disabled={!history.past.length} onClick={() => {
+            gestureRef.current = false;
             dispatch({ type: "undo" });
             setMessage("");
             setAnnouncement("Creative change undone.");
@@ -842,7 +1011,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
         {compareModel && (
           <div className="space-y-4">
             <fieldset className="rounded-2xl border border-white/10 bg-white/[0.025] p-2">
-              <legend className="px-2 text-[9px] font-black uppercase tracking-[0.16em] text-[var(--text-muted)]">Compare sources</legend>
+              <legend className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Compare sources</legend>
               <div className="grid gap-1 sm:grid-cols-3">
                 <CompareSourceButton active={comparePair === "history-session"} onClick={() => setComparePair("history-session")}>History vs. session</CompareSourceButton>
                 <CompareSourceButton active={comparePair === "history-saved"} onClick={() => setComparePair("history-saved")}>History vs. saved</CompareSourceButton>
@@ -874,22 +1043,23 @@ export default function CampaignCreativeWorkshopAdvanced() {
         <div className="flex h-full min-h-[30rem] flex-col">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
             <div className="flex gap-1 overflow-x-auto">
-              {destinations.map(item => <button key={item.key} type="button" aria-pressed={destination === item.key} onClick={() => selectDestination(item.key)} className={`min-h-11 rounded-full px-3 text-[9px] font-black ${destination === item.key ? "bg-neon text-black" : "bg-white/[0.06]"}`}>{item.shortName}</button>)}
+              {CREATIVE_DESTINATIONS.map(item => <button key={item.key} type="button" aria-pressed={destination === item.key} onClick={() => selectDestination(item.key)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold ${destination === item.key ? "bg-neon text-black" : "bg-white/[0.06]"}`}>{item.shortName}</button>)}
             </div>
             <div className="flex flex-wrap gap-1">
-              <label className="inline-flex min-h-11 items-center rounded-full bg-white/[0.06] px-3 text-[9px] font-black">
+              <label className="inline-flex min-h-11 items-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold">
                 <span className="sr-only">Format</span>
                 <select aria-label="Full-screen format" value={format} onChange={event => {
                   setMessage("");
+                  gestureRef.current = false;
                   dispatch({ type: "push", value: updateCreativeFormat(state, destination, event.target.value) });
-                }} className="bg-transparent font-black outline-none">
-                  {formats[destination].map(item => <option key={item.key} value={item.key} className="bg-neutral-950">{item.label}</option>)}
+                }} className="bg-transparent font-semibold outline-none">
+                  {destinationDefinition.formats.map(item => <option key={item.key} value={item.key} className="bg-neutral-950">{item.label}</option>)}
                 </select>
               </label>
-              <button type="button" aria-pressed={fullScreenGuides} onClick={() => setFullScreenGuides(value => !value)} className={`min-h-11 rounded-full px-3 text-[9px] font-black ${fullScreenGuides ? "bg-neon text-black" : "bg-white/[0.06]"}`}>Safe areas</button>
-              <button type="button" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)} className={`min-h-11 rounded-full px-3 text-[9px] font-black ${showOriginal ? "bg-amber-300 text-black" : "bg-white/[0.06]"}`}>Before / After</button>
-              {(["fit", "50", "100"] as const).map(value => <button key={value} type="button" aria-pressed={zoom === value} onClick={() => setZoom(value)} className={`min-h-11 rounded-full px-3 text-[9px] font-black ${zoom === value ? "bg-neon text-black" : "bg-white/[0.06]"}`}>{value === "fit" ? "Fit" : `${value}%`}</button>)}
-              <span className="inline-flex min-h-11 items-center rounded-full bg-white/[0.06] px-3 text-[9px] font-black">{templateLabel(settings.template)}</span>
+              <button type="button" aria-pressed={fullScreenGuides} onClick={() => setFullScreenGuides(value => !value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold ${fullScreenGuides ? "bg-neon text-black" : "bg-white/[0.06]"}`}>Safe areas</button>
+              <button type="button" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold ${showOriginal ? "bg-amber-300 text-black" : "bg-white/[0.06]"}`}>Before / After</button>
+              {(["fit", "50", "100"] as const).map(value => <button key={value} type="button" aria-pressed={zoom === value} onClick={() => setZoom(value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold ${zoom === value ? "bg-neon text-black" : "bg-white/[0.06]"}`}>{value === "fit" ? "Fit" : `${value}%`}</button>)}
+              <span className="inline-flex min-h-11 items-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold">{templateLabel(settings.template)}</span>
             </div>
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-3xl border border-white/10 bg-neutral-950 p-4">
@@ -913,6 +1083,20 @@ export default function CampaignCreativeWorkshopAdvanced() {
       />
 
       <CreativeConfirmDialog
+        open={Boolean(pendingLeaveHref)}
+        title="Leave Creative Workshop?"
+        description="Unsaved creative changes will be discarded if you leave now."
+        confirmLabel="Leave without saving"
+        danger
+        onConfirm={() => {
+          const href = pendingLeaveHref;
+          setPendingLeaveHref(null);
+          if (href) navigate(href);
+        }}
+        onCancel={() => setPendingLeaveHref(null)}
+      />
+
+      <CreativeConfirmDialog
         open={Boolean(pendingReset)}
         title={resetTitle(pendingReset, destination, scope)}
         description={resetDescription(pendingReset, destination, scope)}
@@ -926,11 +1110,12 @@ export default function CampaignCreativeWorkshopAdvanced() {
 }
 
 type HistoryAction =
-  | { type: "push" | "replace" | "checkpoint"; value: CreativeWorkshopState }
+  | { type: "push" | "replace" | "checkpoint" | "preview"; value: CreativeWorkshopState }
   | { type: "undo" | "redo" };
 
 function historyReducer(history: ReturnType<typeof createHistory<CreativeWorkshopState>>, action: HistoryAction) {
   if (action.type === "push") return pushHistory(history, action.value);
+  if (action.type === "preview") return { past: history.past, present: action.value, future: [] as CreativeWorkshopState[] };
   if (action.type === "replace") return createHistory(action.value);
   if (action.type === "checkpoint") return { past: history.past, present: action.value, future: [] };
   if (action.type === "undo") return undoHistory(history);
@@ -1056,7 +1241,7 @@ function CompareSourceButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`min-h-11 rounded-xl px-3 text-[10px] font-black transition ${active ? "bg-neon text-black" : "bg-white/[0.04] text-[var(--text-secondary)] hover:bg-white/[0.08]"} disabled:cursor-not-allowed disabled:opacity-40`}
+      className={`min-h-11 rounded-xl px-3 text-[11px] font-semibold transition ${active ? "bg-neon text-black" : "bg-white/[0.04] text-[var(--text-secondary)] hover:bg-white/[0.08]"} disabled:cursor-not-allowed disabled:opacity-40`}
     >
       {children}
     </button>
@@ -1129,9 +1314,7 @@ function renderStatePreview(
 }
 
 function stateRatio(state: CreativeWorkshopState, destination: CreativeDestination) {
-  const format = resolveCreativeFormat(state, destination);
-  return formats[destination].find(item => item.key === format)?.ratio
-    ?? formats[destination][0].ratio;
+  return creativeFormatRatio(destination, resolveCreativeFormat(state, destination));
 }
 function renderVersionPreview(
   version: CampaignCreativeVersionRecord,
@@ -1160,12 +1343,11 @@ function renderVersionPreview(
 }
 
 function versionRatio(version: CampaignCreativeVersionRecord) {
-  const format = formats[version.destination].find(item => item.key === version.format_key);
-  return format?.ratio ?? formats[version.destination][0].ratio;
+  return creativeFormatRatio(version.destination, version.format_key);
 }
 
 function destinationLabel(destination: CreativeDestination) {
-  return destinations.find(item => item.key === destination)?.shortName ?? destination;
+  return creativeDestinationLabel(destination);
 }
 
 function templateLabel(template: string) {

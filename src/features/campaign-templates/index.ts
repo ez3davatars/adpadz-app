@@ -4,3 +4,4 @@ export * from "./normalizeCampaignContent";
 export * from "./templateReadiness";
 export * from "./CampaignTemplateRenderer";
 export * from "./creativeWorkshop";
+export * from "./destinationCreativeView";
