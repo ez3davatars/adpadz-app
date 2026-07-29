@@ -19,18 +19,23 @@ Phase 5 Creative Workspace Refinement: fixed-viewport studio layout on xl deskto
 | `npm run lint` | ✅ Clean (also fixed pre-existing unused var in `release-phase4.spec.ts`) |
 | `npm test` | ✅ 462 / 462 unit tests |
 | `npm run build` | ✅ Clean |
-| `supabase db reset` | ⏸ Skipped — Docker not running |
-| `supabase db lint --local` | ⏸ Skipped — Docker not running |
-| `release-phase5.spec.ts` E2E | ⏸ Skipped — Docker not running |
-| `npm run test:e2e` full suite | ⏸ Skipped — Docker not running |
-| Visual baselines | ⏸ Pending — desktop `creative-workshop.png` will shrink (viewport-locked layout); regenerate when Docker is available |
+| `supabase db reset` | ✅ Succeeded |
+| `supabase db lint --local` | ✅ No schema errors |
+| `npm run test:e2e` full suite | ✅ 57 passed · 53 skipped · **1 failed** (see below) |
+| Visual baselines regenerated | `desktop/creative-workshop.png`, `mobile/creative-workshop.png`, `tablet/creative-workshop.png` |
 | `npm audit` | ⚠️ 2 high (react-router CVE, pre-existing — unchanged) |
 
 ---
 
 ## What Remains (Phase 5)
 
-When Docker is next available: run `supabase db reset`, then `node scripts/run-local-e2e.mjs --update-snapshots` (full suite, not grepped) to regenerate visual baselines for the fixed-viewport desktop layout. Confirm E2E scenario count matches expectations.
+1 failure, pre-existing before this branch's changes.
+
+| Test | File | Root cause (pre-existing) |
+|---|---|---|
+| Advanced Creative Workshop Before/After toggle | `release-creative-workshop-advanced.spec.ts:458` | `data-original-treatment` attribute stuck at `"false"` after toggle click |
+
+Also fixed in this phase: both Phase 4 E2E spec files contained stale assertions referencing the old toolbar label ("Campaign Creative Workshop" → "Creative Studio") and old status badge text ("Unsaved changes" → "Unsaved").
 
 ---
 

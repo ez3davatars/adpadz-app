@@ -39,7 +39,7 @@ async function signIn(page: Page, destination: string) {
 
 async function openStudio(page: Page) {
   await signIn(page, creativeRoute);
-  await expect(page.getByText('Campaign Creative Workshop', { exact: true })).toBeVisible();
+  await expect(page.getByText('Creative Studio', { exact: true })).toBeVisible();
   // Dismiss inspector hint if present
   await page.getByRole('button', { name: 'Got it' }).click({ timeout: 3000 }).catch(() => {});
 }
@@ -79,7 +79,7 @@ test('Mailer Proof Mode shows paper context and ephemeral guide controls', async
   // Verify safe area guide overlay appears
   await expect(page.locator('[data-guide="safe-area"]').first()).toBeVisible();
 
-  // CRITICAL: The session must still show "Saved" (not "Unsaved changes") after guide toggle
+  // CRITICAL: The session must still show "Saved" (not "Unsaved") after guide toggle
   const savedStatus = page.getByRole('status').filter({ hasText: /Saved/ }).first();
   await expect(savedStatus).toBeVisible({ timeout: 2000 });
 
@@ -110,8 +110,8 @@ test('Mailer guide changes do not create an unsaved creative state', async ({ pa
 
   // Must still show Saved
   await expect(page.getByRole('status').filter({ hasText: 'Saved' }).first()).toBeVisible({ timeout: 2000 });
-  // Must NOT show Unsaved changes
-  await expect(page.getByRole('status').filter({ hasText: 'Unsaved changes' })).toHaveCount(0);
+  // Must NOT show Unsaved
+  await expect(page.getByRole('status').filter({ hasText: 'Unsaved' })).toHaveCount(0);
 
   expect(failures, `Guide state purity failures in ${testInfo.project.name}`).toEqual([]);
 });
@@ -238,7 +238,7 @@ test('Social export CTA shows save-first guidance when session has unsaved chang
   await page.getByRole('button', { name: /Social Media/ }).click();
 
   // Session should be dirty now
-  await expect(page.getByRole('status').filter({ hasText: 'Unsaved changes' }).first()).toBeVisible({ timeout: 3000 });
+  await expect(page.getByRole('status').filter({ hasText: 'Unsaved' }).first()).toBeVisible({ timeout: 3000 });
 
   // Export CTA should show "Save before exporting" guidance
   await expect(page.getByText('Save before exporting')).toBeVisible();

@@ -94,7 +94,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page).toHaveURL(new RegExp(`${campaignId}/creative`));
-  await expect(page.getByText('Campaign Creative Workshop', { exact: true })).toBeVisible();
+  await expect(page.getByText('Creative Studio', { exact: true })).toBeVisible();
   await expect(page.getByTestId('creative-preview-canvas').first()).toBeVisible();
 }
 
@@ -412,7 +412,7 @@ async function saveCreative(page: Page) {
   const save = page.getByRole('button', { name: 'Save Creative', exact: true }).first();
   await expect(save).toBeEnabled();
   await save.click();
-  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Unsaved', { exact: true })).toHaveCount(0);
   await expect(page.locator('[role="status"]:visible').filter({ hasText: /^Creative saved/ }).first()).toBeVisible();
 }
 
@@ -604,7 +604,7 @@ test('Advanced Creative Workshop selects direct elements, versions edits, restor
   const restoreDialog = page.getByRole('dialog', { name: 'Restore this creative version?' });
   await expect(restoreDialog).toBeVisible();
   await restoreDialog.getByRole('button', { name: 'Load as unsaved' }).click();
-  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Unsaved', { exact: true })).toBeVisible();
   await expect(page.getByText(/Historical creative loaded as unsaved changes/)).toBeVisible();
   await saveCreative(page);
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible();
