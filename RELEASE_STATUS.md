@@ -1,5 +1,38 @@
 # Release Validation Report
-**Branch:** `main` · **Date:** 2026-07-28 · **Validated by:** Claude (Sonnet 4.6)
+**Branch:** `main` · **Date:** 2026-07-29 · **Validated by:** Claude (Sonnet 4.6)
+
+---
+
+## Phase 5 Implementation
+
+Commit `TBD` — *feat: refine creative workspace experience* (2026-07-29)
+
+Phase 5 Creative Workspace Refinement: fixed-viewport studio layout on xl desktop (browser page no longer scrolls while editing), independent panel scrolling for destination rail and inspector, compact toolbar, mouse-wheel zoom over canvas, destination-switch fade animation (150ms), larger artwork area with reduced padding, and pre-existing unused-variable lint fix in the Phase 4 test file.
+
+---
+
+## Phase 5 Validation
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | ✅ Clean |
+| `npm run lint` | ✅ Clean (also fixed pre-existing unused var in `release-phase4.spec.ts`) |
+| `npm test` | ✅ 462 / 462 unit tests |
+| `npm run build` | ✅ Clean |
+| `supabase db reset` | ⏸ Skipped — Docker not running |
+| `supabase db lint --local` | ⏸ Skipped — Docker not running |
+| `release-phase5.spec.ts` E2E | ⏸ Skipped — Docker not running |
+| `npm run test:e2e` full suite | ⏸ Skipped — Docker not running |
+| Visual baselines | ⏸ Pending — desktop `creative-workshop.png` will shrink (viewport-locked layout); regenerate when Docker is available |
+| `npm audit` | ⚠️ 2 high (react-router CVE, pre-existing — unchanged) |
+
+---
+
+## What Remains (Phase 5)
+
+When Docker is next available: run `supabase db reset`, then `node scripts/run-local-e2e.mjs --update-snapshots` (full suite, not grepped) to regenerate visual baselines for the fixed-viewport desktop layout. Confirm E2E scenario count matches expectations.
+
+---
 
 ---
 

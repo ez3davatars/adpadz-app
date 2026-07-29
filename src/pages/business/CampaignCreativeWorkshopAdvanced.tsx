@@ -201,6 +201,8 @@ export default function CampaignCreativeWorkshopAdvanced() {
   const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null);
   const historyRequestRef = useRef(0);
   const gestureRef = useRef(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
 
   const refreshHistory = useCallback(async () => {
     const requestId = ++historyRequestRef.current;
@@ -318,6 +320,50 @@ export default function CampaignCreativeWorkshopAdvanced() {
       document.removeEventListener("click", guardLink, true);
     };
   }, [dirty]);
+
+  // Fixed-viewport workspace: lock page scroll and measure exact height on xl.
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!el) return;
+    const updateHeight = () => {
+      if (window.innerWidth >= 1280) {
+        const { top } = el.getBoundingClientRect();
+        el.style.height = `calc(100dvh - ${Math.max(0, top)}px)`;
+        el.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+      } else {
+        el.style.height = "";
+        el.style.overflow = "";
+        document.documentElement.style.overflow = "";
+      }
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      el.style.height = "";
+      el.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+  }, [loaded]);
+
+  // Mouse-wheel over canvas = zoom (non-passive so preventDefault works).
+  useEffect(() => {
+    const el = canvasAreaRef.current;
+    if (!el) return;
+    const zoomOrder: Array<"50" | "fit" | "100"> = ["50", "fit", "100"];
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom(current => {
+        const idx = zoomOrder.indexOf(current as "50" | "fit" | "100");
+        if (e.deltaY < 0) return zoomOrder[Math.min(idx + 1, zoomOrder.length - 1)];
+        return zoomOrder[Math.max(idx - 1, 0)];
+      });
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [loaded]);
+
   const selectedQr = loaded?.qrs.find(qr => qr.id === settings.qrId) ?? null;
   const selectedAsset = loaded
     ? loaded.assets.find(asset => asset.id === (settings.imageAssetId || loaded.campaign.primary_image_id)) ?? null
@@ -724,11 +770,11 @@ export default function CampaignCreativeWorkshopAdvanced() {
     : null;
 
   return (
-    <div className="min-h-[calc(100vh-7rem)] min-w-0 max-w-full space-y-5">
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <p className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Campaign Creative Workshop</p>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <span role="status" aria-live="polite" className={`rounded-full px-3 py-1 text-[11px] font-semibold ${dirty ? "bg-amber-300/10 text-amber-300" : "bg-white/[0.05] text-[var(--text-muted)]"}`}>{dirty ? "Unsaved changes" : "Saved"}</span>
+    <div ref={workspaceRef} className="flex min-h-[calc(100vh-7rem)] xl:min-h-0 flex-col min-w-0 max-w-full">
+      <header className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-4 py-2 backdrop-blur-sm sm:px-6">
+        <p className="min-w-0 truncate text-[11px] text-[var(--text-muted)]">Creative Studio</p>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <span role="status" aria-live="polite" className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${dirty ? "bg-amber-300/10 text-amber-300" : "bg-white/[0.05] text-[var(--text-muted)]"}`}>{dirty ? "Unsaved" : "Saved"}</span>
           <AdpadzButton type="button" variant="secondary" size="sm" aria-label="Open Creative History" onClick={() => {
             setHistoryOpen(true);
             if (!historyLoaded && !historyLoading) void refreshHistory();
@@ -751,7 +797,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
           }}>
             <Redo2 className="h-4 w-4" />
           </AdpadzButton>
-          <AdpadzButton type="button" onClick={() => void save()} disabled={!dirty || saving}>
+          <AdpadzButton type="button" size="sm" onClick={() => void save()} disabled={!dirty || saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Creative
           </AdpadzButton>
         </div>
@@ -759,7 +805,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
       {error && (
-        <div role="alert" className="mx-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm font-semibold text-red-100 sm:mx-6">
+        <div role="alert" className="shrink-0 mx-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm font-semibold text-red-100 sm:mx-6">
           {error}
         </div>
       )}
@@ -769,8 +815,8 @@ export default function CampaignCreativeWorkshopAdvanced() {
         </div>
       )}
 
-      <div className="grid gap-5 px-4 pb-24 sm:px-6 xl:grid-cols-[248px_minmax(440px,1fr)_360px] xl:pb-8">
-        <nav aria-label="Creative destinations" className="order-2 min-w-0 max-w-full xl:order-1">
+      <div className="min-h-0 flex-1 grid gap-4 px-4 pt-4 pb-24 sm:px-6 xl:grid-cols-[200px_minmax(0,1fr)_320px] xl:pt-3 xl:pb-4 xl:overflow-hidden">
+        <nav aria-label="Creative destinations" className="order-2 min-w-0 max-w-full xl:order-1 xl:overflow-y-auto xl:min-h-0 xl:pb-4">
           <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Destinations</p>
           <div className="flex gap-2 overflow-x-auto pb-2 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
             {CREATIVE_DESTINATIONS.map(item => {
@@ -831,10 +877,10 @@ export default function CampaignCreativeWorkshopAdvanced() {
           </div>
         </nav>
 
-        <main className="order-1 min-w-0 xl:order-2">
+        <main className="order-1 min-w-0 xl:order-2 xl:flex xl:flex-col xl:min-h-0 xl:overflow-hidden">
           <div
             data-testid="creative-preview-stage"
-            className="relative flex min-h-[560px] flex-col rounded-3xl border border-white/[0.05] bg-[#070907]"
+            className="relative flex min-h-[560px] xl:min-h-0 xl:flex-1 flex-col rounded-3xl border border-white/[0.05] bg-[#070907]"
           >
             <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]" aria-hidden="true" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-t-3xl border-b border-white/[0.05] bg-black/25 px-3 py-2 backdrop-blur-sm">
@@ -878,7 +924,8 @@ export default function CampaignCreativeWorkshopAdvanced() {
             </div>
 
             <div
-              className="relative z-10 flex flex-col items-center gap-4 p-5 sm:p-8"
+              ref={canvasAreaRef}
+              className="relative z-10 flex flex-col items-center gap-4 p-3 sm:p-5 xl:flex-1 xl:min-h-0 xl:overflow-auto xl:justify-center"
               onClick={event => {
                 if (event.target !== event.currentTarget) return;
                 setSelectedElement(null);
@@ -894,6 +941,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
                   }}>Got it</button>
                 </div>
               )}
+              <div key={destination} className="w-full" style={{ animation: "stageFadeIn 150ms ease", animationFillMode: "both" }}>
               {destination === "mailer" ? (
                 <MailerProofStage
                   content={content}
@@ -963,6 +1011,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
                   previewScaleClass={previewScale}
                 />
               )}
+              </div>
             </div>
 
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-b-3xl border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
@@ -972,7 +1021,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
           </div>
         </main>
 
-        <div className="order-3 min-w-0 xl:order-3">
+        <div className="order-3 min-w-0 xl:order-3 xl:overflow-y-auto xl:min-h-0 xl:pb-4">
           <div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Edit scope</p>
