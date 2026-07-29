@@ -14,6 +14,7 @@ import {
   History as HistoryIcon,
   Loader2,
   Maximize2,
+  MonitorPlay,
   QrCode,
   Redo2,
   RotateCcw,
@@ -31,6 +32,10 @@ import CreativeModal, {
   CreativeConfirmDialog,
 } from "../../components/campaign-creative/CreativeModal";
 import CreativePreviewCanvas from "../../components/campaign-creative/CreativePreviewCanvas";
+import DiscoveryFeedStage from "../../components/campaign-creative/DiscoveryFeedStage";
+import MailerProofStage from "../../components/campaign-creative/MailerProofStage";
+import QrPhoneStage from "../../components/campaign-creative/QrPhoneStage";
+import SocialFormatRackStage from "../../components/campaign-creative/SocialFormatRackStage";
 import { useCampaignShell } from "../../components/campaign-shell/campaignShellContext";
 import { AdpadzButton, AdpadzCard } from "../../components/adpadz-ui";
 import {
@@ -796,6 +801,28 @@ export default function CampaignCreativeWorkshopAdvanced() {
                 </button>
               );
             })}
+            {/* Adpadz TV — presentation-only, not persisted */}
+            <div
+              aria-disabled="true"
+              aria-label="Adpadz TV — Coming Later, not yet available"
+              role="button"
+              tabIndex={-1}
+              className="min-w-[200px] cursor-default rounded-2xl border border-white/[0.04] p-2.5 opacity-45 xl:w-full"
+              data-testid="tv-coming-later-rail"
+            >
+              <span
+                className="mx-auto flex max-h-24 items-center justify-center overflow-hidden rounded-xl border border-white/[0.04] bg-black/30"
+                style={{ aspectRatio: "16 / 9", maxWidth: "9.5rem" }}
+                aria-hidden="true"
+              >
+                <MonitorPlay className="h-5 w-5 text-white/20" />
+              </span>
+              <span className="mt-2 flex items-center gap-1.5 px-0.5">
+                <MonitorPlay className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
+                <span className="truncate text-xs font-bold">Adpadz TV</span>
+              </span>
+              <span className="mt-1 block px-0.5 text-[10px] font-semibold text-[var(--text-muted)]">Coming Later</span>
+            </div>
           </div>
           <div className="mt-3 space-y-2">
             <AdpadzButton href={`/app/business/campaigns/${campaignId}/review`} variant="secondary" size="sm" fullWidth>Continue to Review</AdpadzButton>
@@ -807,39 +834,38 @@ export default function CampaignCreativeWorkshopAdvanced() {
         <main className="order-1 min-w-0 xl:order-2">
           <div
             data-testid="creative-preview-stage"
-            className="relative flex min-h-[560px] flex-col overflow-hidden rounded-3xl border border-white/[0.05] bg-[#070907]"
-            onClick={event => {
-              if (event.target !== event.currentTarget) return;
-              setSelectedElement(null);
-              setMobileInspectorOpen(false);
-            }}
+            className="relative flex min-h-[560px] flex-col rounded-3xl border border-white/[0.05] bg-[#070907]"
           >
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]" aria-hidden="true" />
-            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] bg-black/25 px-3 py-2 backdrop-blur-sm">
-              <div className="flex gap-1.5 overflow-x-auto" role="listbox" aria-label={`${destinationDefinition.name} format`}>
-                {destinationDefinition.formats.map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="option"
-                    aria-selected={currentFormat.key === item.key}
-                    title={item.detail}
-                    onClick={() => {
-                      setMessage("");
-                      gestureRef.current = false;
-                      dispatch({ type: "push", value: updateCreativeFormat(state, destination, item.key) });
-                    }}
-                    className={`flex min-h-11 items-center gap-2 rounded-xl border px-2.5 text-left transition ${currentFormat.key === item.key ? "border-neon/60 bg-neon/[0.08]" : "border-white/[0.07] hover:border-white/20"}`}
-                  >
-                    <span
-                      className={`block h-[18px] rounded-[3px] border ${currentFormat.key === item.key ? "border-neon/80 bg-neon/20" : "border-white/30 bg-white/[0.06]"}`}
-                      style={{ width: `${Math.round(18 * Math.min(2, Math.max(0.45, item.aspect)))}px` }}
-                      aria-hidden="true"
-                    />
-                    <span className="whitespace-nowrap text-[11px] font-semibold">{item.label}</span>
-                  </button>
-                ))}
-              </div>
+            <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]" aria-hidden="true" />
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-t-3xl border-b border-white/[0.05] bg-black/25 px-3 py-2 backdrop-blur-sm">
+              {destination !== "social" ? (
+                <div className="flex gap-1.5 overflow-x-auto" role="listbox" aria-label={`${destinationDefinition.name} format`}>
+                  {destinationDefinition.formats.map(item => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      role="option"
+                      aria-selected={currentFormat.key === item.key}
+                      title={item.detail}
+                      onClick={() => {
+                        setMessage("");
+                        gestureRef.current = false;
+                        dispatch({ type: "push", value: updateCreativeFormat(state, destination, item.key) });
+                      }}
+                      className={`flex min-h-11 items-center gap-2 rounded-xl border px-2.5 text-left transition ${currentFormat.key === item.key ? "border-neon/60 bg-neon/[0.08]" : "border-white/[0.07] hover:border-white/20"}`}
+                    >
+                      <span
+                        className={`block h-[18px] rounded-[3px] border ${currentFormat.key === item.key ? "border-neon/80 bg-neon/20" : "border-white/30 bg-white/[0.06]"}`}
+                        style={{ width: `${Math.round(18 * Math.min(2, Math.max(0.45, item.aspect)))}px` }}
+                        aria-hidden="true"
+                      />
+                      <span className="whitespace-nowrap text-[11px] font-semibold">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span className="px-1 text-[11px] font-semibold text-[var(--text-muted)]">Social Media · all formats below</span>
+              )}
               <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                 <button type="button" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)} className={`min-h-11 rounded-full px-3 text-[11px] font-semibold transition ${showOriginal ? "bg-amber-300 text-black" : "bg-white/[0.06] text-[var(--text-secondary)] hover:bg-white/[0.1]"}`}>{showOriginal ? "Showing before" : "Before / After"}</button>
                 <div className="flex gap-1" aria-label="Preview zoom">
@@ -852,7 +878,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
             </div>
 
             <div
-              className="relative z-10 flex flex-1 items-center justify-center p-5 sm:p-10"
+              className="relative z-10 flex flex-col items-center gap-4 p-5 sm:p-8"
               onClick={event => {
                 if (event.target !== event.currentTarget) return;
                 setSelectedElement(null);
@@ -868,30 +894,78 @@ export default function CampaignCreativeWorkshopAdvanced() {
                   }}>Got it</button>
                 </div>
               )}
-              <div
-                className={`w-full transition-all duration-200 ${previewScale} shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]`}
-                style={{ aspectRatio: currentFormat.ratio }}
-              >
-                <CreativePreviewCanvas
+              {destination === "mailer" ? (
+                <MailerProofStage
                   content={content}
                   settings={settings}
-                  destination={destination}
                   formatKey={format}
                   selectedQr={selectedQr}
                   selectedElement={selectedElement}
                   onSelectElement={selectElement}
-                  onClearSelection={() => {
-                    setSelectedElement(null);
-                    setMobileInspectorOpen(false);
-                  }}
+                  onClearSelection={() => { setSelectedElement(null); setMobileInspectorOpen(false); }}
                   showOriginal={showOriginal}
                   measureOverflowElement={measureElement}
                   onOverflowChange={handleOverflowChange}
+                  previewScaleClass={previewScale}
+                  aspectRatio={currentFormat.ratio}
+                  campaignId={campaignId}
+                  campaignOwnerId={loaded.campaign.owner_id}
+                  campaignBusinessId={loaded.campaign.business_id ?? null}
                 />
-              </div>
+              ) : destination === "discovery" ? (
+                <DiscoveryFeedStage
+                  content={content}
+                  settings={settings}
+                  selectedQr={selectedQr}
+                  selectedElement={selectedElement}
+                  onSelectElement={selectElement}
+                  onClearSelection={() => { setSelectedElement(null); setMobileInspectorOpen(false); }}
+                  showOriginal={showOriginal}
+                  measureOverflowElement={measureElement}
+                  onOverflowChange={handleOverflowChange}
+                  previewScaleClass={previewScale}
+                  aspectRatio={currentFormat.ratio}
+                />
+              ) : destination === "qr" ? (
+                <QrPhoneStage
+                  content={content}
+                  settings={settings}
+                  selectedQr={selectedQr}
+                  selectedElement={selectedElement}
+                  onSelectElement={selectElement}
+                  onClearSelection={() => { setSelectedElement(null); setMobileInspectorOpen(false); }}
+                  showOriginal={showOriginal}
+                  measureOverflowElement={measureElement}
+                  onOverflowChange={handleOverflowChange}
+                  previewScaleClass={previewScale}
+                  aspectRatio={currentFormat.ratio}
+                  campaignId={campaignId}
+                />
+              ) : (
+                <SocialFormatRackStage
+                  content={content}
+                  settings={settings}
+                  selectedQr={selectedQr}
+                  selectedFormat={format}
+                  onFormatChange={fmt => {
+                    setMessage("");
+                    gestureRef.current = false;
+                    dispatch({ type: "push", value: updateCreativeFormat(state, destination, fmt) });
+                  }}
+                  dirty={dirty}
+                  campaignId={campaignId}
+                  selectedElement={selectedElement}
+                  onSelectElement={selectElement}
+                  onClearSelection={() => { setSelectedElement(null); setMobileInspectorOpen(false); }}
+                  showOriginal={showOriginal}
+                  measureOverflowElement={measureElement}
+                  onOverflowChange={handleOverflowChange}
+                  previewScaleClass={previewScale}
+                />
+              )}
             </div>
 
-            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-b-3xl border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
               <span className="font-semibold text-[var(--text-secondary)]">{context}</span>
               <span className={printImpact ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
             </div>
