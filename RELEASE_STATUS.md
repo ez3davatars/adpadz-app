@@ -3,6 +3,47 @@
 
 ---
 
+## Phase 4 Implementation
+
+Commit `3ae5ab9` — *feat: add destination production experiences* (2026-07-28)
+
+Phase 4 of the Creative Production Studio: five destination-specific production environments, all rendered by the single `CreativePreviewCanvas` — Community Mailer paper proof with ephemeral guide controls and QR proof status, Consumer Discovery simulated feed context, QR Landing phone-chrome frame, Social Format Rack with all four formats simultaneously, and the Adpadz TV Coming Later presentation stub. 30 new architecture tests and 13 new E2E scenarios across desktop/tablet/mobile.
+
+---
+
+## Phase 4 Validation
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | ✅ Clean |
+| `npm run lint` | ✅ Clean |
+| `npm test` | ✅ 462 / 462 unit tests |
+| `npm run build` | ✅ Clean |
+| `supabase db reset` | ✅ Succeeded |
+| `supabase db lint --local` | ✅ No schema errors |
+| `release-phase4.spec.ts` (all platforms) | ✅ 29 passed · 10 skipped |
+| `npm run test:e2e` full suite | ✅ 57 passed · 53 skipped · **1 failed** (see below) |
+| `npm audit` | ⚠️ 2 high (react-router CVE, pre-existing — fix is a breaking change) |
+| `git diff --check -- ':!artifacts'` | ✅ Clean |
+
+Visual baselines regenerated for: `desktop/creative-workshop.png`, `desktop/production-candidate.png`, `mobile/creative-workshop.png`, `mobile/mission-control.png`, `mobile/production-candidate.png`, `tablet/creative-workshop.png`, `tablet/mission-control.png`.
+
+---
+
+## What Remains (Phase 4)
+
+1 failure, pre-existing before this branch's changes.
+
+| Test | File | Root cause (pre-existing) |
+|---|---|---|
+| Advanced Creative Workshop Before/After toggle | `release-creative-workshop-advanced.spec.ts:458` | `data-original-treatment` attribute stuck at `"false"` after toggle click |
+
+The react-router `GHSA-qwww-vcr4-c8h2` CVE (RSC Mode CSRF bypass) is pre-existing; this app does not use RSC Mode. Fixing it requires `npm audit fix --force` which is a breaking dependency upgrade outside Phase 4 scope.
+
+---
+
+---
+
 ## Phase 3 Implementation
 
 Commit `c180ccc` — *feat: add campaign shell and review workflow* (2026-07-27)

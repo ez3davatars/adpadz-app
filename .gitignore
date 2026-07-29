@@ -31,3 +31,6 @@ supabase/.temp/
 # Local RC verification evidence
 artifacts/rc1/
 test-results/
+
+# Claude Code session memory (never commit)
+.claude/
