@@ -347,22 +347,6 @@ export default function CampaignCreativeWorkshopAdvanced() {
     };
   }, [loaded]);
 
-  // Mouse-wheel over canvas = zoom (non-passive so preventDefault works).
-  useEffect(() => {
-    const el = canvasAreaRef.current;
-    if (!el) return;
-    const zoomOrder: Array<"50" | "fit" | "100"> = ["50", "fit", "100"];
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setZoom(current => {
-        const idx = zoomOrder.indexOf(current as "50" | "fit" | "100");
-        if (e.deltaY < 0) return zoomOrder[Math.min(idx + 1, zoomOrder.length - 1)];
-        return zoomOrder[Math.max(idx - 1, 0)];
-      });
-    };
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, [loaded]);
 
   const selectedQr = loaded?.qrs.find(qr => qr.id === settings.qrId) ?? null;
   const selectedAsset = loaded
@@ -925,7 +909,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
             <div
               ref={canvasAreaRef}
-              className={`relative z-10 flex flex-col items-center gap-4 p-3 sm:p-5 xl:flex-1 xl:min-h-0 xl:overflow-auto ${zoom !== "100" ? "xl:justify-center" : ""}`}
+              className="relative z-10 flex flex-col items-center gap-4 p-3 sm:p-5 xl:flex-1 xl:min-h-0 xl:overflow-auto"
               onClick={event => {
                 if (event.target !== event.currentTarget) return;
                 setSelectedElement(null);
@@ -941,7 +925,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
                   }}>Got it</button>
                 </div>
               )}
-              <div key={destination} className="w-full" style={{ animation: "stageFadeIn 150ms ease", animationFillMode: "both" }}>
+              <div key={destination} className="w-full xl:my-auto" style={{ animation: "stageFadeIn 150ms ease", animationFillMode: "both" }}>
               {destination === "mailer" ? (
                 <MailerProofStage
                   content={content}
