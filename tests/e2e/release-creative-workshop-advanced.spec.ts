@@ -8,7 +8,7 @@ const campaignId = '30000000-0000-4000-8000-000000000001';
 const mailerId = '50000000-0000-4000-8000-000000000001';
 const terminalMailerId = '50000000-0000-4000-8000-000000000002';
 const terminalMailerSlotId = '52000000-0000-4000-8000-000000000001';
-const creativeRoute = `/app/business/campaigns/${campaignId}/creative`;
+const creativeRoute = `/app/business/campaigns/${campaignId}/creative?mode=advanced`;
 
 type OwnerApi = {
   url: string;

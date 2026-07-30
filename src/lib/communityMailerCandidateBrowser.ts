@@ -8,6 +8,7 @@ import { normalizeQRStudioProductionArtwork } from "./qr/qrArtwork";
 import { rasterizeCreativeElement } from "./socialCreativeExport";
 import { supabase } from "./supabase";
 import {
+  candidateDisplayHeadline,
   type CandidateInput,
   type CandidatePackage,
   type CandidatePlacement,
@@ -66,6 +67,7 @@ async function renderCandidatePlacement(
       content,
       settings,
       destination: "mailer",
+      physicalWidthInches: options.physicalWidthInches,
       qrBoxOverride: options.qrBox ?? undefined,
       qrArtwork: qrArtwork
         ? createElement(QRStudioPreview, {
@@ -135,7 +137,7 @@ function candidateContent(placement: CandidatePlacement): CampaignTemplateConten
     businessWebsite: placement.website || null,
     businessLogoUrl: placement.businessLogoUrl || null,
     imageUrl: placement.creativeUrl,
-    headline: placement.headline,
+    headline: candidateDisplayHeadline(placement),
     description: placement.description || "",
     offer: placement.offer || "",
     offerDetails: placement.offerDetails || "",

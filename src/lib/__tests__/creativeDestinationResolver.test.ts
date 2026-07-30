@@ -6,6 +6,7 @@ import {
   type CreativeWorkshopState,
 } from "../../features/campaign-templates";
 
+import { DEFAULT_CREATIVE_DIRECTOR_STATE } from "../../features/campaign-templates/creativeDirectorSchema";
 const workshop: CreativeWorkshopState = {
   version: 1,
   global: {
@@ -96,6 +97,7 @@ const workshop: CreativeWorkshopState = {
     qr: "hero",
     social: "story",
   },
+  director: DEFAULT_CREATIVE_DIRECTOR_STATE,
 };
 
 describe("destination creative resolver", () => {

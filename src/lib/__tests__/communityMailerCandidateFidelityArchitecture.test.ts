@@ -7,14 +7,33 @@ describe("Community Mailer exact creative Candidate architecture", () => {
       "src/lib/communityMailerCandidateBrowser.ts",
       "utf8",
     );
+    const preview = readFileSync(
+      "src/components/campaign-creative/CreativePreviewCanvas.tsx",
+      "utf8",
+    );
     const candidate = readFileSync(
       "src/lib/communityMailerCandidate.ts",
       "utf8",
     );
+    const qrGeometry = readFileSync(
+      "src/lib/communityMailerQrGeometry.ts",
+      "utf8",
+    );
     expect(browser).toContain("CampaignTemplateRenderer");
+    expect(browser).toContain("candidateDisplayHeadline(placement)");
+    expect(browser).toContain("physicalWidthInches: options.physicalWidthInches");
     expect(browser).toContain("QRStudioPreview");
     expect(browser).toContain("rasterizeCreativeElement");
     expect(browser).toContain("assertVisibleCreativeRaster");
+    expect(preview).toContain("resolveCommunityMailerPreviewQrPrintBox");
+    expect(preview).toContain("qrBoxOverride={mailerQrPrint?.box}");
+    expect(preview).toContain("physicalWidthInches={mailerPlacement?.widthInches}");
+    expect(candidate).toContain("resolveCommunityMailerQrPrintBox");
+    expect(candidate).not.toContain("candidateQrWrapperInsets");
+    expect(qrGeometry).toContain('artwork.style_preset === "standard" ? 0.72 : 0.54');
+    expect(qrGeometry).toContain("placementWidthInches * 0.0115");
+    expect(qrGeometry).toContain("6 / 72");
+    expect(qrGeometry).not.toContain("pdf-lib");
     expect(browser).not.toContain('from "qrcode"');
     expect(candidate).not.toContain('from "qrcode"');
     expect(candidate).toContain("renderedCreativeChecksum");

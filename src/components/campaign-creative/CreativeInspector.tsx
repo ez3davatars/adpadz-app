@@ -485,6 +485,22 @@ function QrControls({
   return (
     <>
       <Toggle label="Show QR for current destination" checked={settings.showQr} disabled={requiredForPrint} meta={field?.(["showQr"], "QR visibility")} onChange={showQr => change({ showQr })} />
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold">
+          QR emphasis<OverrideMark meta={field?.(["qrEmphasis"], "QR emphasis")} />
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {(["standard", "prominent"] as const).map(value => (
+            <Choice
+              key={value}
+              selected={(settings.qrEmphasis ?? "standard") === value}
+              onClick={() => change({ qrEmphasis: value })}
+            >
+              {value === "standard" ? "Standard" : "Prominent"}
+            </Choice>
+          ))}
+        </div>
+      </div>
       {requiredForPrint && <p className="text-[9px] text-amber-200">Mailer QR visibility is locked for print scannability.</p>}
       {selectedQr && (
         <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-3">
@@ -638,6 +654,7 @@ function VisibilityControls({ settings, change, destination, field }: { settings
     ["showOffer", "Offer", false],
     ["showCta", "CTA", false],
     ["showQr", "QR", destination === "mailer"],
+    ["showDescription", "Description", false],
     ["showExpiration", "Expiration", false],
     ["showPhone", "Phone", false],
     ["showWebsite", "Website", false],
@@ -647,7 +664,13 @@ function VisibilityControls({ settings, change, destination, field }: { settings
     <>
       {items.map(([key, label, required]) => (
         <div key={key}>
-          <Toggle label={label} checked={Boolean(settings[key])} disabled={required} meta={field?.([key], `${label} visibility`)} onChange={value => change({ [key]: value })} />
+          <Toggle
+            label={label}
+            checked={key === "showDescription" ? settings.showDescription !== false : Boolean(settings[key])}
+            disabled={required}
+            meta={field?.([key], `${label} visibility`)}
+            onChange={value => change({ [key]: value })}
+          />
           {required && <p className="mt-1 text-[9px] text-amber-200">Required for this print placement.</p>}
         </div>
       ))}

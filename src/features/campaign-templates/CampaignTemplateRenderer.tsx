@@ -10,14 +10,16 @@ import {
   type ReactNode,
 } from "react";
 import QRCode from "qrcode";
-import { CAMPAIGN_TEMPLATE_REGISTRY, resolveTemplateLayout } from "./templateRegistry";
+import { CAMPAIGN_TEMPLATE_REGISTRY, resolveCreativeTemplateLayout } from "./templateRegistry";
 import type { CampaignTemplateContent, CampaignTemplateDestination, CampaignTemplateSettings, NormalizedBox } from "./types";
 import type { CreativeElementKey, CreativeSettings } from "./creativeWorkshop";
+import { mailerPrintFontSize } from "./mailerPrintTypography";
 
 type Props = {
   content: CampaignTemplateContent;
   settings: CampaignTemplateSettings | CreativeSettings;
   destination: CampaignTemplateDestination;
+  physicalWidthInches?: number;
   className?: string;
   inspection?: CampaignTemplateInspection;
   qrArtwork?: ReactNode;
@@ -39,6 +41,7 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
   content,
   settings,
   destination,
+  physicalWidthInches,
   className = "",
   inspection,
   qrArtwork,
@@ -46,11 +49,13 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
 }: Props) {
   const creative = settings as Partial<CreativeSettings>;
   const layout = useMemo(() => {
-    const base = resolveTemplateLayout(settings.template);
+    const base = resolveCreativeTemplateLayout(settings.template, creative.qrEmphasis);
     return qrBoxOverride ? { ...base, qr: qrBoxOverride } : base;
-  }, [qrBoxOverride, settings.template]);
+  }, [creative.qrEmphasis, qrBoxOverride, settings.template]);
   const light = settings.theme === "light";
   const compact = destination === "mailer" || destination === "discovery";
+  const mailerPhysicalWidthInches =
+    destination === "mailer" ? physicalWidthInches : undefined;
   const renderLogo = creative.showLogo !== false && Boolean(content.businessLogoUrl);
   const renderBusinessName = Boolean(content.businessName)
     && (creative.showBusinessName === true
@@ -151,6 +156,7 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
           {renderBusinessName && (
             <p
               className={`${renderLogo ? "min-w-0 flex-1" : "w-full"} truncate text-[clamp(.5rem,2.25cqw,1rem)] font-black ${inspectionClass("business-name", inspection)}`}
+              style={{ fontSize: mailerPrintFontSize(2.25, 7, mailerPhysicalWidthInches) }}
               {...inspectionProps("business-name", inspection)}
             >
               {content.businessName}
@@ -162,6 +168,7 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
         {settings.template === "offer-first" && showOffer && (
           <p
             className={`mb-[2cqw] text-[clamp(1rem,7cqw,4rem)] font-black leading-[.92] text-[var(--campaign-accent)] ${inspectionClass("offer", inspection)}`}
+            style={{ fontSize: mailerPrintFontSize(7, 9, mailerPhysicalWidthInches) }}
             {...inspectionProps("offer", inspection)}
           >
             {content.offer}
@@ -169,7 +176,12 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
         )}
         {showHeadline && (
           <h2
-            className={`line-clamp-3 ${HEADLINE_SIZE_CLASSES[headlineSize]} font-black leading-[1.02] ${inspectionClass("headline", inspection)}`}
+            className={`line-clamp-2 break-words [overflow-wrap:anywhere] ${HEADLINE_SIZE_CLASSES[headlineSize]} font-black leading-[1.02] ${inspectionClass("headline", inspection)}`}
+            style={{
+              fontSize: mailerPrintFontSize(
+                HEADLINE_SIZE_CQW[headlineSize], 12, mailerPhysicalWidthInches,
+              ),
+            }}
             {...inspectionProps("headline", inspection)}
           >
             {content.headline}
@@ -178,14 +190,18 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
         {settings.template !== "offer-first" && showOffer && (
           <p
             className={`mt-[1.5cqw] line-clamp-2 text-[clamp(.65rem,3.3cqw,1.8rem)] font-black text-[var(--campaign-accent)] ${inspectionClass("offer", inspection)}`}
+            style={{ fontSize: mailerPrintFontSize(3.3, 9, mailerPhysicalWidthInches) }}
             {...inspectionProps("offer", inspection)}
           >
             {content.offer}
           </p>
         )}
-        {!compact && (content.offerDetails || content.description) && <p className="mt-[1.4cqw] line-clamp-3 text-[clamp(.5rem,2.1cqw,1.2rem)] opacity-85">{content.offerDetails || content.description}</p>}
+        {creative.showDescription !== false && !compact && (content.offerDetails || content.description) && <p className="mt-[1.4cqw] line-clamp-3 text-[clamp(.5rem,2.1cqw,1.2rem)] opacity-85">{content.offerDetails || content.description}</p>}
         {(showPhone || showWebsite) && (
-          <div className={`mt-[1cqw] flex min-w-0 items-center gap-[2cqw] ${compact ? "text-[clamp(.38rem,1.45cqw,.7rem)]" : "text-[clamp(.45rem,1.7cqw,.9rem)]"}`}>
+          <div
+            className={`mt-[1cqw] flex min-w-0 items-center gap-[2cqw] ${compact ? "text-[clamp(.38rem,1.45cqw,.7rem)]" : "text-[clamp(.45rem,1.7cqw,.9rem)]"}`}
+            style={{ fontSize: mailerPrintFontSize(1.45, 7, mailerPhysicalWidthInches) }}
+          >
             {showPhone && (
               <span
                 className={`min-w-0 flex-1 truncate font-bold ${inspectionClass("phone", inspection)}`}
@@ -213,18 +229,33 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
           style={boxStyle(layout.cta)}
           {...inspectionProps("cta", inspection)}
         >
-          <span className="max-w-full truncate rounded-full bg-[var(--campaign-accent)] px-[4cqw] py-[1.6cqw] text-[clamp(.5rem,2.3cqw,1rem)] font-black text-black">{content.ctaLabel}</span>
+          <span
+            className="max-w-full truncate rounded-full bg-[var(--campaign-accent)] px-[4cqw] py-[1.6cqw] text-[clamp(.5rem,2.3cqw,1rem)] font-black text-black"
+            style={{ fontSize: mailerPrintFontSize(2.3, 7, mailerPhysicalWidthInches) }}
+          >
+            {content.ctaLabel}
+          </span>
         </div>
       )}
       {settings.showQr && content.destinationUrl && (
         qrArtwork ? (
           <div
-            className={`absolute overflow-hidden ${inspectionClass("qr", inspection)}`}
+            className={`absolute flex overflow-hidden ${creative.qrEmphasis === "prominent" ? "flex-col gap-[.4cqw] rounded-[8%] bg-white p-[.8cqw]" : "items-stretch"} ${inspectionClass("qr", inspection)}`}
             style={boxStyle(layout.qr)}
             aria-label="Campaign QR code"
             {...inspectionProps("qr", inspection)}
           >
-            {qrArtwork}
+            {creative.qrEmphasis === "prominent" ? (
+              <>
+                <QrArtworkField>{qrArtwork}</QrArtworkField>
+                <span
+                  className="shrink-0 text-center text-[clamp(.25rem,1.15cqw,.6rem)] font-black uppercase tracking-wide text-black"
+                  style={{ fontSize: mailerPrintFontSize(1.15, 6, mailerPhysicalWidthInches) }}
+                >
+                  Scan to explore
+                </span>
+              </>
+            ) : <QrArtworkField>{qrArtwork}</QrArtworkField>}
           </div>
         ) : (
           <QrMark destination={content.destinationUrl} style={boxStyle(layout.qr)} inspection={inspection} />
@@ -234,7 +265,10 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
       {settings.showExpiration && content.expiration && (
         <time
           className={`absolute truncate text-[clamp(.4rem,1.7cqw,.8rem)] font-bold opacity-80 ${inspectionClass("expiration", inspection)}`}
-          style={boxStyle(layout.expiration)}
+          style={{
+            ...boxStyle(layout.expiration),
+            fontSize: mailerPrintFontSize(1.7, 6, mailerPhysicalWidthInches),
+          }}
           dateTime={content.expiration}
           {...inspectionProps("expiration", inspection)}
         >
@@ -244,6 +278,7 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
       {settings.template === "featured-sponsor" && showSponsorBadge && (
         <span
           className={`absolute right-[5%] top-[4%] rounded-full bg-[var(--campaign-accent)] px-[3%] py-[1.3%] text-[clamp(.4rem,1.6cqw,.75rem)] font-black uppercase tracking-wider text-black ${inspectionClass("sponsor-badge", inspection)}`}
+          style={{ fontSize: mailerPrintFontSize(1.6, 6, mailerPhysicalWidthInches) }}
           {...inspectionProps("sponsor-badge", inspection)}
         >
           Featured sponsor
@@ -260,11 +295,30 @@ export const CampaignTemplateRenderer = memo(function CampaignTemplateRenderer({
   );
 });
 
+function QrArtworkField({ children }: { children: ReactNode }) {
+  const squareSize = "min(100cqw, 100cqh)";
+  return (
+    <div
+      className="flex min-h-0 min-w-0 flex-1 self-stretch items-center justify-center overflow-hidden"
+      style={{ containerType: "size" }}
+      data-qr-artwork-container="contained"
+    >
+      <div
+        className="aspect-square shrink-0 overflow-hidden [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+        style={{ width: squareSize, height: squareSize }}
+        data-qr-artwork-field="square"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function QrMark({ destination, style, inspection }: { destination: string; style: CSSProperties; inspection?: CampaignTemplateInspection }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
     let current = true;
-    void QRCode.toDataURL(destination, { errorCorrectionLevel: "H", margin: 1, width: 256 }).then(value => { if (current) setSrc(value); });
+    void QRCode.toDataURL(destination, { errorCorrectionLevel: "H", margin: 4, width: 256 }).then(value => { if (current) setSrc(value); });
     return () => { current = false; };
   }, [destination]);
   return (
@@ -273,10 +327,16 @@ function QrMark({ destination, style, inspection }: { destination: string; style
       style={style}
       {...inspectionProps("qr", inspection)}
     >
-      {src && <img src={src} alt="QR code for campaign destination" className="h-full w-full object-contain" />}
+      {src && <img src={src} alt="QR code for campaign destination. Scan to explore." className="h-full w-full object-contain" />}
     </div>
   );
 }
+
+const HEADLINE_SIZE_CQW: Readonly<Record<CreativeSettings["headlineSize"], number>> = Object.freeze({
+  small: 4.2,
+  medium: 5.2,
+  large: 6.2,
+});
 
 const HEADLINE_SIZE_CLASSES: Readonly<Record<CreativeSettings["headlineSize"], string>> = Object.freeze({
   small: "text-[clamp(.75rem,4.2cqw,2.5rem)]",

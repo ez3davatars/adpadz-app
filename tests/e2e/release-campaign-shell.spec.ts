@@ -67,12 +67,13 @@ test('Campaign shell carries one workflow across Setup, Studio, Review, and Publ
   await expect(page).toHaveURL(new RegExp(`${campaignId}/creative`));
   await expect(page.getByTestId('creative-preview-canvas').first()).toBeVisible();
   await expect(page.locator('h1')).toHaveCount(1);
-  await expect(page.getByRole('navigation', { name: 'Creative destinations' })).toBeVisible();
+  await expect(page.getByLabel('Campaign destination')).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Campaign creative concepts' })).toBeVisible();
   await assertNoHorizontalOverflow(page, `${testInfo.project.name} studio`);
 
   // History remains a Studio tool rather than a workflow stage.
   await expect(workflow.getByRole('link', { name: /History/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Open Creative History' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Advanced Edit' }).first()).toBeVisible();
 
   // Studio → Review: read-only, cross-destination, TV planned only.
   await workflow.getByRole('link', { name: /Review/ }).click();

@@ -44,6 +44,53 @@ export const geometryForMailer = (format: CommunityCardFormat) => {
   };
 };
 
+/**
+ * Canonical 9 x 12 row-grid placement geometry. These percentages mirror the
+ * locked Community Mailer template used by layout, preview, and production.
+ */
+export const COMMUNITY_MAILER_ROW_GRID = Object.freeze({
+  mailerFormat: "postcard_9x12" as const,
+  bleedInsetPercent: 0.75,
+  gutterPercent: 0.6,
+  unitWidthPercent: 24.175,
+  postalBlockWidthPercent: 23.357,
+  centerBandHeightPercent: 9.815,
+  centerBandTopPercent: 45.0925,
+  placementHeightPercent: 44.3425,
+});
+
+export type CommunityMailerPlacementUnits = 1 | 2 | 4;
+
+export function communityMailerRowGridPlacement(
+  unitCount: CommunityMailerPlacementUnits,
+) {
+  const grid = COMMUNITY_MAILER_ROW_GRID;
+  const geometry = COMMUNITY_MAILER_GEOMETRY[grid.mailerFormat];
+  const widthPercent =
+    unitCount * grid.unitWidthPercent +
+    (unitCount - 1) * grid.gutterPercent;
+  const heightPercent = grid.placementHeightPercent;
+  const widthInches = geometry.finishedWidthInches * widthPercent / 100;
+  const heightInches = geometry.finishedHeightInches * heightPercent / 100;
+  return {
+    unitCount,
+    widthPercent,
+    heightPercent,
+    widthInches,
+    heightInches,
+    aspect: widthInches / heightInches,
+  };
+}
+
+export function canonicalCommunityMailerCreativePlacement(
+  formatKey?: string | null,
+) {
+  const unitCount = !formatKey || formatKey === "standard"
+    ? 1
+    : formatKey === "combined" ? 2 : formatKey === "featured" ? 4 : null;
+  return unitCount ? communityMailerRowGridPlacement(unitCount) : null;
+}
+
 export const COMMUNITY_MAILER_TRANSITIONS = {
   draft: ["selling", "archived"],
   selling: ["building", "archived"],

@@ -39,9 +39,6 @@ import SocialFormatRackStage from "../../components/campaign-creative/SocialForm
 import { useCampaignShell } from "../../components/campaign-shell/campaignShellContext";
 import { AdpadzButton, AdpadzCard } from "../../components/adpadz-ui";
 import {
-  normalizeCampaignContent,
-} from "../../features/campaign-templates";
-import {
   CREATIVE_DESTINATIONS,
   creativeDestinationLabel,
   creativeFormatRatio,
@@ -49,7 +46,6 @@ import {
   DEFAULT_WORKSHOP_STATE,
   createHistory,
   getCreativeDestination,
-  listActiveCreativeAssetOptions,
   normalizeWorkshopState,
   pushHistory,
   redoHistory,
@@ -66,6 +62,14 @@ import {
   type CreativeSettings,
   type CreativeWorkshopState,
 } from "../../features/campaign-templates/creativeWorkshop";
+import {
+  selectCreativeDestination as withCreativeDirectorDestination,
+} from "../../features/campaign-templates/creativeDirector";
+import {
+  buildCreativeContent as buildContent,
+  loadCreativeWorkshop as loadWorkshop,
+  type LoadedCreativeWorkshop as Loaded,
+} from "../../features/campaign-templates/creativeWorkshopData";
 import {
   classifyCreativeChanges,
   createCreativeVersionSnapshot,
@@ -87,7 +91,6 @@ import {
   updateCreativeFormat,
   type CreativeResetSection,
 } from "../../features/campaign-templates/creativeWorkshopState";
-import type { CampaignOutputRecord, CampaignRecord } from "../../lib/ads";
 import {
   loadCampaignCreativeVersions,
   saveCampaignCreative,
@@ -97,34 +100,7 @@ import {
   MIN_PRODUCTION_QR_CONTRAST_RATIO,
   qrContrastRatio,
 } from "../../lib/qr/qrArtwork";
-import type { QRLinkRecord } from "../../lib/qr/qrTypes";
 import { supabase } from "../../lib/supabase";
-
-type Asset = {
-  id: string;
-  title: string;
-  file_url: string | null;
-  external_url: string | null;
-  thumbnail_url: string | null;
-  is_active: boolean;
-};
-type Profile = {
-  business_name: string;
-  logo_url: string | null;
-  cover_image_url: string | null;
-  primary_color: string | null;
-  accent_color: string | null;
-};
-type Business = { name: string; phone: string | null; website: string | null };
-type Loaded = {
-  campaign: CampaignRecord;
-  output: CampaignOutputRecord | null;
-  assets: Asset[];
-  pickerAssets: Asset[];
-  profile: Profile | null;
-  business: Business | null;
-  qrs: QRLinkRecord[];
-};
 
 type PendingReset =
   | { type: "section"; section: CreativeInspectorSection }
@@ -255,6 +231,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
       setLoaded(result.loaded);
       setSaved(result.state);
       dispatch({ type: "replace", value: result.state });
+      setDestination(result.state.director.destination);
       setShowInspectorHint(localStorage.getItem(`adpadz-creative-inspector-hint:${result.loaded.campaign.owner_id}`) !== "dismissed");
     }).catch(reason => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not open Creative Workshop.");
@@ -274,8 +251,12 @@ export default function CampaignCreativeWorkshopAdvanced() {
   const destinationDefinition = getCreativeDestination(destination);
   const currentFormat = destinationDefinition.formats.find(item => item.key === format)
     ?? destinationDefinition.formats[0];
-  const dirty = isCreativeWorkshopUnsaved(saved, state);
-  const printImpact = classifyCreativeChanges(saved, state).affectsPrint;
+  const stateForSave = useMemo(
+    () => withCreativeDirectorDestination(state, destination),
+    [destination, state],
+  );
+  const dirty = isCreativeWorkshopUnsaved(saved, stateForSave);
+  const printImpact = classifyCreativeChanges(saved, stateForSave).affectsPrint;
   const hasOverride = Boolean(state.overrides[destination]);
   const overriddenCount = useMemo(
     () => hasOverride
@@ -348,6 +329,10 @@ export default function CampaignCreativeWorkshopAdvanced() {
     };
   }, [loaded]);
 
+  useEffect(() => {
+    workspaceRef.current?.toggleAttribute("inert", saving);
+  }, [saving]);
+
 
   const selectedQr = loaded?.qrs.find(qr => qr.id === settings.qrId) ?? null;
 
@@ -365,6 +350,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
       selectedQr.foreground_color,
       selectedQr.inner_field_color || selectedQr.background_color,
     );
+    if (contrast === null) return "QR colors need review";
     if (contrast < MIN_PRODUCTION_QR_CONTRAST_RATIO) return `QR contrast ${contrast.toFixed(1)}:1 — below minimum`;
     return null;
   }, [destination, loaded, settings.showQr, selectedQr, campaignId]);
@@ -542,13 +528,13 @@ export default function CampaignCreativeWorkshopAdvanced() {
   }
 
   async function save() {
-    if (!loaded || !dirty) return;
+    if (!loaded || !dirty || saving) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const classification = classifyCreativeChanges(saved, state);
-      const mailerSettings = resolveCreativeSettings(state, "mailer");
+      const classification = classifyCreativeChanges(saved, stateForSave);
+      const mailerSettings = resolveCreativeSettings(stateForSave, "mailer");
       const mailerQr = loaded.qrs.find(qr => qr.id === mailerSettings.qrId) ?? null;
       const mailerQrContrast = mailerQr
         ? qrContrastRatio(
@@ -587,7 +573,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
         setError(`Mailer QR contrast must be at least ${MIN_PRODUCTION_QR_CONTRAST_RATIO}:1 before saving print changes.`);
         return;
       }
-      const nextVersion = createCreativeVersionSnapshot(state, destination, scope);
+      const nextVersion = createCreativeVersionSnapshot(stateForSave, destination, scope);
       const previousVersion = createCreativeVersionSnapshot(saved, destination, scope);
       const scopedSummary = listMaterialCreativeChanges(previousVersion, nextVersion);
       const destinationSummary = classification.destinations.map(item => `${destinationLabel(item)} creative settings`);
@@ -599,10 +585,10 @@ export default function CampaignCreativeWorkshopAdvanced() {
         campaignId: loaded.campaign.id,
         destination,
         formatKey: format,
-        state,
+        state: stateForSave,
         changeSummary: summary.length ? summary : destinationSummary,
         affectsPrint: classification.affectsPrint,
-        createdOverride: scope === "destination" && !saved.overrides[destination] && Boolean(state.overrides[destination]),
+        createdOverride: scope === "destination" && !saved.overrides[destination] && Boolean(stateForSave.overrides[destination]),
         scope,
       });
       const [campaignResult, outputResult] = await Promise.all([
@@ -611,11 +597,11 @@ export default function CampaignCreativeWorkshopAdvanced() {
       ]);
       if (campaignResult.error) throw new Error(campaignResult.error.message);
       if (outputResult.error) throw new Error(outputResult.error.message);
-      const reloaded = outputResult.data as CampaignOutputRecord;
+      const reloaded = outputResult.data as NonNullable<Loaded["output"]>;
       const authoritative = normalizeWorkshopState(reloaded.metadata?.creative_workshop ?? result.persisted_metadata.creative_workshop);
       setLoaded(current => current ? {
         ...current,
-        campaign: campaignResult.data as CampaignRecord,
+        campaign: campaignResult.data as Loaded["campaign"],
         output: reloaded,
       } : current);
       setSaved(authoritative);
@@ -666,7 +652,9 @@ export default function CampaignCreativeWorkshopAdvanced() {
       ...createCreativeVersionSnapshot(versionState, restoreVersion.destination, restoreVersion.scope),
       hasDestinationOverride: Boolean(versionState.overrides[restoreVersion.destination]),
     };
-    const restored = restoreCreativeVersionState(state, versionSnapshot);
+    const restored = restoreCreativeVersionState(state, versionSnapshot, {
+      directorConcepts: versionState.director.concepts,
+    });
     dispatch({ type: "push", value: restored });
     setDestination(restoreVersion.destination);
     setScope(restoreVersion.scope);
@@ -692,7 +680,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
   function confirmReset() {
     if (!pendingReset || !loaded) return;
-    const mailerQrIsUsable = (qr: QRLinkRecord | null | undefined) =>
+    const mailerQrIsUsable = (qr: Loaded["qrs"][number] | null | undefined) =>
       isCreativeQrUsableForCampaign(qr, {
         id: loaded.campaign.id,
         ownerId: loaded.campaign.owner_id,
@@ -773,7 +761,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
     : null;
 
   return (
-    <div ref={workspaceRef} className="flex min-h-[calc(100vh-7rem)] xl:min-h-0 flex-col min-w-0 max-w-full">
+    <div ref={workspaceRef} aria-busy={saving} className="flex min-h-[calc(100vh-7rem)] xl:min-h-0 flex-col min-w-0 max-w-full">
       <header className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[var(--bg-base)]/95 px-4 py-2 backdrop-blur-sm sm:px-6">
         <p className="min-w-0 truncate text-[11px] text-[var(--text-muted)]">Creative Studio</p>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -1248,108 +1236,6 @@ function historyReducer(history: ReturnType<typeof createHistory<CreativeWorksho
   return redoHistory(history);
 }
 
-async function loadWorkshop(campaignId: string) {
-  const auth = await supabase.auth.getUser();
-  if (auth.error) throw new Error(auth.error.message);
-  if (!auth.data.user) throw new Error("Sign in to open Creative Workshop.");
-  const ownerId = auth.data.user.id;
-  const campaignResult = await supabase.from("campaigns").select("*").eq("id", campaignId).eq("owner_id", ownerId).single();
-  if (campaignResult.error) throw new Error(campaignResult.error.message);
-  const campaign = campaignResult.data as CampaignRecord;
-  const assetRequest = campaign.business_id
-    ? supabase
-        .from("business_marketing_assets")
-        .select("id,title,file_url,external_url,thumbnail_url,is_active")
-        .eq("owner_id", ownerId)
-        .eq("business_id", campaign.business_id)
-        .order("updated_at", { ascending: false })
-    : Promise.resolve({ data: [] as Asset[], error: null });
-  const profileRequest = campaign.business_id
-    ? supabase
-        .from("business_cards")
-        .select("business_name,logo_url,cover_image_url,primary_color,accent_color")
-        .eq("owner_user_id", ownerId)
-        .eq("business_id", campaign.business_id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    : Promise.resolve({ data: null as Profile | null, error: null });
-  const businessRequest = campaign.business_id
-    ? supabase
-        .from("businesses")
-        .select("name,phone,website")
-        .eq("id", campaign.business_id)
-        .eq("owner_user_id", ownerId)
-        .maybeSingle()
-    : Promise.resolve({ data: null as Business | null, error: null });
-  const activeQrExpiry = new Date().toISOString();
-  const [outputResult, assetList, profileResult, businessResult, qrResult] = await Promise.all([
-    supabase.from("campaign_outputs").select("*").eq("campaign_id", campaignId).eq("output_type", "interactive_ad").maybeSingle(),
-    assetRequest,
-    profileRequest,
-    businessRequest,
-    supabase
-      .from("qr_links")
-      .select("*")
-      .eq("owner_user_id", ownerId)
-      .eq("status", "active")
-      .or(`expires_at.is.null,expires_at.gt.${activeQrExpiry}`)
-      .order("updated_at", { ascending: false }),
-  ]);
-  for (const result of [outputResult, assetList, profileResult, businessResult, qrResult]) {
-    if (result.error) throw new Error(result.error.message);
-  }
-  const output = outputResult.data as CampaignOutputRecord | null;
-  const assets = (assetList.data ?? []) as Asset[];
-  const qrs = (qrResult.data ?? []) as QRLinkRecord[];
-  const storedWorkshop = output?.metadata?.creative_workshop;
-  const normalizedState = normalizeWorkshopState(storedWorkshop ?? output?.metadata?.template_settings);
-  const state = !storedWorkshop
-    && campaign.primary_qr_id
-    && qrs.some(qr =>
-      qr.id === campaign.primary_qr_id
-      && isCreativeQrUsableForCampaign(qr, {
-        id: campaign.id,
-        ownerId: campaign.owner_id,
-        businessId: campaign.business_id,
-      }))
-    ? normalizeWorkshopState({
-        ...normalizedState,
-        global: { ...normalizedState.global, qrId: campaign.primary_qr_id, showQr: true },
-      })
-    : normalizedState;
-  return {
-    loaded: {
-      campaign,
-      output,
-      assets,
-      pickerAssets: listActiveCreativeAssetOptions(assets),
-      profile: profileResult.data as Profile | null,
-      business: businessResult.data as Business | null,
-      qrs,
-    },
-    state,
-  };
-}
-
-function buildContent(
-  loaded: Loaded,
-  selectedQr: QRLinkRecord | null,
-  imageUrl: string | null,
-) {
-  return normalizeCampaignContent({
-    campaign: loaded.campaign,
-    businessName: loaded.business?.name || loaded.profile?.business_name,
-    businessLogoUrl: loaded.profile?.logo_url,
-    businessPhone: loaded.business?.phone,
-    businessWebsite: loaded.business?.website,
-    imageUrl,
-    destinationUrl: selectedQr ? `${window.location.origin}/q/${selectedQr.slug}` : loaded.campaign.cta_url,
-    primaryColor: loaded.profile?.primary_color,
-    accentColor: loaded.profile?.accent_color,
-  });
-}
-
 function CompareSourceButton({
   active,
   disabled = false,
@@ -1481,7 +1367,7 @@ function templateLabel(template: string) {
 }
 
 function availableCreativeElements(
-  content: ReturnType<typeof normalizeCampaignContent>,
+  content: ReturnType<typeof buildContent>,
   settings: CreativeSettings,
   hasSelectedQr: boolean,
 ): NonNullable<CreativeElementKey>[] {

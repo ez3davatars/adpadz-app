@@ -1,3 +1,5 @@
+import { COMMUNITY_MAILER_ROW_GRID } from "./communityMailerProductionContracts";
+
 export type CommunityCardFormat = "postcard_9x12" | "community_card_6x11";
 export type CommunityCardSide = "front" | "back";
 export type CommunityCardStatus =
@@ -122,14 +124,14 @@ const ROW_PATTERN_UNITS: Record<CommunityMailerRowPattern, number[]> = {
   double_pair: [2, 2],
   full: [4],
 };
-const BLEED_INSET = 0.75;
-const GUTTER = 0.6;
-const UNIT_WIDTH = (100 - BLEED_INSET * 2 - GUTTER * 3) / 4;
-export const EDDM_POSTAL_BLOCK_WIDTH_PERCENT = 23.357;
-export const EDDM_CENTER_BAND_HEIGHT_PERCENT = 9.815;
+const BLEED_INSET = COMMUNITY_MAILER_ROW_GRID.bleedInsetPercent;
+const GUTTER = COMMUNITY_MAILER_ROW_GRID.gutterPercent;
+const UNIT_WIDTH = COMMUNITY_MAILER_ROW_GRID.unitWidthPercent;
+export const EDDM_POSTAL_BLOCK_WIDTH_PERCENT = COMMUNITY_MAILER_ROW_GRID.postalBlockWidthPercent;
+export const EDDM_CENTER_BAND_HEIGHT_PERCENT = COMMUNITY_MAILER_ROW_GRID.centerBandHeightPercent;
 export const EDDM_CENTER_BAND_TOP_PERCENT =
-  (100 - EDDM_CENTER_BAND_HEIGHT_PERCENT) / 2;
-const ROW_HEIGHT = EDDM_CENTER_BAND_TOP_PERCENT - BLEED_INSET;
+  COMMUNITY_MAILER_ROW_GRID.centerBandTopPercent;
+const ROW_HEIGHT = COMMUNITY_MAILER_ROW_GRID.placementHeightPercent;
 const BOTTOM_ROW_TOP = EDDM_CENTER_BAND_TOP_PERCENT +
   EDDM_CENTER_BAND_HEIGHT_PERCENT;
 

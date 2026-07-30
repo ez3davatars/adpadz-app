@@ -1,9 +1,14 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { geometryForMailer } from "./communityMailerProductionContracts";
 import type { CommunityCardFormat } from "./communityCards";
+import { getDestinationSafeBounds } from "../features/campaign-templates/creativeDestinations";
+import { createDisplayHeadline } from "../features/campaign-templates/normalizeCampaignContent";
 import { normalizeCreativeSettings } from "../features/campaign-templates/creativeWorkshop";
-import { resolveTemplateLayout } from "../features/campaign-templates/templateRegistry";
 import type { NormalizedBox } from "../features/campaign-templates/types";
+import {
+  resolveCommunityMailerQrPrintBox,
+  type CommunityMailerQrPrintBox,
+} from "./communityMailerQrGeometry";
 import {
   MIN_PRODUCTION_QR_CONTRAST_RATIO,
   normalizeQRStudioProductionArtwork,
@@ -100,6 +105,7 @@ export type CandidateDependencies = {
 export type CandidatePlacementRenderOptions = {
   width: number;
   height: number;
+  physicalWidthInches: number;
   qrBox: NormalizedBox | null;
 };
 
@@ -176,16 +182,28 @@ export function candidateEligibility(input: CandidateInput) {
         else if (printBox.adjusted) warnings.push(`${placement.slotKey} QR artwork is enlarged to preserve the ${geometryForMailer(input.format).qrMinimumInches}-inch module field.`);
       }
     }
-    if (placement.headline.length > 120) blockers.push(`${placement.slotKey} headline exceeds the production limit.`);
+    const displayHeadline = candidateDisplayHeadline(placement);
+    if (
+      Array.from(displayHeadline).length > 52
+      || displayHeadline.split(/\s+/).length > 6
+    ) {
+      blockers.push(`${placement.slotKey} display headline exceeds the render contract.`);
+    }
   }
   return { eligible: blockers.length === 0, blockers, warnings };
 }
 
-export type CandidateQrPrintBox = {
-  box: NormalizedBox;
-  moduleFieldInches: number;
-  adjusted: boolean;
-};
+export type CandidateQrPrintBox = CommunityMailerQrPrintBox;
+
+export function candidateDisplayHeadline(
+  placement: Pick<CandidatePlacement, "headline" | "offer">,
+) {
+  return createDisplayHeadline({
+    headline: placement.headline,
+    title: placement.headline,
+    offer_title: placement.offer,
+  });
+}
 
 export function resolveCandidateQrPrintBox(
   input: CandidateInput,
@@ -193,34 +211,24 @@ export function resolveCandidateQrPrintBox(
   artwork = normalizeQRStudioProductionArtwork(placement.qrArtwork),
 ): CandidateQrPrintBox | null {
   const settings = normalizeCreativeSettings(placement.creativeSettings || placement.templateSettings);
-  if (!settings.showQr) return null;
-  if (!artwork) return null;
   const geometry = geometryForMailer(input.format);
-  const layout = resolveTemplateLayout(settings.template).qr;
-  const moduleFieldRatio = artwork.style_preset === "standard" ? 0.72 : 0.54;
-  const minimumBadgeInches = geometry.qrMinimumInches / moduleFieldRatio;
-  const placementWidthInches = geometry.finishedWidthInches * placement.width / 100;
-  const placementHeightInches = geometry.finishedHeightInches * placement.height / 100;
-  if (placementWidthInches <= 0 || placementHeightInches <= 0) return null;
-  const width = Math.max(layout.width, minimumBadgeInches / placementWidthInches);
-  const height = Math.max(layout.height, minimumBadgeInches / placementHeightInches);
-  if (width > 0.94 || height > 0.94) return null;
-  const centerX = layout.x + layout.width / 2;
-  const centerY = layout.y + layout.height / 2;
-  const x = Math.min(1 - width, Math.max(0, centerX - width / 2));
-  const y = Math.min(1 - height, Math.max(0, centerY - height / 2));
-  const moduleFieldInches = Math.min(
-    width * placementWidthInches,
-    height * placementHeightInches,
-  ) * moduleFieldRatio;
-  if (moduleFieldInches + 1e-6 < geometry.qrMinimumInches) return null;
-  return {
-    box: { x, y, width, height },
-    moduleFieldInches,
-    adjusted: width > layout.width + 1e-6 || height > layout.height + 1e-6,
-  };
+  const placementWidthInches =
+    geometry.finishedWidthInches * placement.width / 100;
+  const placementHeightInches =
+    geometry.finishedHeightInches * placement.height / 100;
+  return resolveCommunityMailerQrPrintBox({
+    pageFormat: input.format,
+    placementWidthPercent: placement.width,
+    placementHeightPercent: placement.height,
+    settings,
+    artwork,
+    safeBounds: getDestinationSafeBounds(
+      "mailer",
+      placement.creativeFormatKey,
+      { widthInches: placementWidthInches, heightInches: placementHeightInches },
+    ),
+  });
 }
-
 
 async function composePdf(
   input: CandidateInput,
@@ -279,6 +287,7 @@ export async function generateCommunityMailerCandidate(
     const options: CandidatePlacementRenderOptions = {
       width: Math.max(1, Math.round(geometry.bleedPixels.width * placement.width / 100)),
       height: Math.max(1, Math.round(geometry.bleedPixels.height * placement.height / 100)),
+      physicalWidthInches: geometry.finishedWidthInches * placement.width / 100,
       qrBox: qrPrint?.box ?? null,
     };
     const bytes = await dependencies.renderPlacement(input, placement, options);

@@ -9,6 +9,10 @@ const workshop = readFileSync(new URL(
   "../../pages/business/CampaignCreativeWorkshopAdvanced.tsx",
   import.meta.url,
 ), "utf8");
+const workshopData = readFileSync(new URL(
+  "../../features/campaign-templates/creativeWorkshopData.ts",
+  import.meta.url,
+), "utf8");
 const inspector = readFileSync(new URL(
   "../../components/campaign-creative/CreativeInspector.tsx",
   import.meta.url,
@@ -89,17 +93,17 @@ describe("Campaign Creative resource-coherence contract", () => {
   });
 
   it("aligns Workshop loading, Mailer save checks, and destination-aware pickers", () => {
-    expect(workshop).toContain(
+    expect(workshopData).toContain(
       '.eq("business_id", campaign.business_id)',
     );
-    expect(workshop).toContain(
+    expect(workshopData).toContain(
       '.eq("id", campaign.business_id)',
     );
-    expect(workshop).toContain(
+    expect(workshopData).toContain(
       "pickerAssets: listActiveCreativeAssetOptions(assets)",
     );
-    expect(workshop).toContain('.eq("status", "active")');
-    expect(workshop).toContain(
+    expect(workshopData).toContain('.eq("status", "active")');
+    expect(workshopData).toContain(
       ".or(`expires_at.is.null,expires_at.gt.${activeQrExpiry}`)",
     );
     expect(workshop).toContain(

@@ -3,7 +3,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 const password = 'AdpadzDemo!2026';
 const owner = 'owner@adpadz-demo.test';
 const campaignId = '30000000-0000-4000-8000-000000000001';
-const creativeRoute = `/app/business/campaigns/${campaignId}/creative`;
+const creativeRoute = `/app/business/campaigns/${campaignId}/creative?mode=advanced`;
 const reviewRoute = `/app/business/campaigns/${campaignId}/review`;
 
 function monitorPage(page: Page, testInfo: TestInfo) {

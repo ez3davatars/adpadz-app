@@ -86,7 +86,14 @@ describe("Creative Workshop Advanced component contracts", () => {
     expect(workshop).toContain("shortcutRef.current.save()");
     expect(workshop).toContain('confirmLabel="Leave without saving"');
     expect(workshop).not.toContain("window.confirm");
+    expect(workshop).toContain("setDestination(result.state.director.destination)");
+    expect(workshop).toContain("withCreativeDirectorDestination(state, destination)");
+    expect(workshop).toContain("isCreativeWorkshopUnsaved(saved, stateForSave)");
+    expect(workshop).toContain('toggleAttribute("inert", saving)');
+    expect(workshop).toContain("aria-busy={saving}");
     expect(workshop).toContain('type: "preview"');
+    expect(inspector).toContain("QR emphasis");
+    expect(inspector).toContain('["showDescription", "Description", false]');
     expect(inspector).toContain("onPointerUp={onCommit}");
   });
 

@@ -1,13 +1,23 @@
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
+import { getDestinationSafeBounds } from "../../features/campaign-templates/creativeDestinations";
+import { mailerPrintFontSize } from "../../features/campaign-templates/mailerPrintTypography";
+import { normalizeCreativeSettings } from "../../features/campaign-templates/creativeWorkshop";
 import {
+  candidateDisplayHeadline,
   candidateEligibility,
   generateCommunityMailerCandidate,
   qrContrastRatio,
   resolveCandidateQrPrintBox,
   sha256Hex,
   type CandidateInput,
+  type CandidatePlacementRenderOptions,
 } from "../communityMailerCandidate";
+import { resolveCommunityMailerPreviewQrPrintBox } from "../communityMailerQrGeometry";
+import {
+  canonicalCommunityMailerCreativePlacement,
+  geometryForMailer,
+} from "../communityMailerProductionContracts";
 
 const onePixelPng = Uint8Array.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1,
@@ -131,11 +141,19 @@ describe("Community Mailer Production Candidate", () => {
     expect(result.blockers.join(" ")).toContain("QR");
   });
 
-  it("detects text overflow and unavailable QR contrast", () => {
+  it("derives a safe display headline without mutating an overlong snapshot source", () => {
+    const headline = "A very long production snapshot headline ".repeat(5).trim();
+    const placement = { ...input.placements[0], headline };
     expect(candidateEligibility({
       ...input,
-      placements: [{ ...input.placements[0], headline: "x".repeat(121) }],
-    }).eligible).toBe(false);
+      placements: [placement],
+    }).eligible).toBe(true);
+    expect(candidateDisplayHeadline(placement).length).toBeLessThanOrEqual(52);
+    expect(candidateDisplayHeadline(placement).split(/\s+/).length).toBeLessThanOrEqual(6);
+    expect(placement.headline).toBe(headline);
+  });
+
+  it("detects unavailable QR contrast", () => {
     expect(qrContrastRatio(null, "#ffffff")).toBeNull();
     expect(qrContrastRatio("invalid", "#ffffff")).toBeNull();
     expect(qrContrastRatio("#000000", "#ffffff")).toBeGreaterThan(20);
@@ -243,6 +261,156 @@ describe("Community Mailer Production Candidate", () => {
     });
     expect(mismatch.eligible).toBe(false);
     expect(mismatch.blockers.join(" ")).toContain("association differs");
+  });
+
+  it("sizes prominent QR cards from their inner artwork field", () => {
+    const standard = resolveCandidateQrPrintBox(input, input.placements[0]);
+    const prominentPlacement = {
+      ...input.placements[0],
+      creativeSettings: {
+        ...input.placements[0].creativeSettings,
+        qrEmphasis: "prominent",
+      },
+    };
+    const prominent = resolveCandidateQrPrintBox(input, prominentPlacement);
+    expect(prominent?.box.width).toBeGreaterThan(standard?.box.width ?? 0);
+    expect(prominent?.box.height).toBeGreaterThan(standard?.box.height ?? 0);
+    expect(prominent?.moduleFieldInches).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it("clamps the QR print box to the canonical safe area and fails closed when it cannot fit", () => {
+    const printBox = resolveCandidateQrPrintBox(input, input.placements[0]);
+    const safe = getDestinationSafeBounds(
+      "mailer",
+      input.placements[0].creativeFormatKey,
+    );
+    expect(printBox).not.toBeNull();
+    expect(printBox!.box.x).toBeGreaterThanOrEqual(safe.left);
+    expect(printBox!.box.y).toBeGreaterThanOrEqual(safe.top);
+    expect(printBox!.box.x + printBox!.box.width).toBeLessThanOrEqual(
+      1 - safe.right + 1e-10,
+    );
+    expect(printBox!.box.y + printBox!.box.height).toBeLessThanOrEqual(
+      1 - safe.bottom + 1e-10,
+    );
+
+    const tooSmall = {
+      ...input.placements[0],
+      width: 10,
+      height: 20,
+    };
+    expect(resolveCandidateQrPrintBox(input, tooSmall)).toBeNull();
+  });
+
+  it.each([
+    {
+      name: "standard QR in a standard placement",
+      formatKey: "standard",
+      stylePreset: "standard",
+      qrEmphasis: "standard",
+    },
+    {
+      name: "styled prominent QR in a featured placement",
+      formatKey: "featured",
+      stylePreset: "circular-pad",
+      qrEmphasis: "prominent",
+    },
+  ] as const)("keeps Creative preview and Candidate QR geometry identical for $name", ({
+    formatKey,
+    stylePreset,
+    qrEmphasis,
+  }) => {
+    const canonical = canonicalCommunityMailerCreativePlacement(formatKey);
+    expect(canonical).not.toBeNull();
+    const artwork = { ...qrArtwork, style_preset: stylePreset };
+    const settings = normalizeCreativeSettings({
+      ...input.placements[0].creativeSettings,
+      qrEmphasis,
+    });
+    const placement = {
+      ...input.placements[0],
+      width: canonical!.widthPercent,
+      height: canonical!.heightPercent,
+      creativeFormatKey: formatKey,
+      creativeSettings: settings,
+      qrArtwork: artwork,
+    };
+    const safeBounds = getDestinationSafeBounds(
+      "mailer",
+      formatKey,
+      {
+        widthInches: canonical!.widthInches,
+        heightInches: canonical!.heightInches,
+      },
+    );
+
+    const candidate = resolveCandidateQrPrintBox(
+      { ...input, placements: [placement] },
+      placement,
+      artwork,
+    );
+    const preview = resolveCommunityMailerPreviewQrPrintBox({
+      formatKey,
+      settings,
+      artwork,
+      safeBounds,
+    });
+
+    expect(candidate).not.toBeNull();
+    expect(preview).toEqual(candidate);
+    expect(preview!.moduleFieldInches).toBeGreaterThanOrEqual(0.75);
+  });
+
+  it("uses exact physical safe insets for all canonical preview placements", () => {
+    for (const formatKey of ["standard", "combined", "featured"] as const) {
+      const placement = canonicalCommunityMailerCreativePlacement(formatKey)!;
+      const safe = getDestinationSafeBounds("mailer", formatKey);
+      expect(safe.left * placement.widthInches).toBeCloseTo(0.125, 10);
+      expect(safe.right * placement.widthInches).toBeCloseTo(0.125, 10);
+      expect(safe.top * placement.heightInches).toBeCloseTo(0.125, 10);
+      expect(safe.bottom * placement.heightInches).toBeCloseTo(0.125, 10);
+    }
+  });
+
+  it("fails closed for an unknown preview placement or impossible safe bounds", () => {
+    const settings = normalizeCreativeSettings(input.placements[0].creativeSettings);
+    expect(resolveCommunityMailerPreviewQrPrintBox({
+      formatKey: "story",
+      settings,
+      artwork: qrArtwork,
+      safeBounds: getDestinationSafeBounds("mailer", "story"),
+    })).toBeNull();
+    expect(resolveCommunityMailerPreviewQrPrintBox({
+      formatKey: "standard",
+      settings,
+      artwork: qrArtwork,
+      safeBounds: { top: 0.49, right: 0.49, bottom: 0.49, left: 0.49 },
+    })).toBeNull();
+  });
+
+  it("passes actual placement width to the renderer and derives stable point floors", async () => {
+    let renderOptions: CandidatePlacementRenderOptions | null = null;
+    await generateCommunityMailerCandidate(input, {
+      ...dependencies,
+      renderPlacement: async (_candidateInput, _placement, options) => {
+        renderOptions = options;
+        return onePixelPng;
+      },
+    });
+
+    const geometry = geometryForMailer(input.format);
+    const expectedWidth =
+      geometry.finishedWidthInches * input.placements[0].width / 100;
+    expect(renderOptions).not.toBeNull();
+    expect(renderOptions!.physicalWidthInches).toBeCloseTo(expectedWidth, 10);
+    const fontSize = mailerPrintFontSize(5.2, 12, expectedWidth);
+    const minimumCqw = /, ([\d.]+)cqw\)$/.exec(fontSize ?? "")?.[1];
+    expect(fontSize).toMatch(/^max\(5\.2cqw, [\d.]+cqw\)$/);
+    expect(minimumCqw).toBeDefined();
+    expect(Number(minimumCqw) / 100 * expectedWidth * 72).toBeCloseTo(
+      12, 4,
+    );
+    expect(mailerPrintFontSize(5.2, 12)).toBeUndefined();
   });
 
   it("fails closed when the canonical renderer does not return a PNG", async () => {

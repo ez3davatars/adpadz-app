@@ -10,8 +10,11 @@ import {
   type CreativeSettings,
 } from "../../features/campaign-templates/creativeWorkshop";
 import { projectOriginalCreativeTreatment } from "../../features/campaign-templates/creativeWorkshopState";
-import { resolveTemplateLayout } from "../../features/campaign-templates/templateRegistry";
+import { getDestinationSafeBounds } from "../../features/campaign-templates/creativeDestinations";
+import { resolveCreativeTemplateLayout } from "../../features/campaign-templates/templateRegistry";
 import type { CampaignTemplateContent, NormalizedBox } from "../../features/campaign-templates/types";
+import { resolveCommunityMailerPreviewQrPrintBox } from "../../lib/communityMailerQrGeometry";
+import { canonicalCommunityMailerCreativePlacement } from "../../lib/communityMailerProductionContracts";
 import type { QRLinkRecord } from "../../lib/qr/qrTypes";
 import QRStudioPreview from "../qr/QRStudioPreview";
 
@@ -60,10 +63,41 @@ function CreativePreviewCanvasBase({
     () => showOriginal ? projectOriginalCreativeTreatment(settings) : settings,
     [settings, showOriginal],
   );
-  const layout = useMemo(() => resolveTemplateLayout(applied.template), [applied.template]);
+  const mailerPlacement = useMemo(
+    () => destination === "mailer"
+      ? canonicalCommunityMailerCreativePlacement(formatKey)
+      : null,
+    [destination, formatKey],
+  );
+  const layout = useMemo(
+    () => resolveCreativeTemplateLayout(applied.template, applied.qrEmphasis ?? "standard"),
+    [applied.qrEmphasis, applied.template],
+  );
+  const safeBounds = useMemo(
+    () => getDestinationSafeBounds(destination, formatKey, mailerPlacement),
+    [destination, formatKey, mailerPlacement],
+  );
+  const mailerQrPrint = useMemo(
+    () => destination === "mailer"
+      ? resolveCommunityMailerPreviewQrPrintBox({
+          formatKey,
+          settings: applied,
+          artwork: selectedQr,
+          safeBounds,
+        })
+      : null,
+    [applied, destination, formatKey, safeBounds, selectedQr],
+  );
   const rendererSettings = useMemo(
-    () => ({ ...applied, showQr: Boolean(selectedQr && applied.showQr) }),
-    [applied, selectedQr],
+    () => ({
+      ...applied,
+      showQr: Boolean(
+        selectedQr
+        && applied.showQr
+        && (destination !== "mailer" || mailerQrPrint),
+      ),
+    }),
+    [applied, destination, mailerQrPrint, selectedQr],
   );
   const inspection = useMemo(
     () => interactive && onSelectElement
@@ -75,7 +109,19 @@ function CreativePreviewCanvasBase({
       : undefined,
     [interactive, onClearSelection, onSelectElement, selectedElement],
   );
-  const qrGuideStyle = useMemo(() => boxStyle(layout.qr), [layout.qr]);
+  const qrGuideStyle = useMemo(
+    () => destination === "mailer"
+      ? mailerQrPrint ? boxStyle(mailerQrPrint.box) : undefined
+      : boxStyle(layout.qr),
+    [destination, layout.qr, mailerQrPrint],
+  );
+  const safeGuideStyle = useMemo(() => ({
+    top: `${safeBounds.top * 100}%`,
+    right: `${safeBounds.right * 100}%`,
+    bottom: `${safeBounds.bottom * 100}%`,
+    left: `${safeBounds.left * 100}%`,
+  }), [safeBounds]);
+
 
   useEffect(() => {
     if (!onOverflowChange) return;
@@ -119,8 +165,10 @@ function CreativePreviewCanvasBase({
         content={content}
         settings={rendererSettings}
         destination={destinationToRenderer(destination, formatKey)}
+        physicalWidthInches={mailerPlacement?.widthInches}
         inspection={inspection}
         qrArtwork={selectedQr ? <QRStudioPreview qr={selectedQr} /> : undefined}
+        qrBoxOverride={mailerQrPrint?.box}
         className="rounded-2xl"
       />
 
@@ -128,9 +176,9 @@ function CreativePreviewCanvasBase({
         <div className="pointer-events-none absolute inset-[2%] z-40 rounded-xl border border-dashed border-red-400" data-guide="bleed" aria-hidden="true" />
       )}
       {showGuides && (safeAreaOverride ?? applied.safeAreaVisible) && (
-        <div className="pointer-events-none absolute inset-[7%] z-40 rounded-xl border border-dashed border-amber-300" data-guide="safe-area" aria-hidden="true" />
+        <div className="pointer-events-none absolute z-40 rounded-xl border border-dashed border-amber-300" style={safeGuideStyle} data-guide="safe-area" data-destination={destination} aria-hidden="true" />
       )}
-      {showGuides && applied.qrMinimumVisible && (
+      {showGuides && applied.qrMinimumVisible && qrGuideStyle && (
         <div className="pointer-events-none absolute z-40 rounded-lg border-2 border-dashed border-neon" style={qrGuideStyle} data-guide="qr-minimum" aria-hidden="true" />
       )}
       {showOriginal && (

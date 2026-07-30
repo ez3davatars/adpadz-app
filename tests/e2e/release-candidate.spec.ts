@@ -310,7 +310,7 @@ test('Mission Control exposes supported fixture lifecycle states and blocks inva
 });
 test('Creative Workshop preserves destination overrides and saved distribution state', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'State-changing creative save runs once against fixture data.');
-  await signIn(page, ownerA, `/app/business/campaigns/${campaignId}/creative`);
+  await signIn(page, ownerA, `/app/business/campaigns/${campaignId}/creative?mode=advanced`);
   const failures = monitorReleasePage(page, testInfo);
   await expect(page.getByRole('heading', { name: 'Complete Approved Published Campaign' })).toBeVisible();
   await page.getByRole('button', { name: /Social Media/ }).click();

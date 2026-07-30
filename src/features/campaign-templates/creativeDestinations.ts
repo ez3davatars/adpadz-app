@@ -1,3 +1,8 @@
+import {
+  canonicalCommunityMailerCreativePlacement,
+  communityMailerRowGridPlacement,
+} from "../../lib/communityMailerProductionContracts";
+
 import type { CampaignTemplateDestination } from "./types";
 
 /**
@@ -29,6 +34,13 @@ export type CreativeFormatKey =
   | "portrait"
   | "landscape"
   | "story";
+
+export type CreativeSafeBounds = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
 
 export type CreativeFormatDefinition = {
   key: CreativeFormatKey;
@@ -70,6 +82,10 @@ const DIGITAL_CAPABILITIES: CreativeDestinationCapabilities = Object.freeze({
   hasBleed: false,
   allowsFeaturedSponsor: false,
 });
+const MAILER_STANDARD_GEOMETRY = communityMailerRowGridPlacement(1);
+const MAILER_COMBINED_GEOMETRY = communityMailerRowGridPlacement(2);
+const MAILER_FEATURED_GEOMETRY = communityMailerRowGridPlacement(4);
+
 
 export const CREATIVE_DESTINATION_MAP: Readonly<
   Record<CreativeDestination, CreativeDestinationDefinition>
@@ -82,9 +98,27 @@ export const CREATIVE_DESTINATION_MAP: Readonly<
     rendererDestination: "mailer",
     defaultFormat: "standard",
     formats: [
-      { key: "standard", label: "Standard", detail: "Everyday placement", ratio: "4 / 3", aspect: 4 / 3 },
-      { key: "combined", label: "Combined", detail: "Wide print placement", ratio: "16 / 9", aspect: 16 / 9 },
-      { key: "featured", label: "Featured Sponsor", detail: "Eligible premium placement", ratio: "4 / 3", aspect: 4 / 3 },
+      {
+        key: "standard",
+        label: "Standard",
+        detail: "Single-unit print placement",
+        ratio: `${MAILER_STANDARD_GEOMETRY.widthInches} / ${MAILER_STANDARD_GEOMETRY.heightInches}`,
+        aspect: MAILER_STANDARD_GEOMETRY.aspect,
+      },
+      {
+        key: "combined",
+        label: "Combined",
+        detail: "Two-unit print placement",
+        ratio: `${MAILER_COMBINED_GEOMETRY.widthInches} / ${MAILER_COMBINED_GEOMETRY.heightInches}`,
+        aspect: MAILER_COMBINED_GEOMETRY.aspect,
+      },
+      {
+        key: "featured",
+        label: "Featured Sponsor",
+        detail: "Full-row eligible placement",
+        ratio: `${MAILER_FEATURED_GEOMETRY.widthInches} / ${MAILER_FEATURED_GEOMETRY.heightInches}`,
+        aspect: MAILER_FEATURED_GEOMETRY.aspect,
+      },
     ],
     capabilities: {
       affectsPrint: true,
@@ -181,6 +215,48 @@ export function creativeFormatAspect(
   format?: string | null,
 ): number {
   return resolveCreativeFormatDefinition(destination, format).aspect;
+}
+
+export type CreativePhysicalSize = {
+  widthInches: number;
+  heightInches: number;
+};
+
+export function getDestinationSafeBounds(
+  destination: CreativeDestination,
+  format?: string | null,
+  physicalSize?: CreativePhysicalSize | null,
+): CreativeSafeBounds {
+  if (destination === "mailer") {
+    const canonical = canonicalCommunityMailerCreativePlacement(format);
+    const size = physicalSize ?? canonical;
+    if (
+      !size
+      || !Number.isFinite(size.widthInches)
+      || !Number.isFinite(size.heightInches)
+      || size.widthInches <= 0
+      || size.heightInches <= 0
+    ) {
+      return { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 };
+    }
+    const printSafeInsetInches = 0.125;
+    return {
+      top: printSafeInsetInches / size.heightInches,
+      right: printSafeInsetInches / size.widthInches,
+      bottom: printSafeInsetInches / size.heightInches,
+      left: printSafeInsetInches / size.widthInches,
+    };
+  }
+  if (destination === "qr") {
+    return { top: 0.045, right: 0.05, bottom: 0.06, left: 0.05 };
+  }
+  if (destination === "social" && format === "story") {
+    return { top: 0.08, right: 0.05, bottom: 0.11, left: 0.05 };
+  }
+  if (destination === "social") {
+    return { top: 0.055, right: 0.055, bottom: 0.07, left: 0.055 };
+  }
+  return { top: 0.045, right: 0.045, bottom: 0.055, left: 0.045 };
 }
 
 export function creativeDestinationLabel(

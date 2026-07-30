@@ -10,6 +10,13 @@ import {
   DEFAULT_TEMPLATE_SETTINGS,
   normalizeTemplateSettings,
 } from "./templateRegistry";
+import {
+  type CreativeConceptSelection,
+  DEFAULT_CREATIVE_DIRECTOR_STATE,
+  normalizeCreativeDirectorState,
+  type CreativeDirectorState,
+  type CreativeRecipeId,
+} from "./creativeDirectorSchema";
 import type {
   CampaignTemplateDestination,
   CampaignTemplateSettings,
@@ -57,6 +64,7 @@ export type OverlayStyle = "solid" | "linear" | "radial" | "bottom-fade" | "top-
 export type TextSize = "small" | "medium" | "large";
 export type TextAlignment = "left" | "center" | "right";
 export type TextPanel = "none" | "soft" | "solid" | "gradient";
+export type QrEmphasis = "standard" | "prominent";
 
 export type CreativeSettings = CampaignTemplateSettings & {
   imageAssetId: string | null;
@@ -75,6 +83,7 @@ export type CreativeSettings = CampaignTemplateSettings & {
   headlineSize: TextSize;
   textAlign: TextAlignment;
   textPanel: TextPanel;
+  qrEmphasis?: QrEmphasis;
   primaryColorOverride: string | null;
   accentColorOverride: string | null;
   showLogo: boolean;
@@ -82,6 +91,7 @@ export type CreativeSettings = CampaignTemplateSettings & {
   showHeadline: boolean;
   showOffer: boolean;
   showCta: boolean;
+  showDescription?: boolean;
   showPhone: boolean;
   showWebsite: boolean;
   showSponsorBadge: boolean;
@@ -95,6 +105,7 @@ export type CreativeWorkshopState = {
   global: CreativeSettings;
   overrides: Partial<Record<CreativeDestination, CreativeSettings>>;
   formats: CreativeFormatMap;
+  director: CreativeDirectorState;
 };
 
 export type CreativeAssetReference = {
@@ -197,6 +208,7 @@ export const DEFAULT_WORKSHOP_STATE: CreativeWorkshopState = Object.freeze({
   global: DEFAULT_CREATIVE_SETTINGS,
   overrides: {},
   formats: DEFAULT_CREATIVE_FORMATS,
+  director: DEFAULT_CREATIVE_DIRECTOR_STATE,
 });
 
 export function normalizeCreativeSettings(value: unknown): CreativeSettings {
@@ -225,6 +237,15 @@ export function normalizeCreativeSettings(value: unknown): CreativeSettings {
     headlineSize: choice(input.headlineSize, ["small", "medium", "large"], "medium"),
     textAlign: choice(input.textAlign, ["left", "center", "right"], "left"),
     textPanel: choice(input.textPanel, ["none", "soft", "solid", "gradient"], "none"),
+    ...(input.qrEmphasis === "standard" || input.qrEmphasis === "prominent"
+      ? {
+          qrEmphasis: choice<QrEmphasis>(
+            input.qrEmphasis,
+            ["standard", "prominent"],
+            "standard",
+          ),
+        }
+      : {}),
     primaryColorOverride: color(input.primaryColorOverride, null),
     accentColorOverride: color(input.accentColorOverride, null),
     showLogo: input.showLogo !== false,
@@ -232,6 +253,9 @@ export function normalizeCreativeSettings(value: unknown): CreativeSettings {
     showHeadline: input.showHeadline !== false,
     showOffer: input.showOffer !== false,
     showCta: input.showCta !== false,
+    ...(typeof input.showDescription === "boolean"
+      ? { showDescription: input.showDescription }
+      : {}),
     showPhone: input.showPhone === true,
     showWebsite: input.showWebsite === true,
     showSponsorBadge: input.showSponsorBadge !== false,
@@ -260,15 +284,23 @@ export function normalizeWorkshopState(value: unknown): CreativeWorkshopState {
   const overridesInput = input.overrides && typeof input.overrides === "object"
     ? input.overrides as Record<string, unknown>
     : {};
+  const global = normalizeCreativeSettings(input.global ?? input);
   const overrides: CreativeWorkshopState["overrides"] = {};
   for (const destination of CREATIVE_DESTINATION_KEYS) {
     if (overridesInput[destination]) overrides[destination] = normalizeCreativeSettings(overridesInput[destination]);
   }
+  const fallbackRecipes = Object.fromEntries(
+    CREATIVE_DESTINATION_KEYS.map(destination => [
+      destination,
+      inferCreativeRecipeId(overrides[destination]?.template ?? global.template),
+    ]),
+  ) as Record<CreativeDestination, CreativeRecipeId>;
   return {
     version: 1,
-    global: normalizeCreativeSettings(input.global ?? input),
+    global,
     overrides,
     formats: normalizeCreativeFormats(input.formats),
+    director: normalizeCreativeDirectorState(input.director, fallbackRecipes),
   };
 }
 
@@ -361,25 +393,39 @@ export function updateCreativeSettings(
   scope: "global" | "destination",
   patch: Partial<CreativeSettings>,
 ): CreativeWorkshopState {
-  if (scope === "global") return { ...state, global: normalizeCreativeSettings({ ...state.global, ...patch }) };
-  const current = resolveCreativeSettings(state, destination);
-  return {
-    ...state,
-    overrides: { ...state.overrides, [destination]: normalizeCreativeSettings({ ...current, ...patch }) },
-  };
+  const next = scope === "global"
+    ? {
+        ...state,
+        global: normalizeCreativeSettings({ ...state.global, ...patch }),
+      }
+    : {
+        ...state,
+        overrides: {
+          ...state.overrides,
+          [destination]: normalizeCreativeSettings({
+            ...resolveCreativeSettings(state, destination),
+            ...patch,
+          }),
+        },
+      };
+  if (!Object.prototype.hasOwnProperty.call(patch, "template")) return next;
+  const affectedDestinations = scope === "global"
+    ? CREATIVE_DESTINATION_KEYS.filter(item => !next.overrides[item])
+    : [destination];
+  return reconcileCreativeDirectorConcepts(next, affectedDestinations);
 }
 
 export function resetCreativeDestination(state: CreativeWorkshopState, destination: CreativeDestination) {
   const overrides = { ...state.overrides };
   delete overrides[destination];
-  return {
+  return reconcileCreativeDirectorConcepts({
     ...state,
     overrides,
     formats: {
       ...state.formats,
       [destination]: DEFAULT_CREATIVE_FORMATS[destination],
     },
-  };
+  }, [destination]);
 }
 
 export function affectsPrint(previous: CreativeWorkshopState, next: CreativeWorkshopState) {
@@ -447,4 +493,40 @@ function cleanDestinationUrl(value: unknown): string | null {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim())
     ? value.trim()
     : null;
+}
+
+export function inferCreativeRecipeId(
+  template: CampaignTemplateSettings["template"],
+): CreativeRecipeId {
+  if (template === "offer-first") return "impact";
+  if (template === "hero-visual") return "cinematic";
+  return "editorial";
+}
+
+export function reconcileCreativeDirectorConcepts(
+  state: CreativeWorkshopState,
+  destinations: readonly CreativeDestination[],
+  savedConcepts?: Partial<
+    Record<CreativeDestination, CreativeConceptSelection>
+  >,
+): CreativeWorkshopState {
+  const concepts = { ...state.director.concepts };
+  for (const destination of new Set(destinations)) {
+    const recipeId = inferCreativeRecipeId(
+      resolveCreativeSettings(state, destination).template,
+    );
+    const saved = savedConcepts?.[destination];
+    concepts[destination] = {
+      recipeId,
+      refinements:
+        saved?.recipeId === recipeId ? [...saved.refinements] : [],
+    };
+  }
+  return {
+    ...state,
+    director: normalizeCreativeDirectorState({
+      ...state.director,
+      concepts,
+    }),
+  };
 }

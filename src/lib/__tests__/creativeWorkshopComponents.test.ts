@@ -10,7 +10,7 @@ import {
   DEFAULT_WORKSHOP_STATE,
   normalizeCreativeSettings,
 } from "../../features/campaign-templates/creativeWorkshop";
-import type { CampaignTemplateContent } from "../../features/campaign-templates/types";
+import type { CampaignTemplateContent, CampaignTemplateDestination } from "../../features/campaign-templates/types";
 import type { CampaignCreativeVersionRecord } from "../campaignCreativeHistory";
 
 const content: CampaignTemplateContent = {
@@ -247,6 +247,67 @@ describe("Creative preview and template rendering", () => {
     expect(html).toContain('data-testid="exact-qr-artwork"');
   });
 
+  it.each<CampaignTemplateDestination>([
+    "mailer",
+    "qr",
+    "social-landscape",
+    "social-portrait",
+  ])("contains exact QR artwork in a centered physical square for %s", destination => {
+    const html = renderToStaticMarkup(createElement(CampaignTemplateRenderer, {
+      content,
+      settings,
+      destination,
+      qrArtwork: createElement(
+        "svg",
+        { "data-testid": "exact-qr-artwork", viewBox: "0 0 100 100" },
+      ),
+    }));
+
+    expect(html).toContain('data-qr-artwork-container="contained"');
+    expect(html).toContain('data-qr-artwork-field="square"');
+    expect(html).toContain("container-type:size");
+    expect(html).toContain("width:min(100cqw, 100cqh)");
+    expect(html).toContain("height:min(100cqw, 100cqh)");
+  });
+
+  it("keeps the prominent QR caption outside the contained square field", () => {
+    const html = renderToStaticMarkup(createElement(CampaignTemplateRenderer, {
+      content,
+      settings: normalizeCreativeSettings({ ...settings, qrEmphasis: "prominent" }),
+      destination: "mailer",
+      qrArtwork: createElement("svg", { viewBox: "0 0 100 100" }),
+    }));
+    expect(html.indexOf('data-qr-artwork-field="square"')).toBeLessThan(
+      html.indexOf("Scan to explore"),
+    );
+  });
+
+  it("applies physical type floors to Mailer output without changing digital styles", () => {
+    const prominentSettings = normalizeCreativeSettings({
+      ...settings,
+      qrEmphasis: "prominent",
+    });
+    const qrArtwork = createElement("svg", { viewBox: "0 0 100 100" });
+    const mailer = renderToStaticMarkup(createElement(CampaignTemplateRenderer, {
+      content,
+      settings: prominentSettings,
+      destination: "mailer",
+      physicalWidthInches: 2.901,
+      qrArtwork,
+    }));
+    const digital = renderToStaticMarkup(createElement(CampaignTemplateRenderer, {
+      content,
+      settings: prominentSettings,
+      destination: "social-square",
+      physicalWidthInches: 2.901,
+      qrArtwork,
+    }));
+
+    expect(mailer).toContain("font-size:max(5.2cqw, 5.745145cqw)");
+    expect(mailer).toContain("font-size:max(1.15cqw, 2.872573cqw)");
+    expect(digital).not.toContain("font-size:max(");
+  });
+
   it("omits every inspector affordance from non-interactive export markup", () => {
     const html = renderToStaticMarkup(createElement(CreativePreviewCanvas, {
       content,
@@ -294,7 +355,8 @@ describe("Creative preview and template rendering", () => {
     expect(html).toContain("original treatment");
     expect(html).toContain('data-guide="bleed"');
     expect(html).toContain('data-guide="safe-area"');
-    expect(html).toContain('data-guide="qr-minimum"');
+    expect(html).not.toContain('data-guide="qr-minimum"');
+    expect(html).not.toContain('aria-label="Campaign QR code"');
     expect(html).toContain('data-guide="bleed" aria-hidden="true"');
     expect(html).toContain("transform:scale(1) rotate(0deg)");
     expect(html).toContain("brightness(100%)");

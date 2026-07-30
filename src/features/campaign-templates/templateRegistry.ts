@@ -16,7 +16,7 @@ const definitions: CampaignTemplateDefinition[] = [
     bestFor: "Services, experiences, transformations, and destination imagery.",
     defaultLayout: {
       image: box(0, 0, 1, .62), logo: box(.06, .05, .3, .1), copy: box(.06, .53, .88, .28),
-      cta: box(.06, .84, .46, .1), qr: box(.78, .78, .16, .16), expiration: box(.06, .95, .6, .035),
+      cta: box(.06, .84, .46, .1), qr: box(.775, .78, .16, .16), expiration: box(.06, .95, .6, .035),
     },
   },
   {
@@ -26,7 +26,7 @@ const definitions: CampaignTemplateDefinition[] = [
     bestFor: "Discounts, limited-time offers, and direct response.",
     defaultLayout: {
       image: box(.52, 0, .48, .48), logo: box(.06, .05, .34, .1), copy: box(.06, .22, .88, .48),
-      cta: box(.06, .76, .48, .11), qr: box(.77, .75, .17, .17), expiration: box(.06, .91, .6, .04),
+      cta: box(.06, .76, .48, .11), qr: box(.765, .75, .17, .17), expiration: box(.06, .91, .6, .04),
     },
   },
   {
@@ -36,7 +36,7 @@ const definitions: CampaignTemplateDefinition[] = [
     bestFor: "Awareness, new businesses, and evergreen promotion.",
     defaultLayout: {
       image: box(0, .48, 1, .52), logo: box(.07, .07, .38, .15), copy: box(.07, .25, .86, .29),
-      cta: box(.07, .78, .46, .1), qr: box(.77, .76, .17, .17), expiration: box(.07, .92, .55, .04),
+      cta: box(.07, .78, .46, .1), qr: box(.765, .76, .17, .17), expiration: box(.07, .92, .55, .04),
     },
   },
   {
@@ -94,5 +94,29 @@ export function normalizeTemplateSettings(value: unknown): CampaignTemplateSetti
 
 export function resolveTemplateLayout(template: CampaignTemplateKey): CampaignTemplateLayout {
   return CAMPAIGN_TEMPLATE_REGISTRY[template].defaultLayout;
+}
+
+export function resolveCreativeTemplateLayout(
+  template: CampaignTemplateKey,
+  qrEmphasis: "standard" | "prominent" = "standard",
+): CampaignTemplateLayout {
+  const layout = resolveTemplateLayout(template);
+  if (qrEmphasis !== "prominent") return layout;
+  return {
+    ...layout,
+    qr: expandAnchoredQrBox(layout.qr),
+  };
+}
+
+function expandAnchoredQrBox(box: NormalizedBox): NormalizedBox {
+  const right = box.x + box.width;
+  const bottom = box.y + box.height;
+  const size = Math.min(0.22, Math.max(box.width, box.height) * 1.22);
+  return {
+    x: Math.max(0.035, right - size),
+    y: Math.max(0.035, bottom - size),
+    width: size,
+    height: size,
+  };
 }
 

@@ -10,6 +10,7 @@ import {
   normalizeCreativeSettings,
   normalizeWorkshopState,
   pushHistory,
+  reconcileCreativeDirectorConcepts,
   resolveCreativeSettings,
   type CreativeDestination,
   type CreativeElementKey,
@@ -70,6 +71,7 @@ export type CreativeHistory<T> = {
 export type CreativeRestoreOptions = {
   destination?: CreativeDestination;
   scope?: CreativeScope;
+  directorConcepts?: CreativeWorkshopState["director"]["concepts"];
 };
 
 const DESTINATIONS: readonly CreativeDestination[] = CREATIVE_DESTINATION_KEYS;
@@ -152,7 +154,7 @@ const SECTION_KEYS: Record<CreativeResetSection, readonly (keyof CreativeSetting
     "overlayDirection",
     "overlaySpread",
   ],
-  qr: ["qrId", "showQr"],
+  qr: ["qrId", "showQr", "qrEmphasis"],
   text: ["headlineSize", "textAlign", "textPanel"],
   branding: ["theme", "primaryColorOverride", "accentColorOverride"],
   visibility: [
@@ -161,6 +163,7 @@ const SECTION_KEYS: Record<CreativeResetSection, readonly (keyof CreativeSetting
     "showHeadline",
     "showOffer",
     "showCta",
+    "showDescription",
     "showQr",
     "showExpiration",
     "showPhone",
@@ -191,6 +194,7 @@ const SETTING_CHANGE_LABELS: readonly {
   { keys: ["overlayDirection"], label: "Overlay direction" },
   { keys: ["overlaySpread"], label: "Overlay spread" },
   { keys: ["qrId"], label: "QR selection" },
+  { keys: ["qrEmphasis"], label: "QR emphasis" },
   { keys: ["showQr"], label: "QR visibility" },
   { keys: ["headlineSize"], label: "Headline size" },
   { keys: ["textAlign"], label: "Text alignment" },
@@ -203,6 +207,7 @@ const SETTING_CHANGE_LABELS: readonly {
   { keys: ["showHeadline"], label: "Headline visibility" },
   { keys: ["showOffer"], label: "Offer visibility" },
   { keys: ["showCta"], label: "CTA visibility" },
+  { keys: ["showDescription"], label: "Description visibility" },
   { keys: ["showExpiration"], label: "Expiration visibility" },
   { keys: ["showPhone"], label: "Phone visibility" },
   { keys: ["showWebsite"], label: "Website visibility" },
@@ -585,24 +590,37 @@ export function restoreCreativeVersionState(
   const scope = options.scope ?? snapshot.scope;
   const settings = enforceCreativeQrRestrictions(snapshot.settings, destination);
   const stateWithFormat = updateCreativeFormat(current, destination, snapshot.formatKey);
+  let restored: CreativeWorkshopState;
   if (scope === "global") {
-    return {
+    restored = {
       ...stateWithFormat,
       global: settings,
     };
-  }
-  if (snapshot.hasDestinationOverride === false) {
+  } else if (snapshot.hasDestinationOverride === false) {
     const overrides = { ...stateWithFormat.overrides };
     delete overrides[destination];
-    return { ...stateWithFormat, overrides };
+    restored = { ...stateWithFormat, overrides };
+  } else {
+    restored = {
+      ...stateWithFormat,
+      overrides: {
+        ...stateWithFormat.overrides,
+        [destination]: settings,
+      },
+    };
   }
-  return {
-    ...stateWithFormat,
-    overrides: {
-      ...stateWithFormat.overrides,
-      [destination]: settings,
-    },
-  };
+  const affectedDestinations = scope === "global"
+    ? CREATIVE_DESTINATION_KEYS.filter(item => !restored.overrides[item])
+    : [destination];
+  const savedConcepts =
+    scope === "destination" && snapshot.hasDestinationOverride === false
+      ? undefined
+      : options.directorConcepts;
+  return reconcileCreativeDirectorConcepts(
+    restored,
+    affectedDestinations,
+    savedConcepts,
+  );
 }
 
 export function restoreCreativeVersion(
