@@ -42,6 +42,8 @@ export type CreativeAssetOption = {
   thumbnail_url: string | null;
 };
 
+type ProofGuides = { safe: boolean; bleed: boolean; qr: boolean };
+
 type CreativeInspectorProps = {
   settings: CreativeSettings;
   /**
@@ -69,6 +71,9 @@ type CreativeInspectorProps = {
    */
   onCommitGesture?: () => void;
   onResetSection: (section: CreativeInspectorSection) => void;
+  /** Ephemeral guide overlay state lifted from the proof stage. Mailer only. */
+  proofGuides?: ProofGuides;
+  onProofGuidesChange?: (guides: ProofGuides) => void;
 };
 
 const TEXT_VISIBILITY_KEYS = {
@@ -140,6 +145,8 @@ export default function CreativeInspector({
   onChange,
   onCommitGesture,
   onResetSection,
+  proofGuides,
+  onProofGuidesChange,
 }: CreativeInspectorProps) {
   const selectedQr = qrs.find(qr => qr.id === settings.qrId) ?? null;
   const selectedLabel = selectedElement ? elementLabel(selectedElement) : null;
@@ -260,7 +267,7 @@ export default function CreativeInspector({
               {section === "Text" && <TextControls settings={settings} change={onChange} selectedElement={selectedElement} overflows={selectedTextOverflows} field={field} />}
               {section === "Branding" && <BrandControls settings={settings} change={onChange} field={field} />}
               {section === "Visibility" && <VisibilityControls settings={settings} change={onChange} destination={destination} field={field} />}
-              {section === "Print Safety" && <PrintControls settings={settings} change={onChange} destination={destination} />}
+              {section === "Print Safety" && <PrintControls settings={settings} change={onChange} destination={destination} proofGuides={proofGuides} onProofGuidesChange={onProofGuidesChange} />}
             </InspectorSection>
           </Fragment>
         ))}
@@ -648,16 +655,53 @@ function VisibilityControls({ settings, change, destination, field }: { settings
   );
 }
 
-function PrintControls({ settings, change, destination }: { settings: CreativeSettings; change: Change; destination: CreativeDestination }) {
+function PrintControls({
+  settings,
+  change,
+  destination,
+  proofGuides,
+  onProofGuidesChange,
+}: {
+  settings: CreativeSettings;
+  change: Change;
+  destination: CreativeDestination;
+  proofGuides?: ProofGuides;
+  onProofGuidesChange?: (g: ProofGuides) => void;
+}) {
+  if (destination === "mailer" && proofGuides && onProofGuidesChange) {
+    return (
+      <>
+        <p className="text-[9px] leading-relaxed text-[var(--text-muted)]">
+          Guide overlays appear on the proof and disappear on reload — they do not save to the creative.
+        </p>
+        <Toggle
+          label="Safe area"
+          checked={proofGuides.safe}
+          onChange={safe => onProofGuidesChange({ ...proofGuides, safe })}
+        />
+        <Toggle
+          label="Bleed"
+          checked={proofGuides.bleed}
+          onChange={bleed => onProofGuidesChange({ ...proofGuides, bleed })}
+        />
+        <Toggle
+          label="QR minimum size"
+          checked={proofGuides.qr}
+          onChange={qr => onProofGuidesChange({ ...proofGuides, qr })}
+        />
+        <p className="rounded-xl bg-amber-400/[0.08] p-2 text-[9px] leading-relaxed text-amber-100">
+          Saving print changes increments the rendered revision, invalidates preflight, and makes the Production Candidate stale.
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <Toggle label="Safe area overlay" checked={settings.safeAreaVisible} onChange={safeAreaVisible => change({ safeAreaVisible })} />
       <Toggle label="Bleed overlay" checked={settings.bleedVisible} disabled={destination !== "mailer"} onChange={bleedVisible => change({ bleedVisible })} />
       <Toggle label="QR minimum-size overlay" checked={settings.qrMinimumVisible} onChange={qrMinimumVisible => change({ qrMinimumVisible })} />
       <p className="rounded-xl bg-amber-400/[0.08] p-2 text-[9px] leading-relaxed text-amber-100">
-        {destination === "mailer"
-          ? "Saving print changes increments the rendered revision, invalidates preflight, and makes the Production Candidate stale."
-          : "A destination-only digital override leaves Mailer production current."}
+        A destination-only digital override leaves Mailer production current.
       </p>
     </>
   );

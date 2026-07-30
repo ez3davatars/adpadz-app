@@ -174,6 +174,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
   const [destination, setDestination] = useState<CreativeDestination>("mailer");
   const [scope, setScope] = useState<CreativeScope>("global");
   const [zoom, setZoom] = useState<"fit" | "50" | "100">("fit");
+  const [proofGuides, setProofGuides] = useState({ safe: false, bleed: false, qr: false });
   const [activeInspector, setActiveInspector] = useState<CreativeInspectorSection>("Template");
   const [selectedElement, setSelectedElement] = useState<CreativeElementKey>(null);
   const [selectedTextOverflows, setSelectedTextOverflows] = useState<boolean | null>(null);
@@ -349,6 +350,24 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
 
   const selectedQr = loaded?.qrs.find(qr => qr.id === settings.qrId) ?? null;
+
+  const mailerQrStatus = useMemo(() => {
+    if (destination !== "mailer" || !loaded) return null;
+    if (!settings.showQr) return "QR hidden — enable for print";
+    if (!selectedQr) return "No QR selected";
+    const usable = isCreativeQrUsableForCampaign(selectedQr, {
+      id: campaignId,
+      ownerId: loaded.campaign.owner_id,
+      businessId: loaded.campaign.business_id ?? null,
+    });
+    if (!usable) return "QR ownership needs review";
+    const contrast = qrContrastRatio(
+      selectedQr.foreground_color,
+      selectedQr.inner_field_color || selectedQr.background_color,
+    );
+    if (contrast < MIN_PRODUCTION_QR_CONTRAST_RATIO) return `QR contrast ${contrast.toFixed(1)}:1 — below minimum`;
+    return null;
+  }, [destination, loaded, settings.showQr, selectedQr, campaignId]);
   const selectedAsset = loaded
     ? loaded.assets.find(asset => asset.id === (settings.imageAssetId || loaded.campaign.primary_image_id)) ?? null
     : null;
@@ -940,9 +959,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
                   onOverflowChange={handleOverflowChange}
                   previewScaleClass={previewScale}
                   aspectRatio={currentFormat.ratio}
-                  campaignId={campaignId}
-                  campaignOwnerId={loaded.campaign.owner_id}
-                  campaignBusinessId={loaded.campaign.business_id ?? null}
+                  guideOverrides={proofGuides}
                 />
               ) : destination === "discovery" ? (
                 <DiscoveryFeedStage
@@ -1000,7 +1017,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-b-3xl border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
               <span className="font-semibold text-[var(--text-secondary)]">{context}</span>
-              <span className={printImpact ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : destination === "mailer" ? "Print ready" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
+              <span className={printImpact || mailerQrStatus ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : mailerQrStatus ?? (destination === "mailer" ? "Print ready" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared")}</span>
             </div>
           </div>
         </main>
@@ -1050,6 +1067,8 @@ export default function CampaignCreativeWorkshopAdvanced() {
             onChange={change}
             onCommitGesture={commitGesture}
             onResetSection={section => setPendingReset({ type: "section", section })}
+            proofGuides={proofGuides}
+            onProofGuidesChange={setProofGuides}
           />
         </div>
       </div>

@@ -135,19 +135,21 @@ describe("Phase 4 — ephemeral guide state", () => {
     expect(isEffectiveCreativeDestinationUnsaved(saved, withGuides, "social")).toBe(false);
   });
 
-  it("MailerProofStage uses local guide state and does not dispatch to workshop", () => {
+  it("MailerProofStage accepts guide overrides as a prop lifted from the workshop", () => {
     const proof = src("components/campaign-creative/MailerProofStage.tsx");
-    expect(proof).toContain("useState(false)");
+    // Guide state is now lifted to the workshop and passed as guideOverrides prop —
+    // the stage no longer owns local useState(false) booleans.
+    expect(proof).toContain("guideOverrides");
+    expect(proof).not.toContain("useState(false)");
     expect(proof).not.toContain("dispatch(");
-    expect(proof).not.toContain("updateCreativeSettings(");
     expect(proof).not.toContain("onChange(");
   });
 
-  it("MailerProofStage merges display settings without touching real settings", () => {
+  it("MailerProofStage merges display settings from guideOverrides prop without touching real settings", () => {
     const proof = src("components/campaign-creative/MailerProofStage.tsx");
     expect(proof).toContain("displaySettings");
     expect(proof).toContain("...settings");
-    expect(proof).toContain("safeAreaVisible: guideSafe");
+    expect(proof).toContain("safeAreaVisible: guideOverrides.safe");
   });
 });
 
@@ -229,21 +231,23 @@ describe("Phase 4 — destination stage integration", () => {
 // ── 6. Mailer proof and Production Candidate consistency ──────────────────────
 
 describe("Phase 4 — Mailer proof and Production Candidate consistency", () => {
-  it("MailerProofStage uses isCreativeQrUsableForCampaign from the canonical validator", () => {
-    const proof = src("components/campaign-creative/MailerProofStage.tsx");
-    expect(proof).toContain("isCreativeQrUsableForCampaign");
+  it("Workshop uses isCreativeQrUsableForCampaign for Mailer QR proof status", () => {
+    // QR validation moved from MailerProofStage to the workshop, surfaced
+    // through mailerQrStatus in the canvas status bar rather than a card below the proof.
+    const workshop = src("pages/business/CampaignCreativeWorkshopAdvanced.tsx");
+    expect(workshop).toContain("isCreativeQrUsableForCampaign");
   });
 
-  it("MailerProofStage uses qrContrastRatio from the canonical QR artwork module", () => {
-    const proof = src("components/campaign-creative/MailerProofStage.tsx");
-    expect(proof).toContain("qrContrastRatio");
-    expect(proof).toContain("MIN_PRODUCTION_QR_CONTRAST_RATIO");
+  it("Workshop uses qrContrastRatio and MIN_PRODUCTION_QR_CONTRAST_RATIO for Mailer QR proof status", () => {
+    const workshop = src("pages/business/CampaignCreativeWorkshopAdvanced.tsx");
+    expect(workshop).toContain("qrContrastRatio");
+    expect(workshop).toContain("MIN_PRODUCTION_QR_CONTRAST_RATIO");
   });
 
-  it("MailerProofStage contrast formula matches the production candidate formula", () => {
-    const proof = src("components/campaign-creative/MailerProofStage.tsx");
+  it("Workshop Mailer QR status formula matches the production candidate formula", () => {
+    const workshop = src("pages/business/CampaignCreativeWorkshopAdvanced.tsx");
     const candidate = src("lib/communityMailerCandidate.ts");
-    expect(proof).toContain("inner_field_color");
+    expect(workshop).toContain("inner_field_color");
     expect(candidate).toContain("inner_field_color");
   });
 
