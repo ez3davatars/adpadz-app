@@ -880,9 +880,9 @@ export default function CampaignCreativeWorkshopAdvanced() {
         <main className="order-1 min-w-0 xl:order-2 xl:flex xl:flex-col xl:min-h-0 xl:overflow-hidden">
           <div
             data-testid="creative-preview-stage"
-            className="relative flex min-h-[560px] xl:min-h-0 xl:flex-1 flex-col rounded-3xl border border-white/[0.05] bg-[#070907]"
+            className={`relative flex min-h-[560px] xl:min-h-0 xl:flex-1 flex-col rounded-3xl border border-white/[0.05] ${destination === "mailer" ? "bg-[#0f0c09]" : "bg-[#070907]"}`}
           >
-            <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]" aria-hidden="true" />
+            <div className={`pointer-events-none absolute inset-0 rounded-3xl ${destination === "mailer" ? "bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.012),transparent_65%)]" : "bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.045),transparent_65%)]"}`} aria-hidden="true" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-t-3xl border-b border-white/[0.05] bg-black/25 px-3 py-2 backdrop-blur-sm">
               {destination !== "social" ? (
                 <div className="flex gap-1.5 overflow-x-auto" role="listbox" aria-label={`${destinationDefinition.name} format`}>
@@ -1016,7 +1016,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 rounded-b-3xl border-t border-white/[0.05] bg-black/25 px-4 py-2 text-[11px] text-[var(--text-muted)]">
               <span className="font-semibold text-[var(--text-secondary)]">{context}</span>
-              <span className={printImpact ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
+              <span className={printImpact ? "font-semibold text-amber-300" : ""}>{printImpact ? "Print readiness will require reconfirmation" : destination === "mailer" ? "Print ready" : destination === "social" && scope === "destination" ? "Social-only override · print remains current" : "Production definition shared"}</span>
             </div>
           </div>
         </main>

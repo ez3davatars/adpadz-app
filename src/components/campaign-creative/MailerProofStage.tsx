@@ -92,7 +92,7 @@ export default function MailerProofStage({
     <div className="flex w-full flex-col items-center gap-4">
       {/* Paper proof frame */}
       <div
-        className="flex w-full items-center justify-center rounded-2xl p-5 sm:p-8"
+        className="flex w-full items-center justify-center rounded-2xl p-6 sm:p-10"
         style={{ background: "linear-gradient(135deg,#f7f3ec 0%,#ede8df 100%)" }}
         aria-label="Paper proof view"
       >

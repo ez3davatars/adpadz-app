@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ExternalLink, QrCode, RotateCcw, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { trapDialogFocus as trapInspectorFocus, useDialogBehavior } from "./dialogBehavior";
 import {
   CAMPAIGN_TEMPLATES,
@@ -88,6 +88,17 @@ const sections: CreativeInspectorSection[] = [
   "Overlay",
   "QR",
   "Text",
+  "Branding",
+  "Visibility",
+  "Print Safety",
+];
+
+const mailerSections: CreativeInspectorSection[] = [
+  "Template",
+  "Image",
+  "Overlay",
+  "Text",
+  "QR",
   "Branding",
   "Visibility",
   "Print Safety",
@@ -216,36 +227,42 @@ export default function CreativeInspector({
             Selected: <span className="text-neon">{selectedLabel}</span>
           </div>
         )}
-        {sections.map(section => (
-          <InspectorSection
-            key={section}
-            title={section}
-            open={activeSection === section}
-            overriddenCount={sectionOverriddenCount(section)}
-            onToggle={() => onSectionChange(section)}
-            onReset={() => onResetSection(section)}
-          >
-            {section === "Template" && <TemplateControls settings={settings} change={onChange} destination={destination} field={field} />}
-            {section === "Image" && <ImageControls settings={settings} change={onChange} commit={onCommitGesture} assets={assets} field={field} />}
-            {section === "Overlay" && <OverlayControls settings={settings} change={onChange} commit={onCommitGesture} field={field} />}
-            {section === "QR" && (
-              <QrControls
-                qrs={qrs}
-                selectedQr={selectedQr}
-                settings={settings}
-                change={onChange}
-                campaignId={campaignId}
-                campaignOwnerId={campaignOwnerId}
-                campaignBusinessId={campaignBusinessId}
-                destination={destination}
-                field={field}
-              />
+        {(destination === "mailer" ? mailerSections : sections).map(section => (
+          <Fragment key={section}>
+            {destination === "mailer" && section === "QR" && (
+              <div className="border-t border-white/[0.04] mt-1 pt-2 pb-0.5 px-1">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]/60">Production</p>
+              </div>
             )}
-            {section === "Text" && <TextControls settings={settings} change={onChange} selectedElement={selectedElement} overflows={selectedTextOverflows} field={field} />}
-            {section === "Branding" && <BrandControls settings={settings} change={onChange} field={field} />}
-            {section === "Visibility" && <VisibilityControls settings={settings} change={onChange} destination={destination} field={field} />}
-            {section === "Print Safety" && <PrintControls settings={settings} change={onChange} destination={destination} />}
-          </InspectorSection>
+            <InspectorSection
+              title={section}
+              open={activeSection === section}
+              overriddenCount={sectionOverriddenCount(section)}
+              onToggle={() => onSectionChange(section)}
+              onReset={() => onResetSection(section)}
+            >
+              {section === "Template" && <TemplateControls settings={settings} change={onChange} destination={destination} field={field} />}
+              {section === "Image" && <ImageControls settings={settings} change={onChange} commit={onCommitGesture} assets={assets} field={field} />}
+              {section === "Overlay" && <OverlayControls settings={settings} change={onChange} commit={onCommitGesture} field={field} />}
+              {section === "QR" && (
+                <QrControls
+                  qrs={qrs}
+                  selectedQr={selectedQr}
+                  settings={settings}
+                  change={onChange}
+                  campaignId={campaignId}
+                  campaignOwnerId={campaignOwnerId}
+                  campaignBusinessId={campaignBusinessId}
+                  destination={destination}
+                  field={field}
+                />
+              )}
+              {section === "Text" && <TextControls settings={settings} change={onChange} selectedElement={selectedElement} overflows={selectedTextOverflows} field={field} />}
+              {section === "Branding" && <BrandControls settings={settings} change={onChange} field={field} />}
+              {section === "Visibility" && <VisibilityControls settings={settings} change={onChange} destination={destination} field={field} />}
+              {section === "Print Safety" && <PrintControls settings={settings} change={onChange} destination={destination} />}
+            </InspectorSection>
+          </Fragment>
         ))}
       </aside>
     </>
