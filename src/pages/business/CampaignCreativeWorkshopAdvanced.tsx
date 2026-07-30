@@ -925,7 +925,7 @@ export default function CampaignCreativeWorkshopAdvanced() {
 
             <div
               ref={canvasAreaRef}
-              className="relative z-10 flex flex-col items-center gap-4 p-3 sm:p-5 xl:flex-1 xl:min-h-0 xl:overflow-auto xl:justify-center"
+              className={`relative z-10 flex flex-col items-center gap-4 p-3 sm:p-5 xl:flex-1 xl:min-h-0 xl:overflow-auto ${zoom !== "100" ? "xl:justify-center" : ""}`}
               onClick={event => {
                 if (event.target !== event.currentTarget) return;
                 setSelectedElement(null);
